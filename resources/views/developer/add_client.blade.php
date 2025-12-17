@@ -169,19 +169,19 @@
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Client Key 1</label>
+                <label class="form-label">Client ID</label>
                 <input type="text" name="secret_key1" class="form-control"
                        value="{{ old('secret_key1') }}">
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Client Key 2</label>
+                <label class="form-label">Client Secret 1</label>
                 <input type="text" name="secret_key2" class="form-control"
                        value="{{ old('secret_key2') }}">
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Client Key 3</label>
+                <label class="form-label">Client Secret 2</label>
                 <input type="text" name="secret_key3" class="form-control"
                        value="{{ old('secret_key3') }}">
             </div>

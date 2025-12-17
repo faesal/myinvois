@@ -22,6 +22,9 @@ use App\Http\Controllers\ClientController;
 
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
+
+Route::any('/user/login', [AuthController::class, 'login']);
+
 Route::get('/logout', [AuthController::class, 'logout'])->name('logout');
 Route::get('/subscriberLogin/{uuid}', [AuthController::class, 'subscriberLogin'])
     ->name('subscriber.login');
