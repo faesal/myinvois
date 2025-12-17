@@ -1,0 +1,18 @@
+[25-Aug-2025 22:36:23 Asia/Kuala_Lumpur] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php:43) in /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php on line 254
+[25-Aug-2025 22:50:53 Asia/Kuala_Lumpur] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php:223) in /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php on line 255
+[25-Aug-2025 22:51:56 Asia/Kuala_Lumpur] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php:205) in /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php on line 237
+[25-Aug-2025 22:53:22 Asia/Kuala_Lumpur] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php:205) in /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php on line 277
+[25-Aug-2025 23:06:01 Asia/Kuala_Lumpur] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php:225) in /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php on line 286
+[25-Aug-2025 23:12:15 Asia/Kuala_Lumpur] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php:235) in /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php on line 304
+[25-Aug-2025 23:12:45 Asia/Kuala_Lumpur] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php:237) in /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php on line 306
+[25-Aug-2025 23:12:56 Asia/Kuala_Lumpur] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php:237) in /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php on line 306
+[25-Aug-2025 23:13:57 Asia/Kuala_Lumpur] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php:237) in /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php on line 306
+[25-Aug-2025 23:15:31 Asia/Kuala_Lumpur] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php:231) in /home/liveapps/public_html/nlbh.liveapps88.com/public/payment/return.php on line 300
+[08-Sep-2025 02:32:25 UTC] PHP Fatal error:  Uncaught Error: Undefined constant "TOYYIB_CHARGE_SEN" in /home/liveapps/public_html/nlbh.liveapps88.com/public/pay/payment.php:52
+Stack trace:
+#0 {main}
+  thrown in /home/liveapps/public_html/nlbh.liveapps88.com/public/pay/payment.php on line 52
+[08-Sep-2025 02:33:54 UTC] PHP Fatal error:  Uncaught Error: Undefined constant "TOYYIB_CHARGE_SEN" in /home/liveapps/public_html/nlbh.liveapps88.com/public/pay/payment.php:55
+Stack trace:
+#0 {main}
+  thrown in /home/liveapps/public_html/nlbh.liveapps88.com/public/pay/payment.php on line 55

@@ -1,0 +1,159 @@
+.restaurant {
+    padding: 80px 0;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+
+    .view_btn {
+        .thm-btn_two {
+            border: 1px solid var(--color-yellow);
+            background-color: transparent;
+        }
+    }
+
+
+
+    .food_card_item {
+        position: relative;
+
+        .food_card_item_thumb {
+            height: 124px;
+
+        }
+
+        .food_card_item_inner {
+            padding: 8px 20px 15px 20px;
+
+            .food_card_btm_item {
+                margin-top: 0;
+                justify-content: space-around;
+
+                .dot {
+                    height: 4px;
+                    width: 4px;
+                    background-color: var(--color-orange);
+                    border-radius: 50%;
+                }
+
+                .food_card_company_location {
+                    position: relative;
+
+
+                }
+            }
+        }
+
+        .food_card_item_thumb_main {
+            .food_card_item_thumb_overlay {
+                .open_btn {
+                    position: absolute;
+                    right: 0;
+                    font-size: 12px;
+                    font-weight: 400;
+                    line-height: 14.52px;
+                    color: var(--color-white);
+                    padding: 5px 8px;
+                    background-color: var(--color-green);
+                    border-radius: 4px;
+
+                    &.closed_btn {
+                        background-color: var(--color-red)
+                    }
+                }
+            }
+        }
+
+        .food_card_restaurant_logo_main {
+            @extend %d-j-center;
+        }
+
+        .food_card_restaurant_logo {
+            height: 60px;
+            width: 60px;
+            overflow: hidden;
+            border-radius: 50%;
+            margin-top: -30px;
+            position: relative;
+            z-index: 50;
+
+            img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+        }
+
+        .food_card_restaurant_name {
+            @extend %d-j-center;
+
+            h5 {
+                font-size: 18px;
+                font-weight: 600;
+                line-height: 26.1px;
+                letter-spacing: -0.005em;
+                color: var(--color-balck);
+                margin-top: 10px;
+                @extend %d-j-center;
+                gap: 8px;
+                transition: var(--all-transition);
+
+                &:hover {
+                    color: var(--color-hover-50);
+                }
+            }
+        }
+
+
+    }
+
+
+
+
+}
+
+.restaurant_ads {
+    height: 286px;
+    display: block;
+    overflow: hidden;
+    border-radius: 8px;
+    box-shadow: 0px 4px 100px 0px #0000001F;
+
+    &:hover {
+        img {
+            transform: scale(1.1);
+        }
+    }
+
+    img {
+        width: 100%;
+        height: 100%;
+        transition: var(--transition-easi);
+    }
+}
+
+
+
+
+
+
+
+// restaurant_two 
+
+.restaurant_two {
+    padding: 0;
+
+    .restaurant_ads {
+        margin-bottom: 63px;
+        height: 220px;
+        box-shadow: 0px 4px 100px 0px transparent;
+        overflow: hidden;
+    }
+}
+
+
+
+
+// restaurant_three 
+.restaurant_three {
+    padding: 62px 0 0px 0;
+}

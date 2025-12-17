@@ -1,0 +1,23 @@
+{
+    "GlobalSetting": true,
+    "Language": true,
+    "Newsletter": true,
+    "Currency": true,
+    "City": true,
+    "Testimonial": true,
+    "EmailSetting": true,
+    "SeoSetting": true,
+    "Page": true,
+    "Blog": true,
+    "Category": true,
+    "Cuisine": true,
+    "Restaurant": true,
+    "PaymentGateway": true,
+    "Coupon": true,
+    "Addon": true,
+    "Product": true,
+    "Order": true,
+    "ContactMessage": true,
+    "PaymentWithdraw": true,
+    "SmsSetting": true
+}

@@ -1,0 +1,11 @@
+{
+    "name": "Cuisine",
+    "alias": "cuisine",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Cuisine\\Providers\\CuisineServiceProvider"
+    ],
+    "files": []
+}

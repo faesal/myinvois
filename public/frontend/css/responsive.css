@@ -1,0 +1,1708 @@
+@media (max-width: 1536px) {
+    .change_password {
+        width: 100%;
+    }
+    .profile_informetion {
+        .row {
+            --bs-gutter-x: 0rem;
+        }
+    }
+
+    .g-4,
+    .gx-4 {
+        --bs-gutter-x: 23px;
+    }
+
+    .g-4,
+    .gy-4 {
+        --bs-gutter-y: 23px;
+    }
+
+    .banner_slick_main_txt h1 {
+        font-size: 50px;
+    }
+
+    .banner_slick .slick-dots {
+        bottom: 75px;
+    }
+
+    .profile_informetion_bg {
+        height: 100%;
+    }
+
+    .profile_informetion_two .profile_informetion_bg {
+        height: 465px;
+    }
+
+    .sign_up_right_side .sign-up-main {
+        padding-top: 130px;
+        margin-right: 50px;
+    }
+
+    .sign_up {
+        display: flex;
+        gap: 50px;
+    }
+
+    .sign_up_left_side {
+        width: 60%;
+    }
+
+    .profile_informetion_sarch_main {
+        margin-left: 0px;
+    }
+
+        .banner_slick_thumb img {
+    object-fit: cover;
+}
+}
+
+@media (min-width: 1200px) and (max-width: 1399.98px) {
+    .footer_newsletter_form_item .thm-btn {
+    width: 33%;
+}
+    .footer .photo_gallery_ml {
+    margin-left: -95px;
+    margin-right: 20px;
+}
+    .footer .footer_ml {
+    margin-left: 0;
+}
+        .banner_slick_thumb img {
+    object-fit: cover;
+}
+    .g-4,
+    .gx-4 {
+        --bs-gutter-x: 23px;
+    }
+
+    .g-4,
+    .gy-4 {
+        --bs-gutter-y: 23px;
+    }
+
+    .cuisine_item_main {
+        flex-wrap: wrap;
+        justify-content: start;
+        gap: 20px;
+    }
+
+    .cuisine_item {
+        width: 18.5%;
+    }
+
+    .cuisine_item_thumb_main .cuisine_item_thumb {
+        height: 100%;
+        width: 100%;
+    }
+
+    .restaurant_ads {
+        height: 100%;
+    }
+
+    .categories_slick .categories_slick_thumb {
+        height: 100%;
+    }
+
+    .cta_thumb_main {
+        display: none;
+    }
+
+    .blog_item_thumb {
+        height: 100%;
+    }
+
+    .cta_bg {
+        border-radius: 0;
+    }
+
+    .mobile_app_bg {
+        border-radius: 0;
+    }
+
+    .footer_payment_txt h5 {
+        font-size: 18px;
+    }
+
+    .list_slick_arrow {
+        display: none;
+    }
+
+    .informetion_sarch_link {
+        flex: 1;
+    }
+    .informetion_sarch_link a {
+        padding: 18px 12px;
+    }
+
+    .categories_two .categories_thumb {
+        height: 100%;
+    }
+
+    .cuisine_two .cuisine_item {
+        width: 17.9%;
+    }
+
+    .profile_informetion_two .profile_informetion_bg {
+        height: 390px;
+    }
+
+    .dashboard_item {
+        padding: 15px;
+    }
+
+    .dashboard_ads_thumb {
+        height: 150px;
+    }
+
+    .dashboard_tabel_main {
+        overflow-x: auto;
+    }
+    .dashboard_tabel_main .table tbody tr td {
+        min-width: 180px;
+    }
+    .dashboard_tabel_main .table tbody tr td:first-of-type {
+        min-width: 115px;
+    }
+    .dashboard_tabel_main .table tbody tr td:last-of-type {
+        min-width: 80px;
+    }
+
+    .dashboard_order_details .invoice .invoice_track_order li::before {
+        left: 80px;
+    }
+
+    .sign_up_left_side {
+        padding: 46px 34px 0 27px;
+        width: 50%;
+    }
+
+    .sign_up {
+        gap: 50px;
+    }
+
+    .sign_up_right_side .sign-up-main {
+        padding-top: 75px;
+        margin-right: 0;
+        padding-right: 50px;
+    }
+
+    .sign_up_left_slider_txt h3 {
+        font-size: 32px;
+        line-height: 42.44px;
+    }
+    .profile_informetion_sarch_main {
+        margin-left: 0px;
+    }
+
+    .header_h6 {
+        font-size: 14px;
+    }
+    .order_summery_box.two {
+        margin-right: 0;
+    }
+}
+
+@media (max-width: 992px) {
+    .header {
+        display: none;
+    }
+    .mobile-header {
+        display: block;
+    }
+}
+
+@media (min-width: 992px) and (max-width: 1199.98px) {
+    .order_summery_box {
+    margin-top: 30px;
+}
+    .banner_slick_thumb img {
+    object-fit: cover;
+}
+    .table thead tr th {
+        padding: 15px 10px;
+    }
+    .order_summery_box.two {
+        margin-right: 0;
+    }
+    .change_password {
+        width: 100%;
+    }
+    .memu_bg_left {
+        gap: 50px;
+    }
+    .profile_informetion {
+        .row {
+            --bs-gutter-x: 0rem;
+        }
+    }
+    .g-4,
+    .gx-4 {
+        --bs-gutter-x: 24px;
+    }
+
+    .g-4,
+    .gy-4 {
+        --bs-gutter-y: 24px;
+    }
+
+    .header_h6 {
+        font-size: 10px;
+    }
+
+    .memu_bg_left .menu {
+        gap: 25px;
+    }
+
+    .cuisine_item_main {
+        flex-wrap: wrap;
+        justify-content: start;
+        gap: 20px;
+    }
+
+    .cuisine_item {
+        width: 23.5%;
+    }
+
+    .cuisine_item_thumb_main .cuisine_item_thumb {
+        height: 100%;
+        width: 100%;
+    }
+
+    .restaurant_ads {
+        height: 100%;
+    }
+
+    .food_card_item .food_card_item_thumb {
+        height: 180px;
+    }
+
+    .categories_slick .categories_slick_thumb {
+        height: 100%;
+    }
+
+    .cta_thumb_main .cta_thumb {
+        display: none;
+    }
+
+    .blog_item_thumb {
+        height: 100%;
+    }
+
+    .blog_item_thumb_main .blog_item_thumb_over {
+        width: 296px;
+    }
+
+    .mobile_app_thum {
+        display: none;
+    }
+
+    .mobile_app_bg {
+        padding: 53px 0px 60px 67px;
+        border-radius: 0;
+    }
+
+    .cta_bg {
+        border-radius: 0px;
+        height: 100%;
+    }
+
+    .mr_mt_25px {
+        margin-top: 0px;
+    }
+
+    .footer .footer_ml {
+        margin-left: 0;
+        margin-top: 30px;
+    }
+
+    .discount_txt_item {
+        gap: 20px;
+        flex-direction: column;
+        align-items: start;
+    }
+
+    .banner_slick_thumb {
+        height: 570px;
+    }
+
+    .list_slick_arrow {
+        display: none;
+    }
+
+    .informetion_sarch_link {
+        flex-wrap: wrap;
+    }
+
+    .add_to_cart .add_to_cart_tabel {
+        overflow-x: auto;
+    }
+
+    .add_to_cart .add_to_cart_tabel .table tbody tr td {
+        min-width: 250px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:first-of-type {
+        min-width: 0px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:nth-child(4) {
+        min-width: 120px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:nth-child(5) {
+        min-width: 120px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:nth-child(6) {
+        min-width: 140px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:last-of-type {
+        min-width: 140px;
+    }
+
+    .restaurant .food_card_item .food_card_item_inner .food_card_btm_item .dot {
+        display: none;
+    }
+
+    .cuisine_two .cuisine_item {
+        width: 22.5%;
+    }
+
+    .profile_informetion_two .profile_informetion_bg {
+        height: 390px;
+    }
+
+    .blog_details_thumb_two {
+        height: 100%;
+    }
+
+    .blog_details_left_ads {
+        display: flex;
+        align-items: start;
+        gap: 25px;
+    }
+
+    .blog_details_left_ads .blog_details_left_ads_thumb.two {
+        margin-top: 0px;
+    }
+    .dashboard_ads_thumb {
+        height: 126px;
+    }
+
+    .dashboard_tabel_main {
+        overflow-x: auto;
+    }
+    .dashboard_tabel_main .table tbody tr td {
+        min-width: 180px;
+    }
+    .dashboard_tabel_main .table tbody tr td:first-of-type {
+        min-width: 115px;
+    }
+    .dashboard_tabel_main .table tbody tr td:last-of-type {
+        min-width: 80px;
+    }
+
+    .dashboard_order_details .invoice .invoice_track_order li::before {
+        left: 60px;
+    }
+
+    .change_password_thumb {
+        display: none;
+    }
+
+    .sign_up_left_side {
+        padding: 46px 34px 0 27px;
+        width: 50%;
+    }
+    .sign_up_right_side .sign-up-main .sign-up-top-btn a {
+        padding: 9px;
+    }
+    .sign_up {
+        gap: 30px;
+    }
+
+    .sign_up_right_side .sign-up-main {
+        padding-top: 75px;
+        margin-right: 0;
+        padding-right: 50px;
+    }
+
+    .sign_up_left_slider_txt h3 {
+        font-size: 32px;
+        line-height: 42.44px;
+    }
+
+    .s-logo {
+        position: absolute;
+        left: 30px;
+        top: 15px;
+    }
+
+    .profile_informetion_sarch_main {
+        margin-left: 0px;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 991.98px) {
+    .table thead tr th {
+        padding: 15px 10px;
+    }
+    .copyright_rigth_txt li:nth-child(1) a {
+        padding-right: 20px;
+    }
+    .copyright_rigth_txt {
+        gap: 20px;
+    }
+    .footer_payment_thumb {
+        width: 50%;
+    }
+    .contuct_info_item {
+        flex-direction: column;
+    }
+    .profile_informetion {
+        .row {
+            --bs-gutter-x: 0rem;
+        }
+    }
+    .g-4,
+    .gx-4 {
+        --bs-gutter-x: 24px;
+    }
+    .g-4,
+    .gy-4 {
+        --bs-gutter-y: 24px;
+    }
+    .cuisine_item_main {
+        flex-wrap: wrap;
+        justify-content: start;
+        gap: 20px;
+    }
+
+    .cuisine_item {
+        width: 31.5%;
+    }
+
+    .cuisine_item_thumb_main .cuisine_item_thumb {
+        height: 100%;
+        width: 100%;
+    }
+
+    .banner_slick_thumb {
+        height: 600px;
+    }
+
+    .banner {
+        padding: 0 0 0 0;
+    }
+
+    .banner_slick_main_item .banner_slick_main_txt h1 {
+        font-size: 55px;
+    }
+
+    .restaurant_ads {
+        height: 100%;
+    }
+
+    .restaurant .food_card_item .food_card_item_thumb {
+        height: 100%;
+    }
+    .pagination li a {
+        height: 25px;
+        width: 25px;
+        border-radius: 4px;
+    }
+    .popular .food_card_item {
+        flex-direction: column;
+        align-items: start;
+    }
+
+    .popular .food_card_item .food_card_item_thumb {
+        width: 100%;
+        height: 100%;
+        border-radius: 8px 8px 0 0;
+    }
+
+    .popular .food_card_item .food_card_item_inner {
+        padding: 0 0 20px 15px;
+    }
+
+    .cta_thumb_main .cta_thumb {
+        display: none;
+    }
+
+    .mobile_app_thum {
+        display: none;
+    }
+
+    .mobile_app_bg {
+        padding: 0 0px 60px 15px;
+        border-radius: 0px;
+    }
+
+    .footer .photo_gallery_ml {
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    .mr_mt_25px {
+        margin-top: 0px;
+    }
+
+    .footer .footer_ml {
+        margin-left: 0;
+        margin-top: 40px;
+    }
+
+    .blog_item_thumb {
+        height: 100%;
+    }
+
+    .inner_banner {
+        padding: 30px 0 58px 0;
+    }
+
+    .offer .filter {
+        top: 0px;
+    }
+
+    .discount_txt_item {
+        gap: 20px;
+        flex-direction: column;
+        justify-content: start;
+        align-items: start;
+    }
+
+    .discount .food_card_item_thumb {
+        height: 250px;
+    }
+
+    .deals_two {
+        padding: 50px 0px 0 0;
+    }
+
+    .profile_other_informetion_item .dot {
+        display: none;
+    }
+
+    .profile_other_informetion_item {
+        flex-wrap: wrap;
+    }
+
+    .informetion_sarch_link {
+        gap: 5px;
+        flex-wrap: wrap;
+        flex: 1;
+    }
+
+    .profile_bg {
+        padding: 75px 0 57px 0;
+    }
+
+    .list_slick_arrow {
+        display: none;
+    }
+
+    .add_to_cart .add_to_cart_tabel {
+        overflow-x: auto;
+    }
+
+    .add_to_cart .add_to_cart_tabel .table tbody tr td {
+        min-width: 250px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:first-of-type {
+        min-width: 0px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:nth-child(4) {
+        min-width: 120px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:nth-child(5) {
+        min-width: 120px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:nth-child(6) {
+        min-width: 140px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:last-of-type {
+        min-width: 140px;
+    }
+
+    .modal_body_top_txt_df {
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .mobile_app .mobile_app_animetion {
+        left: -50px;
+    }
+    .cuisine_two .cuisine_item {
+        width: 30.5%;
+    }
+
+    .deals_res {
+        padding-top: 0;
+        padding-bottom: 60px;
+    }
+
+    .profile_informetion_two .profile_informetion_bg {
+        height: 290px;
+    }
+
+    .blog_details_left_ads {
+        display: flex;
+        align-items: start;
+        gap: 25px;
+    }
+
+    .blog_details_left_ads .blog_details_left_ads_thumb.two {
+        margin-top: 0px;
+    }
+
+    .contact_us_txt h2 {
+        padding: 0 0;
+    }
+
+    .dashboard_ads_thumb {
+        height: 143px;
+    }
+
+    .dashboard_tabel_main {
+        overflow-x: auto;
+    }
+    .dashboard_tabel_main .table tbody tr td {
+        min-width: 180px;
+    }
+    .dashboard_tabel_main .table tbody tr td:first-of-type {
+        min-width: 115px;
+    }
+    .dashboard_tabel_main .table tbody tr td:last-of-type {
+        min-width: 80px;
+    }
+
+    .dashboard_sideber {
+        margin-bottom: 25px;
+    }
+
+    .dashboard_order_details .invoice .invoice_track_order li::before {
+        left: 70px;
+    }
+
+    .change_password_thumb {
+        display: none;
+    }
+
+    .sign_up_left_side {
+        padding: 90px 125px 200px 260px;
+        width: 960px;
+        display: none;
+    }
+
+    .sign_up_right_side .sign-up-main {
+        padding-top: 0;
+        margin-right: 0;
+        padding: 20px 15px 0 15px;
+    }
+
+    .about-us .about-us-img {
+        display: none;
+    }
+
+    .profile_informetion_sarch_main {
+        margin-left: 0px;
+    }
+    .order_summery_box.two {
+        margin-right: 0px;
+    }
+    .delivery {
+        margin-top: 30px;
+    }
+
+    .cta_bg {
+        border-radius: 0px;
+    }
+
+    .cta_txt {
+        padding: 76px 50px 65px 50px;
+    }
+    .banner_slick_thumb img {
+        object-fit: cover;
+    }
+
+    .banner_slick .slick-dots {
+        bottom: 80px;
+    }
+    .language_btn_main .language_btn span svg {
+        color: var(--color-black);
+    }
+    .dashboard_profile_btn {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 767px) {
+
+    .contact_us .mt-5{
+        margin-top: 30px !important;
+    }
+
+    .e-p-df {
+        gap: 10px;
+        flex-direction: column;
+    }
+    .b-b {
+    margin-top: 30px;
+    }
+    .table thead tr th {
+        padding: 15px 10px;
+    }
+    .dashboard_profile_btn {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+    .banner_slick_thumb img {
+        object-fit: cover;
+    }
+    .categories .slick-initialized .slick-slide a {
+        display: block;
+        width: 100%;
+    }
+    .categories_item .text {
+        font-size: 18px;
+    }
+    .payment_sec .order_summery_box {
+        padding: 14px;
+    }
+
+    .btn-check {
+        width: 100%;
+    }
+    .ml-30px {
+        margin-left: 0;
+    }
+    .categories_item {
+        padding: 10px 10px;
+        justify-content: center;
+    }
+    .food_card_modal .modal-dialog .modal-content .food_modal_quantity::after {
+        top: 104px;
+        height: 100px;
+    }
+    .copyright .back_to_top {
+        height: 45px;
+        width: 45px;
+        bottom: 82px;
+        left: inherit;
+        right: 0;
+    }
+    .banner_slick_main_item_box .form-control_main {
+        width: 100%;
+        flex-direction: row-reverse;
+    }
+    .banner_slick_main_item_box .form-control_main .icon svg {
+        color: var(--color-black);
+    }
+    .banner_slick_main_item_box .form-control_main .icon {
+        height: 40px;
+        width: 50px;
+        background-color: var(--color-yellow);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+    }
+    .banner_slick_main_item {
+        width: 100%;
+    }
+    .delivery {
+        margin-top: 30px;
+    }
+    .order_summery_box.two {
+        margin-right: 0;
+    }
+    #searchMapInput {
+        left: 0 !important;
+        top: 50px !important;
+    }
+    .wishlist .food_card_item .food_card_item_inner {
+        padding: 0 15px 15px 15px;
+    }
+    .taga_share_main .tag_item {
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .maintenance-thumb {
+        width: 100%;
+        height: 100%;
+    }
+    .maintenance-item-txt h2 {
+        font-size: 30px;
+    }
+    .contuct_info_item {
+        flex-direction: column;
+    }
+    .profile_informetion_sarch_main {
+        margin-left: 0px;
+        padding-top: 20px;
+    }
+    .informetion_sarch_link a.active {
+        border-radius: 4px;
+    }
+    .signup-df {
+        flex-direction: column;
+    }
+    .restaurantbg {
+        padding: 0 !important;
+    }
+    .food_card_modal .modal-dialog .modal-content .food_modal_quantity_main {
+        flex-direction: column;
+        align-items: start !important;
+    }
+    .profile_informetion {
+        .row {
+            --bs-gutter-x: 0rem;
+        }
+    }
+    .g-4,
+    .gx-4 {
+        --bs-gutter-x: 24px;
+    }
+
+    .g-4,
+    .gy-4 {
+        --bs-gutter-y: 20px;
+    }
+
+    .banner_slick_thumb {
+        height: 200px;
+    }
+
+    .banner_slick_main_item_box_main {
+        margin-top: 0;
+    }
+    .banner_slick_main_item_box_main #search-form {
+        width: 300px;
+    }
+
+    .popular_link {
+        gap: 5px;
+        margin: 16px;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .banner_slick_main_item_box .thm-btn {
+        display: none;
+    }
+
+    .titel {
+        font-size: 24px;
+        line-height: 34px;
+    }
+
+    .cuisine_item_main {
+        flex-wrap: wrap;
+        gap: 20px;
+    }
+
+    .work_prosses {
+        margin-top: 0px;
+    }
+    .banner {
+        padding: 0px 0 0 0;
+    }
+
+    .banner_slick_main_txt h1 {
+        display: none;
+    }
+
+    .categories {
+        padding: 48px 0 60px;
+    }
+
+    .categories .categories_mb {
+        margin-bottom: 0px;
+    }
+    .work_prosses {
+        margin-top: 60px;
+    }
+
+    .categories_slick .categories_slick_thumb {
+        height: 100%;
+    }
+
+    .food_card_modal
+        .modal-dialog
+        .modal-content
+        .food_modal_quantity_main
+        .thm-btn {
+        padding: 14px 8px;
+    }
+
+    .cuisine {
+        padding: 48px 0 60px 0;
+    }
+
+    .cuisine_item_thumb_main .cuisine_item_thumb {
+        height: 100%;
+        width: 100%;
+    }
+    .cuisine_item {
+        padding: 20px 20px;
+    }
+
+    .cuisine_item_txt_main .cuisine_item_txt h4 {
+        font-size: 20px;
+    }
+
+    .restaurant_ads {
+        height: 100%;
+    }
+
+    .restaurant {
+        padding: 60px 0;
+    }
+
+    .popular {
+        padding: 48px 0 60px 0;
+    }
+
+    .offer_top_ber {
+        margin-top: 30px;
+        margin-bottom: 30px;
+    }
+    .profile_informetion_main .company_name h6 {
+        font-size: 28px;
+    }
+
+    .cta {
+        padding: 0 0 50px 0;
+    }
+
+    .cta_thumb_main .cta_thumb {
+        display: none;
+    }
+
+    .cta_bg {
+        border-radius: 0;
+        height: 100%;
+    }
+
+    .cta_txt {
+        padding: 50px 0px 53px 0px;
+    }
+
+    .cta_txt h2 {
+        font-size: 30px;
+        line-height: 40px;
+    }
+
+    .mb_80px {
+        margin-bottom: 48px;
+    }
+
+    .blog_item_thumb {
+        height: 100%;
+    }
+
+    .blog_item_inner .blog_inner_btn {
+        margin-top: 10px;
+    }
+
+    .blog {
+        padding: 0 0 58px 0;
+    }
+    .mobile_app_bg {
+        padding: 15px 15px 60px 15px;
+        border-radius: 0px;
+    }
+
+    .mobile_app_thumb_main {
+        display: none;
+    }
+
+    .mobile_app_btn .thm-btn_two {
+        padding: 14px 18px;
+    }
+
+    .mobile_app_btn {
+        gap: 20px;
+        margin-top: 34px;
+    }
+
+    .mobile_app_txt {
+        margin-top: 32px;
+        padding-right: 0;
+    }
+
+    .mobile_app_txt h2 {
+        font-size: 28px;
+        line-height: 45px;
+    }
+
+    .mobile_app {
+        padding: 0px 0 60px 0;
+    }
+
+    .footer {
+        padding: 60px 0 0px 0;
+    }
+
+    .footer_txt {
+        margin-top: 20px;
+    }
+
+    .footer .photo_gallery_ml {
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    .footer .footer_ml {
+        margin-left: 0;
+        margin-top: 37px;
+    }
+
+    .footer_newsletter_form {
+        margin-top: 16px;
+    }
+
+    .copyright {
+        margin-top: 60px;
+    }
+
+    .inner_banner {
+        padding: 60px 0 38px 0;
+    }
+
+    .offer {
+        padding: 60px 0 60px 0;
+    }
+
+    .pagination {
+        margin-top: 0;
+    }
+
+    .deals_two {
+        padding: 50px 0 0 0;
+    }
+
+    .mr_mt_35px {
+        margin-top: 35px;
+    }
+
+    .profile_bg {
+        padding: 57px 0 40px 0;
+    }
+
+    .profile_informetion_main .company_logo {
+        margin-top: -50px;
+        height: 100px;
+        width: 100px;
+    }
+    .informetion_sarch_link a {
+        padding: 4px 8px;
+    }
+
+    .informetion_sarch_link {
+        flex-wrap: wrap;
+        flex: 1;
+    }
+
+    .list_slick_arrow {
+        display: none;
+    }
+
+    .profile_informetion_main {
+        padding: 0px 15px 15px 15px;
+    }
+
+    .discount_two .discount_bg {
+        padding: 20px 15px 30px 14px;
+        border-radius: 0px;
+    }
+
+    .popular_two {
+        padding: 49px 0 60px 0;
+    }
+
+    .profile_other_informetion_item .dot {
+        display: none;
+    }
+
+    .profile_other_informetion_item {
+        flex-wrap: wrap;
+    }
+
+    .regular_food {
+        padding: 0 0 60px 0;
+        margin-top: -10px;
+    }
+
+    .add_to_cart {
+        padding: 40px 0 60px 0;
+    }
+
+    .add_to_cart .add_to_cart_tabel {
+        overflow-x: auto;
+    }
+
+    .add_to_cart .add_to_cart_tabel .table tbody tr td {
+        min-width: 250px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:first-of-type {
+        min-width: 0px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:nth-child(4) {
+        min-width: 120px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:nth-child(5) {
+        min-width: 120px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:nth-child(6) {
+        min-width: 140px;
+    }
+    .add_to_cart .add_to_cart_tabel .table tbody tr td:last-of-type {
+        min-width: 140px;
+    }
+
+    .modal_body_top_txt_df {
+        flex-direction: column;
+        align-items: start !important;
+        gap: 10px;
+    }
+
+    .modal_body_top_txt_df h4 {
+        font-size: 20px;
+        line-height: 30px;
+    }
+
+    .checkout {
+        padding: 60px 0;
+    }
+
+    .new_address_modal .modal-body .new_address_map iframe {
+        width: 100%;
+        height: 100%;
+    }
+
+    .categories_two .categories_thumb {
+        height: 100%;
+    }
+
+    .restaurant_three {
+        padding: 47px 0 0px 0;
+    }
+
+    .pagination_two {
+        margin-top: 40px;
+    }
+
+    .discount_four {
+        padding: 60px 0;
+    }
+
+    .cuisine_two {
+        padding-bottom: 0;
+    }
+
+    .discount_five {
+        padding-bottom: 0px;
+    }
+
+    .deals_res {
+        padding-top: 0;
+        padding-bottom: 60px;
+    }
+
+    .blog_two {
+        padding: 60px 0;
+    }
+
+    .profile_informetion_two .profile_informetion_bg {
+        height: 145px;
+    }
+
+    .blog_details {
+        padding: 45px 0 60px 0;
+    }
+    .blog_details_top_txt h2 {
+        font-size: 28px;
+        line-height: 38.88px;
+    }
+
+    .blog_details_thumb {
+        height: 250px;
+        margin-top: 30px;
+    }
+
+    .taga_share_main {
+        margin-top: 20px;
+    }
+
+    .comment_txt h2 {
+        font-size: 28px;
+    }
+
+    .comment_txt {
+        margin-top: 20px;
+    }
+
+    .comment_item {
+        flex-direction: column;
+        align-items: start;
+    }
+
+    .comment_item.two {
+        margin-left: 0;
+        margin-top: 20px;
+    }
+
+    .reply_box_head h2 {
+        font-size: 28px;
+    }
+
+    .reply_box {
+        padding: 26px 15px;
+    }
+
+    .reply_form_inner .form-check .form-check-label {
+        flex: 1;
+    }
+
+    .reply_form_item {
+        flex-direction: column;
+        align-items: start;
+    }
+
+    .blog_details_sarch_box {
+        margin-top: 30px;
+    }
+
+    .blog_details_left_ads .blog_details_left_ads_thumb {
+        height: 100%;
+    }
+
+    .blog_details_left_ads .blog_details_left_ads_thumb.two {
+        height: 100%;
+    }
+
+    .privace_policy {
+        padding: 50px 0 33px 0;
+    }
+
+    .privace_policy_main h4 {
+        font-size: 20px;
+    }
+
+    .contact_us_txt h2 {
+        padding: 0 0;
+        font-size: 28px;
+        line-height: 38px;
+    }
+
+    .contact_us {
+        padding: 50px 0 80px 0;
+    }
+
+    .contact_us_form {
+        padding: 40px 15px;
+        margin-top: 30px;
+    }
+
+    .contact_us_form:last-child .contact_us_form_item {
+        margin-bottom: 0px;
+        margin-top: 20px;
+    }
+
+    .contact_us_form .contact_us_form_item_btn {
+        margin-top: 0px;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .contuct_info_map iframe {
+        height: 100%;
+        margin-top: 30px;
+    }
+
+    .contuct_info {
+        padding-bottom: 60px;
+    }
+
+    .dashboard {
+        padding: 60px 0;
+    }
+    .dashboard_ads_thumb {
+        height: 68px;
+    }
+
+    .dashboard_tabel_main {
+        overflow-x: auto;
+    }
+    .dashboard_tabel_main .table tbody tr td {
+        min-width: 180px;
+    }
+    .dashboard_tabel_main .table tbody tr td:first-of-type {
+        min-width: 115px;
+    }
+    .dashboard_tabel_main .table tbody tr td:last-of-type {
+        min-width: 80px;
+    }
+
+    .dashboard_sideber {
+        margin-bottom: 25px;
+    }
+
+    .dashboard_order_details_tabel {
+        overflow-x: auto;
+    }
+
+    .dashboard_order_details .invoice .invoice_track_order {
+        flex-direction: column;
+    }
+
+    .dashboard_order_details .invoice .invoice_track_order li::before {
+        top: 38px;
+        left: 0;
+        width: 100%;
+    }
+
+    .dashboard_order_details .invoice .invoice_track_order li {
+        line-height: 40px;
+        width: 100%;
+    }
+
+    .dashboard_order_details
+        .invoice
+        .invoice_track_order
+        li:last-of-type::before {
+        width: 100%;
+    }
+
+    .dashboard_order_details .invoice .invoice_track_order li .icon {
+        top: 38px;
+    }
+
+    .wishlist .food_card_item {
+        gap: 12px;
+        flex-direction: column;
+        align-items: start;
+    }
+
+    .wishlist .food_card_item .food_card_item_thumb {
+        width: 100%;
+        height: 100%;
+        border-radius: 8px 8px 0px 0px;
+    }
+
+    .logout_modal .modal-dialog .modal-content .modal-body .logout_btn {
+        margin-top: 32px;
+        gap: 10px;
+    }
+
+    .thm-btn_two {
+        padding: 10px 12px;
+    }
+
+    .change_password_thumb {
+        display: none;
+    }
+
+    .change_password_form_btn {
+        flex-direction: column;
+        align-items: start;
+    }
+
+    .change_password_form_btn .thm-btn,
+    .thm-btn_two {
+        width: 100%;
+    }
+    .sign_up_left_side {
+        padding: 90px 125px 200px 260px;
+        width: 960px;
+        display: none;
+    }
+
+    .sign_up_right_side .sign-up-main {
+        padding-top: 0;
+        margin-right: 0;
+        padding: 20px 15px 0 15px;
+    }
+
+    .about-us .about-us-head h2 {
+        font-size: 28px;
+        line-height: 38px;
+    }
+
+    .about-us .about-pl-45px {
+        padding-top: 20px;
+        padding-left: 15px;
+    }
+
+    .about-us .about-mt-48px {
+        display: none;
+    }
+    .work_prosses_item .work_prosses_txt p {
+        padding-top: 0px;
+        font-size: 14px;
+    }
+    .work_prosses_item .work_prosses_txt h4 a {
+        font-size: 18px;
+    }
+    .language_btn_main .language_btn span svg {
+        color: var(--color-black);
+    }
+
+  .food_pagination  .food_pagination_inner .pagination_li_wrapper.scrollable-x{
+    padding:0 0 20px 0;
+}
+
+.discount_slick_main .slick_arrow_right {
+    top: 41.5%;
+    left: 0;
+}.discount_slick_main_two .slick_arrow_right {
+    top: 35.5%;
+
+}
+
+.food_card_modal .modal-dialog .modal-content .modal_body_thumb {
+    height: 250px;
+}
+
+}
+
+@media (min-width: 576px) and (max-width: 767.98px) {
+
+    .offer_top_ber {
+        margin-top: 50px;
+    }
+    .banner_slick_main_item_box {
+        padding: 12px 12px 12px 20px;
+        gap: 20px;
+        width: 100%;
+    }
+
+    .view_btn {
+    width: fit-content;
+    margin-top: 30px;
+}
+
+    .banner_slick_main_item_box .thm-btn {
+        padding: 14px 10px;
+        width: 190px;
+    }
+
+    .work_prosses_txt h4 {
+        font-size: 20px;
+    }
+    .food_card_item .food_card_item_inner {
+        padding: 15px 10px 15px 10px;
+    }
+    .food_card_item .food_card_item_inner .food_card_list {
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .cuisine_item {
+        width: 30.5%;
+    }
+
+    .restaurant .food_card_item .food_card_item_inner .food_card_btm_item {
+        flex-direction: row;
+    }
+
+    .popular .food_card_item .food_card_item_thumb {
+        width: 200px;
+    }
+
+    .popular .food_card_item .food_card_item_inner .food_card_btm_item {
+        gap: 8px;
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .blog_item_thumb_main .blog_item_thumb_over {
+        width: 253px;
+        padding: 17px 8px;
+    }
+
+    .copyright_rigth_txt li:nth-child(1) a {
+        padding-right: 5px;
+    }
+
+    .copyright_rigth_txt {
+        gap: 5px;
+    }
+
+    .discount_txt_item {
+        gap: 20px;
+        flex-direction: column;
+        align-items: start;
+    }
+
+    .mobile_app .mobile_app_animetion {
+        top: -60px;
+        left: -27px;
+    }
+
+    .restaurant .food_card_item .food_card_item_inner .food_card_btm_item .dot {
+        display: none;
+    }
+
+    .cuisine_two .cuisine_item {
+        width: 29.5%;
+    }
+}
+
+@media (max-width: 575.96px) {
+    .pickup_item_df {
+        flex-direction: column;
+        align-items: start;
+        margin-bottom: 30px;
+    }
+    .profile_informetion {
+        .row {
+            --bs-gutter-x: 0rem;
+        }
+    }
+    .mr_mt_25px {
+        margin-top: 25px;
+    }
+
+    .pagination li a {
+        height: 30px;
+        width: 30px;
+    }
+    .discount_slick .food_card_item .food_card_item_inner .food_card_btm_item {
+        flex-wrap: wrap;
+    }
+    .discount_txt_item {
+        gap: 20px;
+        flex-direction: column;
+        align-items: start;
+    }
+    .discount_time {
+        margin-top: 20px;
+        justify-content: start;
+        align-items: start;
+    }
+    .popular .food_card_item {
+        flex-direction: column;
+        align-items: start;
+    }
+
+    .popular .food_card_item .food_card_item_thumb {
+        width: 100%;
+        height: 100%;
+        border-radius: 8px 8px 0px 0px;
+    }
+
+    .popular .food_card_item .food_card_item_inner {
+        padding: 0 15px 20px 15px;
+        width: 100%;
+    }
+
+    .cuisine_item {
+        width: 46.5%;
+    }
+
+    .banner_slick_main_item_box {
+        width: 100%;
+        margin-top: 30px;
+    }
+
+    .view_btn {
+        text-align: start;
+        margin-top: 20px;
+        width: fit-content;
+    }
+
+    .copyright_rigth_txt {
+        gap: 24px;
+        justify-content: start;
+    }
+
+    .profile_informetion_sarch_main {
+        flex-direction: column;
+        align-items: start;
+    }
+
+    .profile_other_informetion {
+        flex-direction: column;
+        align-items: start;
+        justify-content: start;
+        margin-top: 10px;
+    }
+
+    .profile_other_informetion_link {
+        margin-top: 20px;
+    }
+
+    .profile_informetion_sarch_box {
+        margin-bottom: 10px;
+    }
+
+    .profile_informetion_sarch_item {
+        width: 100%;
+    }
+
+    .profile_location_modal .modal-dialog {
+        margin: 67px auto;
+    }
+
+    .dashboard_address_item.two {
+        margin-top: 25px;
+    }
+
+    .delivery_time_box .delivery_time_box_form .delivery_time_box_form_item {
+        flex-direction: column;
+        align-items: start;
+        gap: 10px;
+    }
+
+    .new_address_modal .modal-body .new_address_form_item,
+    .pickup_item_box .pickup_item_from .pickup_item_from_item {
+        flex-direction: column;
+        align-items: start;
+        gap: 15px;
+    }
+
+    .cuisine_two .cuisine_item {
+        width: 45.5%;
+    }
+
+    .taga_share_main {
+        flex-direction: column;
+        align-items: start;
+        gap: 20px;
+    }
+
+    .contact_us_form .contact_us_form_item {
+        flex-direction: column;
+    }
+
+    .edit_profile_form_item {
+        margin-bottom: 20px;
+        gap: 20px;
+        flex-direction: column;
+    }
+
+    .dashbord_add_btn {
+        margin-top: 20px;
+    }
+
+    .address_modal .modal-body .address_form_item {
+        flex-direction: column;
+    }
+
+    .logout_modal .modal-dialog {
+        margin: 0.5rem auto;
+        width: 100%;
+    }
+    .f-guest-warn .warn-message-text-wrapper .warn-message-heading {
+        font-size: 22px;
+        line-height: 24px;
+    }
+    .f-guest-warn {
+        flex-direction: column;
+        align-items: start;
+    }
+}

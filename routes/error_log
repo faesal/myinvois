@@ -1,0 +1,12 @@
+[28-Oct-2025 14:12:36 UTC] PHP Fatal error:  Uncaught Error: Class "Route" not found in /home/liveapps/public_html/mysynctax.com/einvoice/routes/api.php:5
+Stack trace:
+#0 {main}
+  thrown in /home/liveapps/public_html/mysynctax.com/einvoice/routes/api.php on line 5
+[28-Oct-2025 21:31:01 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Support\Facades\Route" not found in /home/liveapps/public_html/mysynctax.com/einvoice/routes/web.php:15
+Stack trace:
+#0 {main}
+  thrown in /home/liveapps/public_html/mysynctax.com/einvoice/routes/web.php on line 15
+[29-Oct-2025 02:37:09 UTC] PHP Fatal error:  Uncaught Error: Class "Illuminate\Support\Facades\Artisan" not found in /home/liveapps/public_html/mysynctax.com/einvoice/routes/console.php:6
+Stack trace:
+#0 {main}
+  thrown in /home/liveapps/public_html/mysynctax.com/einvoice/routes/console.php on line 6

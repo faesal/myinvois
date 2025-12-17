@@ -1,0 +1,48 @@
+// google font 
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap");
+
+
+
+
+
+// font awesome 
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css');
+
+
+
+// root 
+:root {
+    // color 
+    --color-white: #fff;
+    --color-balck: #0C1321;
+    --color-red: #E94222;
+    --color-orange: #F98C3B;
+    --color-yellow: #F9C200;
+    --color-green: #00CF7E;
+    --color-slate-900: #0F172A;
+    --color-slate-800: #1E293B;
+    --color-slate-700: #334155;
+    --color-slate-600: #475569;
+    --color-slate-500: #64748B;
+    --color-slate-400: #64748B;
+    --color-slate-300: #CBD5E1;
+    --color-slate-200: #E2E8F0;
+    --color-slate-100: #F1F5F9;
+    --color-slate-50: #F8FAFC;
+    --color-hover-50: #FF6648;
+
+    // Gradients 
+    --gradients-Red: linear-gradient(222.6deg, #FF6648 0.01%, #D62300 100%);
+    --gradients-orange: linear-gradient(222.6deg, #F9963B 0%, #F9963B 0.01%, #F95D3B 100%);
+    --gradients-green: linear-gradient(222.6deg, #00DA84 0.01%, #009D5F 100%);
+
+    // transition 
+    --all-transition: all linear 0.3s;
+    --transition-easi: all 0.3s ease-in-out;
+}
+
+
+
+.container {
+    max-width: 1440px;
+}

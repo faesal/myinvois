@@ -1,0 +1,191 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+a {
+    text-decoration: none;
+    display: inline-block;
+}
+
+
+body {
+    overflow-x: hidden;
+    font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+
+.search_V1_bg {
+    background-color: var(--color-slate-100);
+}
+
+
+img {
+    vertical-align: middle;
+}
+
+
+span {
+    line-height: 0;
+}
+
+
+.g-4,
+.gy-4 {
+    --bs-gutter-y: 30px;
+}
+
+.g-4,
+.gx-4 {
+    --bs-gutter-x: 30px;
+}
+
+
+h1 {
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 70.4px;
+    letter-spacing: -0.01em;
+
+}
+
+h2 {
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 67.2px;
+    letter-spacing: -0.01em;
+
+}
+
+h3 {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 40px;
+    letter-spacing: -0.01em;
+
+}
+
+h4 {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 36px;
+    letter-spacing: -0.01em;
+
+}
+
+h5 {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 25.2px;
+    letter-spacing: -0.02em;
+    text-align: left;
+    color: var(--color-balck);
+}
+
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+a {
+    margin-bottom: 0;
+}
+
+
+
+
+.mt_30px {
+    margin-top: 30px;
+}
+
+
+
+
+
+.mb_25px {
+    margin-bottom: 25px;
+}
+
+.mb_80px {
+    margin-bottom: 80px;
+}
+
+.paddiing_0 {
+    padding: 0;
+}
+
+
+
+
+.titel {
+    color: var(--color-balck);
+}
+
+
+
+
+
+
+.pagination {
+    @extend %d-j-end;
+    gap: 5px;
+    margin-top: 30px;
+
+    li {
+        a {
+            span {
+                svg {
+                    stroke: currentColor;
+                    color: var(--color-slate-800);
+                }
+            }
+
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 25.6px;
+            color: var(--color-slate-600);
+            height: 46px;
+            width: 46px;
+            @extend %d-j-center;
+            transition: var(--all-transition);
+            border-radius: 8px;
+
+            &:hover {
+                background-color: var(--color-yellow);
+                color: var(--color-balck);
+
+                span {
+                    svg {
+                        color: var(--color-balck);
+                    }
+                }
+            }
+
+            &.active {
+                background-color: var(--color-yellow);
+                color: var(--color-balck);
+
+                span {
+                    svg {
+                        color: var(--color-balck);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// pagination_two 
+.pagination_two {
+    margin-top: 40px;
+}

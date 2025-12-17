@@ -1,0 +1,208 @@
+/* Spinner Loading */
+/* Loading text */
+/* Fade effect on loading animation */
+/* Curtain effect */
+/* Animation of the preloader */
+@keyframes spinner {
+    to {
+        transform: rotateZ(360deg);
+    }
+}
+
+/* Animation of letters loading from the preloader */
+@keyframes characters {
+
+    0%,
+    75%,
+    100% {
+        opacity: 0;
+        transform: rotateY(-90deg);
+    }
+
+    25%,
+    50% {
+        opacity: 1;
+        transform: rotateY(0deg);
+    }
+}
+
+/* preloder css part end  */
+/* Laptop size back (laptop, tablet, cell phone) */
+/* Preloader */
+/* Spinner Loading */
+/* Text Loading */
+/* Prelaoder */
+/* Spinner Loading */
+/*Loading text */
+.container-preloader {
+    align-items: center;
+    cursor: none;
+    display: flex;
+    height: 100%;
+    justify-content: center;
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    z-index: 1000;
+
+    .animation-preloader {
+        position: absolute;
+        z-index: 999;
+
+        .spinner {
+            animation: spinner 1s infinite linear;
+            border-radius: 50%;
+            border: 10px solid #212529;
+            border-top-color: var(--color-yellow);
+            height: 9em;
+            margin: 0 auto 3.5em auto;
+            width: 9em;
+        }
+
+        .txt-loading {
+            font: bold 5em 'Plus Jakarta Sans', sans-serif;
+            text-align: center;
+            user-select: none;
+
+            .characters {
+                &:before {
+                    animation: characters 4s infinite;
+                    color: var(--color-yellow);
+                    content: attr(data-text);
+                    left: 0;
+                    opacity: 0;
+                    position: absolute;
+                    top: 0;
+                    transform: rotateY(-90deg);
+                }
+
+                color: #00000044;
+                position: relative;
+
+                &:nth-child(2) {
+                    &:before {
+                        animation-delay: 0.2s;
+                    }
+                }
+
+                &:nth-child(3) {
+                    &:before {
+                        animation-delay: 0.4s;
+                    }
+                }
+
+                &:nth-child(4) {
+                    &:before {
+                        animation-delay: 0.6s;
+                    }
+                }
+
+                &:nth-child(5) {
+                    &:before {
+                        animation-delay: 0.8s;
+                    }
+                }
+
+                &:nth-child(6) {
+                    &:before {
+                        animation-delay: 1s;
+                    }
+                }
+
+                &:nth-child(7) {
+                    &:before {
+                        animation-delay: 1.1s;
+                    }
+                }
+
+                &:nth-child(8) {
+                    &:before {
+                        animation-delay: 1.2s;
+                    }
+                }
+
+                &:nth-child(9) {
+                    &:before {
+                        animation-delay: 1.3s;
+                    }
+                }
+
+                &:nth-child(10) {
+                    &:before {
+                        animation-delay: 1.4s;
+                    }
+                }
+
+                &:nth-child(11) {
+                    &:before {
+                        animation-delay: 1.5s;
+                    }
+                }
+            }
+        }
+    }
+
+    .loader-section {
+        background-color: #000;
+        height: 100%;
+        position: fixed;
+        top: 0;
+        width: calc(50% + 1px);
+    }
+
+    .loader-section.section-left {
+        left: 0;
+    }
+
+    .loader-section.section-right {
+        right: 0;
+    }
+}
+
+.loaded {
+    .animation-preloader {
+        opacity: 0;
+        transition: 0.3s ease-out;
+    }
+
+    .loader-section.section-left {
+        transform: translateX(-101%);
+        transition: 0.7s 0.3s all cubic-bezier(0.1, 0.1, 0.1, 1.000);
+    }
+
+    .loader-section.section-right {
+        transform: translateX(101%);
+        transition: 0.7s 0.3s all cubic-bezier(0.1, 0.1, 0.1, 1.000);
+    }
+}
+
+@media screen and (max-width: 767px) {
+    .container-preloader {
+        .animation-preloader {
+            .spinner {
+                height: 8em;
+                width: 8em;
+            }
+
+            .txt-loading {
+                font: bold 3.5em 'Plus Jakarta Sans', sans-serif;
+            }
+        }
+    }
+}
+
+@media screen and (max-width: 500px) {
+    .container-preloader {
+        .animation-preloader {
+            .spinner {
+                height: 7em;
+                width: 7em;
+            }
+
+            .txt-loading {
+                font: bold 2em 'Plus Jakarta Sans', sans-serif;
+            }
+        }
+    }
+}

@@ -1,0 +1,47 @@
+.work_prosses {
+    margin-top: -63px;
+    position: relative;
+    z-index: 20;
+}
+
+
+
+.work_prosses_item {
+    padding: 15px 0 17px 20px;
+    background-color: var(--color-white);
+    box-shadow: 0px 4px 100px 0px #00000014;
+    border-radius: 8px;
+    @extend %display-flex;
+    gap: 15px;
+
+    .work_prosses_thumb {
+
+
+        img {
+            height: 60px;
+            width: 60px;
+        }
+    }
+
+    .work_prosses_txt {
+        h4 {
+            a {
+                color: var(--color-balck);
+                transition: var(--all-transition);
+
+                &:hover {
+                    color: var(--color-hover-50);
+                }
+            }
+        }
+
+        p {
+            padding-top: 8px;
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 22px;
+            letter-spacing: -0.02em;
+            color: var(--color-slate-600);
+        }
+    }
+}

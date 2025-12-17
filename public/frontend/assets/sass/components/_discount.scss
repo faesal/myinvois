@@ -1,0 +1,154 @@
+.discount {
+    padding: 20px 0px;
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    border-radius: 8px;
+}
+
+
+
+.discount_txt_item {
+    @extend %display-flex;
+    gap: 40px;
+
+    .discount_txt {
+        h4 {
+            line-height: 30.24px;
+            color: var(--color-white);
+        }
+
+        p {
+            margin-top: 2px;
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 20.16px;
+            color: var(--color-white);
+
+        }
+    }
+
+    .discount_copy_btn {
+        font-size: 16px;
+        font-weight: 500;
+        line-height: 24px;
+        color: var(--color-white);
+        @extend %display-flex;
+        gap: 8px;
+        padding: 6px 16px;
+        border: 1.5px dashed var(--color-yellow);
+        border-radius: 8px;
+
+    }
+}
+
+
+
+.discount_time {
+    @extend %d-j-end;
+    gap: 8px;
+}
+
+.discount_time_item {
+    height: 45px;
+    width: 65px;
+    background-color: var(--color-yellow);
+    @extend %d-j-center;
+    gap: 5px;
+    border-radius: 8px;
+
+    span {
+        font-size: 16px;
+        font-weight: 400;
+        line-height: 25.63px;
+        color: var(--color-balck);
+    }
+}
+
+
+
+.discount_slick {
+    margin-top: 24px;
+
+    .food_card_item {
+        margin: 0 15px;
+        box-shadow: 0px 4px 100px 0px transparent;
+    }
+
+
+
+
+}
+
+.discount_slick_main {
+    position: relative;
+
+
+    .slick_arrow {
+        @extend %arrow_right;
+        position: absolute;
+        top: 50%;
+        right: 0;
+        transform: translate(-50%, -50%);
+    }
+
+}
+
+
+// discount_bg 
+
+.discount_two {
+    padding: 0;
+    margin-top: 40px;
+
+    .discount_bg {
+        padding: 20px 30px 30px 30px;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: cover;
+        border-radius: 8px;
+
+    }
+
+    .popular {
+        padding: 0;
+    }
+}
+
+
+
+// discount_three 
+.discount_three {
+    padding: 0 0 80px 0;
+
+    .discount_slick_main {
+        margin-top: 30px;
+    }
+
+    .discount_bg {
+        padding: 20px 30px 30px 30px;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: cover;
+        border-radius: 8px;
+
+    }
+
+    .food_card_item {
+        margin: 0 15px;
+        box-shadow: 0px 4px 100px 0px transparent;
+    }
+}
+
+// discount_four 
+
+.discount_four {
+    margin-top: 0;
+    padding: 80px 0;
+}
+
+
+// discount_five 
+.discount_five {
+    padding-bottom: 62px;
+}

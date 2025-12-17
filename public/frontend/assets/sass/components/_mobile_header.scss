@@ -1,0 +1,418 @@
+// mobile naviagtion
+
+.container-full {
+    width: 100%;
+}
+
+.mobile-header {
+    display: none;
+    position: relative;
+    z-index: 111;
+    background-color: var(--color-white);
+
+
+
+
+
+
+}
+
+.mobile-header__container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 10px;
+}
+
+#nav-opn-btn {
+    width: 40px;
+    height: 40px;
+    border: none;
+    color: var(--color-dark);
+    border-radius: 5px;
+    font-size: 18px;
+    background-color: var(--color-fashion-main);
+}
+
+// offcanvas
+
+#offcanvas-nav {
+    background: transparent;
+    position: absolute;
+    left: -300px;
+    top: 0px;
+    z-index: 99;
+    width: 300px;
+    height: 100vh;
+    z-index: 999999;
+    transition: 0.5s ease;
+
+    &::before {
+        content: "";
+        width: 0%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: -1;
+        transition: 0.5s ease 0.3s;
+    }
+}
+
+#offcanvas-nav.open {
+    left: 0px;
+
+    &::before {
+        width: 100%;
+    }
+}
+
+#offcanvas-nav .m-nav {
+    position: relative;
+    background: #fff;
+    padding-top: 20px;
+    padding-left: 25px;
+    padding-right: 25px;
+    padding-bottom: 50px;
+    z-index: 9;
+    display: block;
+    height: 100vh;
+    overflow-y: scroll;
+}
+
+.m-nav {
+
+    .language_btn_main {
+        .language_btn {
+            background-color: var(--color-white);
+            border: 0;
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 20.16px;
+            color: var(--color-balck);
+            gap: 11px;
+        }
+
+
+    }
+
+    .language_btn_main {
+        justify-content: start;
+        gap: 20px;
+
+        .dropdown-menu {
+            border: 1px solid #d3d3d3;
+        }
+
+
+
+        .language_btn {
+            padding: 10px;
+            border: 1px solid #d3d3d3;
+            border-radius: 6px;
+
+            .lun_icon svg {
+                fill: transparent;
+                stroke: currentColor;
+                color: var(--color-balck);
+            }
+        }
+
+    }
+
+
+
+    .menu-right {
+        display: flex;
+        align-items: center;
+        justify-content: start;
+        gap: 30px;
+
+
+
+
+        .menu-right-icon {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            position: relative;
+
+            &::after {
+                position: absolute;
+                content: "";
+                top: 50%;
+                left: 0;
+                transform: translate(-50%, -50%);
+                width: 1px;
+                height: 56px;
+                background: rgba(255, 248, 244, 0.16);
+            }
+
+            .icon {
+
+
+                svg {
+                    stroke: currentColor;
+                    color: var(--color-dark);
+                }
+            }
+
+            .cart-icon {
+                position: relative;
+
+                &::after {
+                    position: absolute;
+                    content: '2';
+                    top: -7px;
+                    right: -7px;
+                    width: 22px;
+                    height: 22px;
+                    background: var(--color-fashion-main);
+                    border-radius: 50px;
+                    font-size: 14px;
+                    font-family: var(--outfit);
+                    font-weight: var(--font-regular);
+                    color: var(--color-dark);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+            }
+        }
+
+    }
+
+}
+
+#nav-cls-btn {
+    position: absolute;
+    right: 15px;
+    top: 3px;
+    background: none;
+    border: none;
+    outline: none;
+    font-size: 22px;
+}
+
+#offcanvas-nav .m-nav .nav-links {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+
+    li {
+        border-bottom: 1px solid #d3d3d3;
+        margin-bottom: 20px;
+        padding-bottom: 5px;
+
+        a {
+            font-size: 16px;
+            color: var(--color-dark);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            span {
+                i {
+                    pointer-events: none;
+                }
+            }
+
+        }
+    }
+}
+
+
+
+#offcanvas-nav .m-nav .nav-links .dropdown {
+    .d-menu {
+        position: relative;
+        box-shadow: none;
+        padding-left: 20px;
+        padding-top: 15px !important;
+        padding-top: 0px;
+        visibility: visible;
+        opacity: 1;
+        display: none;
+        transition: 0.5s ease-in 0s;
+
+        li {
+            padding: 5px 0px;
+
+            a {
+                font-size: 15px;
+                color: #000;
+            }
+        }
+    }
+
+    &:hover {
+        .d-menu {
+            display: block;
+        }
+    }
+}
+
+#offcanvas-nav .m-nav .logo {
+    margin-bottom: 40px;
+}
+
+
+
+
+
+
+
+
+
+.mobile-btm-menu {
+    position: fixed;
+    padding: 14px 16px 12px;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: var(--color-white);
+    box-shadow: 0 0 16px 0 rgba(0, 0, 0, .16);
+    z-index: 999;
+    display: none;
+
+    &.two {
+        .mobile-btm-icon {
+            &.two {
+                .icon {
+                    &::after {
+                        background-color: var(--color-jewelry-main);
+                    }
+                }
+            }
+
+
+
+
+            .icon {
+                svg {
+                    stroke: currentColor;
+                    color: var(--color-dark);
+                }
+            }
+
+            .txt {
+                font-size: 14px;
+                color: var(--color-dark);
+                font-weight: var(--font-regular);
+            }
+        }
+    }
+
+
+    &.three {
+        .mobile-btm-icon {
+            &.two {
+                .icon {
+                    &::after {
+                        background-color: var(--color-cosmetics-main);
+                        color: var(--color-white);
+                    }
+                }
+            }
+
+
+
+
+            .icon {
+                svg {
+                    stroke: currentColor;
+                    color: var(--color-dark);
+                }
+            }
+
+            .txt {
+                font-size: 14px;
+                color: var(--color-dark);
+                font-weight: var(--font-regular);
+            }
+        }
+    }
+
+    &.four {
+        .mobile-btm-icon {
+            &.two {
+                .icon {
+                    &::after {
+                        background-color: var(--color-skin-care-main);
+                        color: var(--color-white);
+                    }
+                }
+            }
+
+
+
+
+            .icon {
+                svg {
+                    stroke: currentColor;
+                    color: var(--color-dark);
+                }
+            }
+
+            .txt {
+                font-size: 14px;
+                color: var(--color-dark);
+                font-weight: var(--font-regular);
+            }
+        }
+    }
+
+
+
+
+    .mobile-btm-icon-main {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+    }
+
+    .mobile-btm-icon {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+
+        &.two {
+            .icon {
+                position: relative;
+
+                &::after {
+                    position: absolute;
+                    content: "2";
+                    top: -4px;
+                    right: -4px;
+                    width: 15px;
+                    height: 15px;
+                    background-color: var(--color-fashion-main);
+                    color: var(--color-dark);
+                    text-align: center;
+                    line-height: 15px;
+                    font-size: 10px;
+                    font-weight: var(--font-regular);
+                    border-radius: 50%;
+                }
+            }
+        }
+
+        .icon {
+            svg {
+                stroke: currentColor;
+                color: var(--color-dark);
+            }
+        }
+
+        .txt {
+            font-size: 14px;
+            color: var(--color-dark);
+            font-weight: var(--font-regular);
+        }
+    }
+}

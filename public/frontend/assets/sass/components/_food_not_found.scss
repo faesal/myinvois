@@ -1,0 +1,52 @@
+.food_not_found {
+    padding: 80px 0;
+}
+
+
+
+
+.food_not_found_item {
+    text-align: center;
+
+    .food_not_found_thumb {
+        span {
+            svg {
+                width: 100%;
+                height: 100%;
+            }
+        }
+    }
+
+}
+
+
+
+
+
+.food_not_found_txt {
+    padding-top: 12px;
+
+    h3 {
+        font-size: 38px;
+        font-weight: 700;
+        line-height: 47.5px;
+        letter-spacing: -0.01em;
+        color: var(--color-balck);
+
+    }
+}
+
+.food_not_found_btn {
+    margin-top: 30px;
+
+    .thm-btn {
+        display: inline-block;
+        background-color: var(--color-balck);
+        color: var(--color-white);
+
+
+        &::after {
+            background-color: var(--color-yellow);
+        }
+    }
+}

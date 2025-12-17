@@ -1,0 +1,431 @@
+.checkout {
+    padding: 80px 0;
+
+    .nav {
+        margin-top: 20px;
+        gap: 17px;
+        margin-bottom: 27px;
+
+        .nav-link {
+            padding: 12px 16px;
+            background-color: var(--color-yellow);
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 24px;
+            color: var(--color-balck);
+            @extend %display-flex;
+            gap: 8px;
+            border-radius: 8px;
+            position: relative;
+
+            span {
+                svg {
+                    stroke: currentColor;
+                    color: var(--color-balck);
+                    overflow: hidden;
+                }
+
+
+            }
+
+            .hidden_svg {
+                position: absolute;
+                opacity: 0;
+                top: 16px;
+                left: 16px;
+            }
+
+            &.active {
+                span {
+
+                    opacity: 0;
+
+
+
+                }
+
+
+                .hidden_svg {
+                    opacity: 1;
+                }
+            }
+        }
+    }
+}
+
+
+.delivery {
+    padding: 24px;
+    background-color: var(--color-white);
+    border-radius: 8px;
+}
+
+
+.delivery_top_txt {
+    h4 {
+        color: var(--color-balck);
+    }
+}
+
+
+
+
+.delivery_time_box {
+    padding: 30px;
+    background-color: var(--color-slate-50);
+    margin-top: 30px;
+    border-radius: 8px;
+
+    .delivery_time_box_txt,
+    .additional_notes_txt,
+    .payment_method_txt {
+        h4 {
+            color: var(--color-balck);
+        }
+    }
+
+    .delivery_time_box_form {
+        margin-top: 12px;
+
+        .delivery_time_box_form_item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 30px;
+        }
+    }
+
+    .delivery_time_box_form_inner {
+        width: 100%;
+
+        .form-label {
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 23.2px;
+            letter-spacing: -0.005em;
+            color: var(--color-slate-700);
+
+        }
+
+        .form-select {
+            padding: 16px;
+            background-color: var(--color-white);
+            border: 1px solid var(--color-slate-200);
+            border-radius: 8px;
+
+            &:focus {
+                box-shadow: inherit
+            }
+        }
+    }
+}
+
+
+
+
+
+.additional_notes_txt {
+    margin-top: 27px;
+}
+
+
+
+.additional_notes_form {
+    margin-top: 12px;
+
+    .form-control {
+        font-size: 16px;
+        font-weight: 400;
+        line-height: 24px;
+        letter-spacing: -0.01em;
+        background-color: var(--color-slate-50);
+        color: var(--color-balck);
+        border: 1px solid var(--color-slate-200);
+        border-radius: 8px;
+
+        &:focus {
+            box-shadow: inherit;
+        }
+    }
+}
+
+
+
+
+
+.payment_method_box {
+    padding: 30px;
+    border: 1px solid var(--color-slate-100);
+    margin-top: 27px;
+    border-radius: 8px;
+
+    .payment_method_btn {
+        padding: 17px;
+        border: 1px solid var(--color-slate-200);
+        width: 100%;
+        border-radius: 8px;
+        margin-top: 12px;
+        transition: var(--all-transition);
+
+        &:hover {
+
+            border-color: var(--color-yellow);
+
+            .payment_method_btn_item {
+                .payment_method_btn_thumb {
+                    margin-left: 0px;
+                }
+
+                .cheak_thumb {
+                    opacity: 1;
+                }
+            }
+
+        }
+
+
+
+        .payment_method_btn_item {
+            display: flex;
+            align-items: center;
+            gap: 13px;
+
+            .cheak_thumb {
+                opacity: 0;
+                transition: var(--all-transition);
+            }
+
+            .payment_method_btn_thumb {
+                height: 25px;
+                margin-left: -30px;
+                transition: var(--all-transition);
+
+                img {
+                    width: fit-content;
+                    height: 100%;
+                }
+            }
+
+        }
+
+    }
+}
+
+
+
+
+
+
+
+.pickup_item_txt {
+    p {
+        font-size: 20px;
+        font-weight: 400;
+        line-height: 28px;
+        color: var(--color-balck);
+
+        span {
+            .change_btn {
+                padding: 2px 16px;
+                font-size: 14px;
+                font-weight: 500;
+                line-height: 28px;
+                color: var(--color-red);
+                background-color: #FFEAE7;
+                border-radius: 30px;
+                text-decoration-line: underline;
+            }
+        }
+    }
+}
+
+
+
+.pickup_item_box {
+    padding: 24px;
+    background-color: #F8FAFC;
+    margin-top: 16px;
+    border-radius: 16px;
+
+    .pickup_item_from_txt {
+        h4 {
+            color: var(--color-balck);
+        }
+    }
+
+    .pickup_item_from {
+        .pickup_item_from_item {
+            margin-top: 30px;
+            @extend %display-flex;
+            gap: 30px;
+        }
+
+        .pickup_item_from_inner {
+            width: 100%;
+
+            .form-label {
+                font-size: 16px;
+                font-weight: 500;
+                line-height: 24px;
+                color: var(--color-balck);
+
+            }
+
+            .form-control,
+            .form-select {
+                padding: 16px 14px;
+                border: 1px solid var(--color-white);
+                font-size: 16px;
+                font-weight: 400;
+                line-height: 24px;
+                color: var(--color-balck);
+
+                &:focus {
+                    box-shadow: inherit;
+                }
+            }
+        }
+    }
+}
+
+
+
+
+
+.order_summery_box {
+    padding: 24px;
+    background-color: var(--color-white);
+    border-radius: 8px;
+
+    .order_summery_txt {
+        border-bottom: 1px solid var(--color-slate-100);
+        padding-bottom: 12px;
+
+        h4 {
+            font-size: 20px;
+            font-weight: 600;
+            line-height: 25.2px;
+            color: var(--color-balck);
+
+        }
+    }
+
+    .order_summery_list {
+        margin-top: 24px;
+
+        li {
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 23.2px;
+            letter-spacing: -0.005em;
+            color: #4D5461;
+            @extend %d-j-s-b;
+            padding-bottom: 14px;
+
+            &:last-of-type {
+                font-weight: 600;
+                color: var(--color-balck);
+                border-top: 1px solid #E5E6EB;
+                padding-top: 10px;
+            }
+        }
+    }
+
+    .promo_code {
+        .form-label {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 24px;
+            color: var(--color-balck);
+
+        }
+    }
+
+    .promo_code_inner {
+        padding: 5px 5px 5px 14px;
+        border: 1px solid var(--color-slate-100);
+        @extend %d-j-s-b;
+        border-radius: 8px;
+
+        .form-control {
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 24px;
+            color: var(--color-balck);
+            border: 0;
+            padding: 0;
+
+            &:focus {
+                box-shadow: inherit;
+            }
+        }
+
+
+        .promo_code_btn {
+            .thm-btn {
+                border: 0;
+                padding: 10px 16px;
+            }
+        }
+
+
+
+    }
+
+
+
+
+    .order_summery_check {
+        margin-top: 24px;
+
+        .form-check-input {
+            border: 1.5px solid var(--color-slate-600);
+            cursor: pointer;
+
+            &:focus {
+                box-shadow: 0 0 0 .25rem transparent;
+            }
+
+            &:checked {
+                background-color: var(--color-yellow);
+                border-color: var(--color-yellow) !important;
+
+
+            }
+
+            &:checked[type=checkbox] {
+                background-image: url(../assets/images/icon/from_check_img.png);
+                background-size: 10px;
+                background-repeat: no-repeat;
+                background-position: center;
+            }
+        }
+
+        .form-check-label {
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 22.4px;
+            color: #475569;
+
+            span {
+                color: var(--color-red);
+            }
+        }
+
+    }
+
+
+    .order_summery_btn {
+        border-top: 1px solid #E5E6EB;
+        margin-top: 24px;
+        padding-top: 24px;
+
+        .thm-btn {
+            width: 100%;
+            border: 0;
+        }
+    }
+
+
+
+}

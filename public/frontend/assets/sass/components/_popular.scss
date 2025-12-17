@@ -1,0 +1,166 @@
+.popular {
+    padding: 62px 0 80px 0;
+
+    .food_card_item {
+        @extend %display-flex;
+        gap: 12px;
+        border-radius: 8px;
+
+        .food_card_item_thumb {
+            width: 188px;
+            height: 171px;
+            border-radius: 8px 0px 0px 8px;
+        }
+
+        .food_card_item_thumb_main {
+            .food_card_item_thumb_overlay {
+                .wishlist_icon {
+                    width: 32px;
+                    height: 32px;
+                }
+            }
+
+        }
+
+        .food_card_item_inner {
+            padding: 0 16px 0 0;
+
+            .food_card_list {
+                gap: 8px;
+                justify-content: start !important;
+            }
+
+            .food_card_btm_item {
+                gap: 8px;
+
+
+            }
+        }
+
+        .thm-btn_two {
+            padding: 6px 14px;
+        }
+
+
+
+    }
+
+
+
+}
+
+
+// .discount_slick 
+.discount_slick {
+    .food_card_item {
+        .food_card_item_inner {
+            .food_card_btm_item {
+                gap: 8px;
+                border: 0;
+                padding: 0;
+
+                .food_card_item_inner_top {
+                    width: 100%;
+                }
+            }
+        }
+
+        .thm-btn_two {
+            padding: 6px 14px;
+            border: 1px solid var(--color-slate-400);
+            color: var(--color-slate-600);
+
+            span {
+                svg {
+                    color: var(--color-slate-600);
+                }
+            }
+
+            &:hover {
+                color: var(--color-balck);
+                border: 1px solid var(--color-yellow);
+
+                span {
+                    svg {
+                        color: var(--color-balck);
+                    }
+                }
+            }
+        }
+
+
+
+    }
+}
+
+
+
+
+
+
+
+
+// popular_two 
+
+.popular_two {
+    padding: 62px 0 62px 0;
+
+    .food_card_item {
+        .food_card_item_inner {
+            flex: 1;
+
+            .food_card_btm_item {
+                gap: 8px;
+                border: 0;
+                padding: 0;
+
+                .food_card_item_inner_top {
+                    width: 100%;
+                }
+            }
+        }
+
+        .thm-btn_two {
+            padding: 6px 14px;
+            border: 1px solid var(--color-slate-400);
+            color: var(--color-slate-600);
+
+            span {
+                svg {
+                    color: var(--color-slate-600);
+                }
+            }
+
+            &:hover {
+                color: var(--color-balck);
+                border: 1px solid var(--color-yellow);
+
+                span {
+                    svg {
+                        color: var(--color-balck);
+                    }
+                }
+            }
+        }
+
+
+
+    }
+}
+
+
+
+
+// popular_three 
+.popular_three {
+    padding: 0 0 62px 0;
+}
+
+
+
+
+// regular_food 
+
+.regular_food {
+    padding: 0 0 80px 0;
+}

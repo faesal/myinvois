@@ -1,0 +1,319 @@
+.offer {
+    padding: 80px 0 80px 0;
+
+    .filter {
+        padding: 20px;
+        background-color: var(--color-white);
+        box-shadow: 0px 4px 100px 0px #00000014;
+        border-radius: 8px;
+        margin-right: 5px;
+        position: sticky;
+        top: 88px;
+
+        .filter_item {
+            margin-top: 16px;
+
+            .filter_inner {
+                margin-top: 23px;
+
+                &:first-of-type {
+                    margin-top: 0;
+                }
+            }
+        }
+    }
+
+
+
+
+
+    .accordion-item {
+        border-radius: 0;
+        border: 0;
+
+
+        .accordion-button {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 24px;
+            color: var(--color-balck);
+            padding: 0 0 6px 0;
+            border-bottom: 1px solid var(--color-slate-100);
+
+            &:focus {
+                box-shadow: 0 0 0 .25rem transparent;
+            }
+
+            &:not(.collapsed) {
+                background-color: var(--color-white);
+                box-shadow: inset 0 -1px 0 transparent;
+            }
+
+            &::after {
+                height: 20px;
+                width: 20px;
+                background-image: url(../assets/images/icon/arrow.png);
+                background-size: 12px;
+                background-repeat: no-repeat;
+                background-position: center;
+                transform: rotate(-0deg);
+            }
+
+        }
+    }
+
+
+    .accordion-body {
+        padding: 16px 0 0 0;
+
+        .accordion_body_check_item {
+            .form-check_btn {
+                margin-top: 14px;
+                @extend %display-flex;
+                gap: 22px;
+                font-size: 16px;
+                font-weight: 500;
+                line-height: 24px;
+                color: var(--color-orange);
+                text-decoration-line: underline;
+            }
+        }
+
+        .form-check {
+            margin-bottom: 10px;
+
+            &:last-of-type {
+                margin-bottom: 0;
+            }
+        }
+
+        .form-check-input {
+            border: 1.5px solid var(--color-slate-600);
+            cursor: pointer;
+
+            &:focus {
+                box-shadow: 0 0 0 .25rem transparent;
+            }
+
+            &:checked {
+                background-color: var(--color-yellow);
+                border-color: var(--color-yellow) !important;
+
+
+            }
+
+            &:checked[type=checkbox] {
+                background-image: url(../assets/images/icon/from_check_img.png);
+                background-size: 10px;
+                background-repeat: no-repeat;
+                background-position: center;
+            }
+        }
+
+        .form-check-label {
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 24px;
+            color: var(--color-slate-800);
+            cursor: pointer;
+
+        }
+
+
+
+        .quick_filters_item {
+            @extend %display-flex-a-s;
+            flex-direction: column;
+            gap: 12px;
+
+            .quick_filters_box {
+                font-size: 16px;
+                font-weight: 500;
+                line-height: 20.16px;
+                color: var(--color-slate-800);
+                padding: 6px 12px;
+                border: 1px solid var(--color-slate-100);
+                border-radius: 30px;
+                background-color: var(--color-slate-50);
+            }
+        }
+
+
+
+
+
+    }
+
+
+}
+
+
+.filter_txt {
+    h6 {
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 32px;
+        letter-spacing: -0.005em;
+        color: var(--color-balck);
+
+    }
+}
+
+
+
+// noUi range slider
+
+.noUi-target {
+    background: var(--color-slate-100);
+    border-radius: 0px;
+    border: 1px solid transparent;
+    box-shadow: inset 0 1px 1px transparent;
+    height: 5px !important;
+    display: inline-block;
+    width: 100%;
+
+}
+
+.noUi-handle {
+    border-radius: 5px;
+    background: var(--color-white);
+    border: 2px solid var(--color-yellow);
+    box-shadow: inset 0 0 1px transparent;
+
+
+}
+
+.noUi-horizontal .noUi-handle {
+    width: 16px;
+    height: 16px;
+    border-radius: 50px;
+    right: -10px;
+    top: -6px;
+
+}
+
+.noUi-handle:after,
+.noUi-handle:before {
+    display: none;
+}
+
+.noUi-connect {
+    background: var(--color-yellow);
+}
+
+.noUi-connects {
+    border-radius: 0px;
+    height: 5px;
+}
+
+.example-val_item {
+    @extend %d-j-s-b;
+
+    .example-val {
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 20px;
+        color: var(--color-balck);
+
+    }
+}
+
+
+
+
+
+// offer_top_ber 
+
+.offer_top_ber {
+    padding: 20px;
+    background-color: var(--color-white);
+    border-radius: 8px;
+    margin-bottom: 40px;
+
+    .offer_top_ber_left_item {
+        @extend %d-j-s-b;
+    }
+
+    .nav {
+        gap: 15px;
+    }
+
+    .nav-link {
+        padding: 10px 14px;
+        width: 120px;
+        height: 44px;
+        font-size: 16px;
+        font-weight: 500;
+        line-height: 24px;
+        color: var(--color-balck);
+        border: 1px solid var(--color-slate-300);
+        border-radius: 8px;
+
+        &.active {
+            background-color: var(--color-yellow);
+            color: var(--color-balck);
+            border-color: var(--color-yellow);
+        }
+    }
+
+    .showing_results {
+        p {
+            font-family: Plus Jakarta Sans;
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 25.6px;
+            text-align: left;
+            color: var(--color-slate-600);
+
+            span {
+                font-weight: 600;
+                color: var(--color-balck);
+            }
+        }
+    }
+
+    .nav_item_two {
+        @extend %display-flex;
+        gap: 20px;
+
+        p {
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 24px;
+            color: var(--color-balck);
+
+        }
+
+
+        .nav-link {
+            height: 44px;
+            width: 44px;
+            @extend %d-j-center;
+            background-color: #FEFAEB;
+            border: 1px solid #FEFAEB;
+
+            span {
+                svg {
+                    fill: currentColor;
+                    color: var(--color-yellow);
+                }
+            }
+
+            &.active {
+                background-color: var(--color-yellow);
+                border-color: var(--color-yellow);
+
+                span {
+                    svg {
+                        color: var(--color-balck);
+                    }
+                }
+            }
+        }
+
+
+
+    }
+
+
+}

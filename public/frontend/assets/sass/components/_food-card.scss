@@ -1,0 +1,236 @@
+.food_card_item {
+    box-shadow: 0px 4px 100px 0px #00000014;
+    background-color: var(--color-white);
+    border-radius: 8px;
+
+    &:hover {
+        .food_card_item_thumb {
+            img {
+                &:nth-child(1) {
+                    transform: scale(1.1);
+                }
+
+                &:nth-child(2) {
+                    transform: translateX(-700px) skewX(40deg);
+                }
+
+                &:nth-child(3) {
+                    transform: translateX(700px) skewX(-40deg);
+                }
+            }
+        }
+
+    }
+
+    .food_card_item_thumb_main {
+        position: relative;
+
+        .food_card_item_thumb_overlay {
+            position: absolute;
+            top: 12px;
+            right: 10px;
+            z-index: 40;
+            @extend %d-j-s-b;
+            align-items: start !important;
+            width: 100%;
+
+            .badge {
+                padding: 4px 20px 4px 10px;
+                background: var(--gradients-orange);
+                clip-path: polygon(100% 0, 88% 49%, 100% 100%, 0% 100%, 0 51%, 0% 0%);
+
+
+                h6 {
+                    font-size: 14px;
+                    font-weight: 500;
+                    line-height: 17.64px;
+                    color: var(--color-white);
+                }
+            }
+
+
+            .wishlist_icon {
+                height: 36px;
+                width: 36px;
+                background-color: var(--color-white);
+                @extend %d-j-center;
+                border-radius: 50%;
+                position: absolute;
+                right: 0;
+
+                span {
+                    svg {
+                        stroke: currentColor;
+                        color: var(--color-red);
+                        transition: var(--transition-easi);
+                    }
+                }
+
+                &:hover {
+                    span {
+                        svg {
+                            stroke: transparent;
+                            fill: currentColor;
+                            color: var(--color-red);
+                        }
+                    }
+                }
+            }
+
+        }
+
+    }
+
+    .food_card_item_thumb {
+        height: 190px;
+        position: relative;
+        overflow: hidden;
+        border-radius: 8px 8px 0px 0px;
+
+        img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+
+            &:nth-child(2),
+            &:nth-child(3) {
+                position: absolute;
+                top: 0;
+                z-index: 3;
+                transition: transform 1.6s;
+            }
+
+            &:nth-child(1) {
+                transition: transform 0.8s;
+            }
+
+            &:nth-child(2) {
+                left: 0;
+                clip-path: polygon(0 0, 50% 0, 50% 100%, 0% 100%);
+            }
+
+            &:nth-child(3) {
+                right: 0;
+                clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%);
+            }
+
+        }
+
+    }
+
+
+    .food_card_item_inner {
+        padding: 15px 20px 15px 20px;
+
+        .food_card_modal_btn {
+            display: contents;
+
+            h5 {
+                padding-top: 12px;
+                transition: var(--all-transition);
+
+                &:hover {
+                    color: var(--color-hover-50)
+                }
+            }
+        }
+
+        .food_card_list {
+            @extend %d-j-s-b;
+            margin-top: 14px;
+
+            li {
+                font-size: 16px;
+                font-weight: 400;
+                line-height: 20.16px;
+                letter-spacing: -0.02em;
+                color: #4D5461;
+                @extend %display-flex;
+                gap: 3px
+            }
+        }
+
+        .food_card_btm_item {
+            @extend %d-j-s-b;
+            border-top: 1px solid var(--color-slate-100);
+            margin-top: 14px;
+            padding-top: 10px;
+        }
+
+        .food_card_company {
+            @extend %display-flex;
+            gap: 6px;
+
+            .food_card_company_thumb {
+                height: 28px;
+                width: 28px;
+                overflow: hidden;
+
+                img {
+                    height: 100%;
+                    width: 100%;
+                    object-fit: cover
+                }
+            }
+
+            .food_card_company_name {
+                font-size: 16px;
+                font-weight: 600;
+                line-height: 20.16px;
+                color: var(--color-balck);
+
+            }
+        }
+
+        .food_card_company_location {
+            @extend%display-flex;
+            gap: 6px;
+
+            span {
+                svg {
+                    stroke: currentColor;
+                    color: var(--color-slate-600);
+                }
+            }
+
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 20.16px;
+            color: var(--color-slate-600);
+
+        }
+
+
+    }
+
+
+    .food_card_item_inner_top {
+        @extend %d-j-s-b;
+
+        h5 {
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 25.2px;
+            text-align: left;
+            color: var(--color-red);
+        }
+
+        p {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 20.16px;
+            letter-spacing: -0.02em;
+            color: var(--color-balck);
+
+            margin: 0 3px;
+
+            span {
+                font-weight: 400;
+                color: var(--color-slate-600);
+            }
+
+        }
+    }
+
+}

@@ -1,0 +1,313 @@
+.add_to_cart {
+
+    padding: 56px 0 80px 0;
+
+    .table>:not(caption)>*>* {
+        border-bottom-width: 0px;
+        box-shadow: inset 0 0 0 9999px transparent;
+    }
+
+    .table-striped>tbody>tr:nth-of-type(odd) {
+        background-color: var(--color-slate-50);
+    }
+
+
+    .table_btn {
+        margin-top: 40px;
+        @extend %d-j-end;
+
+        .thm-btn {
+            width: fit-content;
+        }
+    }
+
+
+}
+
+
+
+
+
+.table {
+    margin-bottom: 0;
+    vertical-align: middle;
+
+    .form-check-input {
+        border: 1.5px solid var(--color-slate-600);
+        cursor: pointer;
+
+        &:focus {
+            box-shadow: 0 0 0 .25rem transparent;
+        }
+
+        &:checked {
+            background-color: var(--color-yellow);
+            border-color: var(--color-yellow) !important;
+
+
+        }
+
+        &:checked[type=checkbox] {
+            background-image: url(../assets/images/icon/from_check_img.png);
+            background-size: 10px;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+    }
+
+
+
+    thead {
+        tr {
+            th {
+                padding: 15px 20px;
+
+
+                &:first-of-type {
+                    padding: 15px 0 15px 20px;
+                }
+
+                &:last-of-type {
+                    padding: 15px 0px 15px 20px;
+                }
+
+                .th_item {
+                    @extend %display-flex;
+                    gap: 4px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    line-height: 23.2px;
+                    letter-spacing: -0.005em;
+                    color: #394150;
+                    position: relative;
+
+                    .arrow_top,
+                    .arrow_bottom {
+                        cursor: pointer;
+
+                        svg {
+                            stroke: currentColor;
+                            color: #394150;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+
+    tbody {
+        tr {
+            border-bottom: 1px solid #E5E6EB;
+
+            td {
+                padding: 15px 20px;
+
+
+                &:first-of-type {
+                    padding: 15px 0 15px 20px;
+                }
+
+                &:last-of-type {
+                    padding: 15px 0px 15px 20px;
+                }
+
+                .td_thumb {
+                    width: 180px;
+                    height: 100px;
+                    border-radius: 8px;
+                    overflow: hidden;
+
+                    img {
+                        width: 100%;
+                        height: 100%;
+                        object-fit: cover;
+                    }
+                }
+
+                .td_txt {
+
+
+                    h6 {
+                        font-size: 20px;
+                        font-weight: 500;
+                        line-height: 29px;
+                        letter-spacing: -0.005em;
+                        padding-bottom: 10px;
+
+                        a {
+                            color: var(--color-balck);
+                        }
+
+                    }
+
+                    span {
+                        font-size: 16px;
+                        font-weight: 500;
+                        line-height: 24px;
+                        color: var(--color-red);
+
+                    }
+
+                    p {
+                        font-size: 16px;
+                        font-weight: 600;
+                        line-height: 25.6px;
+                        color: var(--color-balck);
+
+                        span {
+                            padding-top: 0;
+                            font-weight: 500;
+                            color: #212936;
+                        }
+
+                    }
+                }
+
+                .td_price,
+                .td_subtotal {
+                    p {
+                        font-size: 16px;
+                        font-weight: 600;
+                        line-height: 23.2px;
+                        letter-spacing: -0.005em;
+                        color: var(--color-balck);
+
+                    }
+                }
+
+                .td_quantity {
+                    @extend %display-flex;
+                    border: 1px solid var(--color-slate-200);
+                    padding: 2px;
+                    border-radius: 6px;
+                    width: 124px;
+
+                    .decrement {
+                        border: 0;
+                        height: 40px;
+                        width: 40px;
+                        background-color: #FFF8ED;
+                        border-radius: 6px;
+                        transition: var(--all-transition);
+                        @extend %d-j-center;
+
+                        span {
+                            svg {
+                                fill: currentColor;
+                                color: var(--color-orange);
+                                transition: var(--all-transition);
+                            }
+                        }
+
+                        &:hover {
+                            background-color: var(--color-yellow);
+
+                            span {
+                                svg {
+                                    color: var(--color-balck);
+                                }
+                            }
+                        }
+                    }
+
+                    .quantity_input {
+                        font-size: 16px;
+                        font-weight: 500;
+                        line-height: 23.2px;
+                        letter-spacing: -0.005em;
+                        color: var(--color-balck);
+                        border: 0;
+                        height: 40px;
+                        width: 40px;
+                        background-color: var(--color-white);
+                        border-radius: 6px;
+                        text-align: center;
+                    }
+
+                    .incriment {
+                        border: 0;
+                        height: 40px;
+                        width: 40px;
+                        background-color: var(--color-yellow);
+                        border-radius: 6px;
+                        transition: var(--all-transition);
+                        @extend %d-j-center;
+
+                        span {
+                            svg {
+                                fill: currentColor;
+                                color: var(--color-balck);
+                                transition: var(--all-transition);
+                            }
+                        }
+
+                        &:hover {
+                            background-color: #FFF8ED;
+
+                            span {
+                                svg {
+                                    color: var(--color-orange);
+                                }
+                            }
+                        }
+                    }
+                }
+
+
+                .td_btn {
+                    @extend %display-flex;
+                    gap: 16px;
+                    width: fit-content;
+
+                    .view_btn {
+                        height: 45px;
+                        width: 45px;
+                        background-color: var(--color-balck);
+                        border-radius: 8px;
+                        line-height: 0;
+                        @extend %d-j-center;
+
+                        span {
+
+
+                            svg {
+                                fill: currentColor;
+                                color: var(--color-white);
+                            }
+                        }
+                    }
+
+                    .delet_btn {
+                        background-color: var(--color-red);
+                    }
+
+                }
+
+                .addon_btn {
+                    @extend %display-flex;
+                    gap: 5px;
+                    padding: 4px 8px;
+                    background-color: var(--color-yellow);
+                    width: fit-content;
+                    font-size: 14px;
+                    font-weight: 500;
+                    line-height: 19.6px;
+                    color: var(--color-balck);
+                    border-radius: 30px;
+                    margin-top: 8px;
+
+                    span {
+                        padding-top: 0;
+                    }
+                }
+
+            }
+        }
+    }
+
+
+
+
+}
