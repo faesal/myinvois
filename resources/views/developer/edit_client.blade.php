@@ -44,7 +44,7 @@
     <!-- ⭐ FIX: Proper white card panel ⭐ -->
     <div class="card p-4 shadow-sm mb-4">
 
-        <h3 class="mb-4">Edit Client</h3>
+        <h3 class="mb-4">Edit Account</h3>
 
         <form action="{{ route('developer.client.update', $client->id_customer) }}" method="POST">
             @csrf
@@ -55,7 +55,7 @@
             ============================================================ -->
             <div class="section-title">
                 <i class="fa-solid fa-building"></i>
-                Client Information
+                LHDN Account Information
             </div>
 
             <div class="row mb-3">
@@ -227,7 +227,7 @@
             ============================================================ -->
             <div class="d-flex justify-content-between mb-2">
                 <a href="{{ route('developer.dashboard') }}" class="btn btn-light">Cancel</a>
-                <button type="submit" class="btn btn-primary px-4">Update Client</button>
+                <button type="submit" class="btn btn-primary px-4">Update Account</button>
             </div>
 
         </form>

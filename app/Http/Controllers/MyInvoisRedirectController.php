@@ -9,6 +9,7 @@ class MyInvoisRedirectController extends Controller
 {
     public function process($unique_id)
     {
+
         // 1. Get consolidated invoice header
         $con = DB::table('consolidate_invoice')
             ->where('unique_id', $unique_id)
@@ -32,6 +33,7 @@ class MyInvoisRedirectController extends Controller
         }
 
         session(['id_supplier' => $id_supplier]);
+        session(['connection_integrate' => $con->connection_integrate]);
 
 
         // 3. Insert INTO invoice table

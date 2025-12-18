@@ -281,7 +281,6 @@ public function showInvoice($id_supplier, $id_invoice)
     // 2. Fetch invoice
     $invoice = DB::table('invoice')
         ->where('id_invoice', $id_invoice)
-        ->where('id_customer', $id_customer)
         ->first();
 
     if (!$invoice) {

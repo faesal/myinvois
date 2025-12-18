@@ -1012,7 +1012,7 @@ public function submitSelected(Request $request)
     {
         $session = session('invoice_unique_id');
         $id_supplier = session('id_supplier');
-
+       
         // Update invoice record to assign customer
         DB::table('invoice')
             ->where('unique_id', $session)

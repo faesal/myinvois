@@ -35,6 +35,7 @@ class eInvoisModel extends Model
         
         $connection='kd';
 
+        
         if(Session('connection_integrate')!=''){
             $connection=Session('connection_integrate');
         }
@@ -45,6 +46,7 @@ class eInvoisModel extends Model
 
     public function loadCredentials($connection)
     {
+
         $customer = DB::table('customer')->where('connection_integrate', $connection)
             ->whereNotNull('secret_key1')
             ->whereNotNull('secret_key2')
@@ -92,28 +94,39 @@ class eInvoisModel extends Model
         return $client;
     }
 
-    public function qr_link($uuid){
+public function qr_link($uuid)
+{
+    $client = $this->getClient();
+    $client->login();
 
-        $client = $this->getClient();
-        $client->login();
-        $access_token = $client->getAccessToken();
-        $client->setAccessToken($access_token);
-         // Submit or fetch your document (use your existing invoice UUID)
-        // Example: retrieving an existing document using its UUID
-    
-        $response = $client->getDocument($uuid);
-        
-       // Extract the Long ID from the response
-       $longId = $response['longID'] ?? null;
-       
+    $access_token = $client->getAccessToken();
+    $client->setAccessToken($access_token);
 
-       $base = config('services.myinvois.base_url');
+    // Fetch document
+    $response = $client->getDocument($uuid);
 
-        // Construct the shareable link
-        $link = "{$base}/{$uuid}/share/{$longId}";
-        return $link;
-        
+    // Extract Long ID
+    $longId = $response['longID'] ?? null;
+
+    DB::table('invoice')
+        ->where('uuid', $uuid)
+        ->update([
+            'long_id' => $longId,
+        ]);
+
+    // Determine environment
+    $useDb = env('USE_DB');
+
+    if ($useDb === 'prod') {
+        $base = env('MYINVOIS_PROD_URL');
+    } else {
+        $base = env('MYINVOIS_PREPROD_URL');
     }
+
+    // Construct QR share link
+    return "{$base}/{$uuid}/share/{$longId}";
+}
+
 
     public function submit($id_customer)
     {
@@ -363,6 +376,8 @@ class eInvoisModel extends Model
             //echo $invoice;
      
             $response = $client->submitDocument($documents);
+        //     print_r($response);
+        //    exit();
 
             session(['consolidate_status' => '']);
             session(['invoice_id' => '']);
@@ -380,6 +395,7 @@ class eInvoisModel extends Model
                 // Extract the Long ID from the response
                 //$longId = $longId['longID'] ?? null;
 
+                
                 DB::table('invoice')
                 ->where('unique_id', $session) // match using unique_id
                 ->update([

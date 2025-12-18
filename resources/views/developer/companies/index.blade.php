@@ -86,9 +86,9 @@
 
     <div class="mb-4">
 
-        <h3 class="fw-bold mb-1">Customer Companies</h3>
+        <h3 class="fw-bold mb-1">LHDN Accounts</h3>
 
-        <p class="text-muted">Manage developer customer companies and LHDN client keys</p>
+        <p class="text-muted">Manage developer LHDN accounts and LHDN client keys</p>
 
     </div>
 
@@ -102,7 +102,7 @@
 
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3 gap-2">
 
-            <h5 class="fw-semibold mb-0">Client Summary</h5>
+            <h5 class="fw-semibold mb-0">Manage LHDN Accounts</h5>
 
 
 
@@ -110,7 +110,7 @@
 
                 <a href="{{ route('developer.companies.add') }}" class="btn btn-primary btn-sm">
 
-                    + Add Client
+                    + Add Account
 
                 </a>
 
@@ -136,7 +136,7 @@
 
                     <tr>
 
-                        <th>Client</th>
+                        <th>LHDN Account</th>
 
                         <th>Status</th>
 
@@ -376,7 +376,7 @@
 
                             data.header = [
 
-                                "Client Name",
+                                "LHDN Account",
 
                                 "TIN No",
 

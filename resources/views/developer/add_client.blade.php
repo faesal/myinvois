@@ -44,7 +44,7 @@
     <!-- ⭐ FIX: Wrap entire content in Bootstrap card ⭐ -->
     <div class="card p-4 shadow-sm mb-4">
 
-        <h3 class="mb-4">Add New Client</h3>
+        <h3 class="mb-4">Add New Account</h3>
 
         <form action="{{ route('developer.client.store') }}" method="POST">
             @csrf
@@ -54,7 +54,7 @@
             ============================================================ -->
             <div class="section-title">
                 <i class="fa-solid fa-building"></i>
-                Client Information
+                LHDN Account Information
             </div>
 
             <div class="row mb-3">

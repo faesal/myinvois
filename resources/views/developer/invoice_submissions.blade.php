@@ -53,7 +53,7 @@
                     </div>
 
                     <div class="col-md-3 col-12 filter-col">
-                        <label>Company</label>
+                        <label>LHDN Account</label>
                         <select name="connection_integrate" class="form-control">
                             <option value="">Please choose</option>
                             @foreach ($customers as $c)
