@@ -2,6 +2,8 @@
 
 @section('content')
 
+
+
 <style>
     .invoice-header {
         background-color: #0056b3;
@@ -152,7 +154,7 @@
 <script>
     const uuid = "{{ $invoice->uuid }}";
 
-    fetch(`https://mysynctax.com/einvoice/public/qr_link/${uuid}`)
+    fetch(`{{url('qr_link/')}}/${uuid}`)
         .then(r => r.text())
         .then(link => {
             QRCode.toCanvas(document.getElementById('invoiceQR'), link.trim(), {
