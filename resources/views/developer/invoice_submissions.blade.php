@@ -148,10 +148,10 @@
                                     
                                     
                                       @php
-                                      if(@$inv->id_supplier)
-                                      $invoice=$inv->id_supplier.'/'.$inv->id_invoice;
+                                      if(@$inv->id_customer)
+                                      $invoice=$inv->id_customer.'/'.$inv->id_invoice;
                                       else
-                                      $invoice='';
+                                      $invoice='6/'.$inv->id_invoice;;
 
                                       @endphp
                                       <a target="_blank" href="{{url('/invoice/'. $invoice)}}"

@@ -214,7 +214,8 @@ public function qr_link($uuid)
                 'updated_at' => $record->updated_at,
             ];
      
-            if(empty($record->id_customer)){
+            //print_r($data );
+            if(empty($record->id_customer) || $consolidate_status==1){
                 $customer=6;
             }else{
                 $customer=$record->id_customer;
@@ -376,8 +377,7 @@ public function qr_link($uuid)
             //echo $invoice;
      
             $response = $client->submitDocument($documents);
-        //     print_r($response);
-        //    exit();
+         
 
             session(['consolidate_status' => '']);
             session(['invoice_id' => '']);
@@ -405,6 +405,15 @@ public function qr_link($uuid)
                 
             ]);
 
+            if($consolidate_status==1){
+                DB::table('invoice')
+                ->where('unique_id', $session) // match using unique_id
+                ->update([
+                'id_customer' => 6
+                
+            ]);
+            }
+           
             DB::table('message_header')->insert([
                 'document_id' => $record->invoice_no?? null,
                 'type_submission' => $invoice_type_code,

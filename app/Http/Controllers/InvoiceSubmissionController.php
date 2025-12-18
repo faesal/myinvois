@@ -206,6 +206,8 @@ public function ConsolidateSelected(Request $request)
             'invoice_no' => $invoiceNo,
             'invoice_type_code' => '01',
             'issue_date' => now(),
+            'tax_scheme_id' => 'OTH',
+            'tax_category_id'=>'01',
             'price' => $total,
             'taxable_amount' => 0,
             'payment_note_term' => 'CASH',
@@ -235,7 +237,7 @@ public function ConsolidateSelected(Request $request)
                 'price_amount' => $item->price_amount,
                 'price_discount' => $item->price_discount,
                 'price_extension_amount' => $item->price_extension_amount,
-                'item_clasification_value' => $item->item_clasification_value,
+                'item_clasification_value' => '036',
                 'created_at' => now(),
             ]);
         }
@@ -271,7 +273,6 @@ public function showInvoice($id_supplier, $id_invoice)
     // 1. Ensure customer belongs to developer
     $customer = DB::table('customer')
     ->where('id_customer', $id_supplier)
-    ->where('id_developer', $developerId)
     ->first();
 
     if (!$customer) {
@@ -342,6 +343,10 @@ public function submitSelectedInvoices(Request $request)
     Session::put('connection_integrate', $request->connection_integrate);
 
     foreach ($invoices as $inv) {
+
+
+        session(['invoice_unique_id' => $inv->unique_id]);
+        session(['consolidate_status' => 1]);
 
         DB::table('invoice')
             ->where('id_invoice', $inv->id_invoice)
