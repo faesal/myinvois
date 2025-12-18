@@ -42,6 +42,7 @@ class InvoiceSubmissionController extends Controller
         'i.price',
         'c.registration_name',
         'i.id_customer',
+        'i.id_supplier',
         'i.connection_integrate',
         'ci.name AS connection_name',
         DB::raw('MIN(it.sale_id_integrate) AS sale_id')

@@ -133,7 +133,7 @@ Route::middleware(['auth'])->group(function () {
 
 
     // Invoices
-    Route::get('/invoices', [InvoiceSubmissionController::class, 'index'])
+    Route::any('/invoices', [InvoiceSubmissionController::class, 'index'])
         ->name('developer.invoices.index');
 
     Route::get('/invoices/{id_invoice}/view', [InvoiceSubmissionController::class, 'view'])

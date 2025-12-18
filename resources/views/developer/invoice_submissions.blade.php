@@ -29,9 +29,9 @@
     <div class="card mb-4">
         <div class="card-body">
 
-            <form method="GET" action="{{ route('developer.invoices.index') }}">
+            <form method="POST" action="{{ route('developer.invoices.index') }}">
                 <div class="row g-3">
-
+                @csrf
                     <div class="col-md-2 col-6 filter-col">
                         <label>Start Date</label>
                         <input type="date" name="start_date" value="{{ request('start_date') }}" class="form-control">
@@ -110,6 +110,8 @@
                     </thead>
 
                     <tbody>
+                       
+
                             @if(request()->filled('connection_integrate') && $invoices->isNotEmpty())
                                 @foreach ($invoices as $inv)
                                     <tr>
@@ -146,9 +148,13 @@
                                     
                                     
                                       @php
+                                      if(@$inv->id_supplier)
                                       $invoice=$inv->id_supplier.'/'.$inv->id_invoice;
+                                      else
+                                      $invoice='';
+
                                       @endphp
-                                      <a href="{{url('/invoice/'. $invoice)}}"
+                                      <a target="_blank" href="{{url('/invoice/'. $invoice)}}"
                                         class="btn btn-sm btn-info">View</a>
                                         </td>
                                     </tr>
