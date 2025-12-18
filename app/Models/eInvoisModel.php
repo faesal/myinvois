@@ -405,6 +405,9 @@ public function qr_link($uuid)
                 
             ]);
 
+            
+
+
             if($consolidate_status==1){
                 DB::table('invoice')
                 ->where('unique_id', $session) // match using unique_id
@@ -412,6 +415,8 @@ public function qr_link($uuid)
                 'id_customer' => 6
                 
             ]);
+
+
             }
            
             DB::table('message_header')->insert([
@@ -441,6 +446,21 @@ public function qr_link($uuid)
                 'submission_uuid' => $response['submissionUid'] ?? null
                 
             ]);
+
+            DB::table('consolidate_invoice')
+            ->where('unique_id', $session) // match using unique_id
+            ->update([
+            'is_invoice' => '1'
+            
+            ]);
+
+            DB::table('consolidate_invoice_item')
+            ->where('unique_id', $session) // match using unique_id
+            ->update([
+            'is_invoice' => '1'
+            
+            ]);
+
             } else if (!empty($response['errors'])) {
                 DB::table('invoice')
                 ->where('unique_id', $session) // match using unique_id

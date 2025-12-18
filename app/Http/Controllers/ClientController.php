@@ -259,7 +259,6 @@ public function update(Request $request, $id_customer)
 
     DB::table('customer')
         ->where('id_customer', $id_customer)
-        ->where('id_developer', $developerId)
         ->update([
             'registration_name'  => $request->registration_name,
             'tin_no'             => $request->tin_no,
@@ -273,6 +272,9 @@ public function update(Request $request, $id_customer)
             'city_name'          => $request->city_name,
             'postal_zone'        => $request->postal_zone,
             'country_subentity_code' => $request->country_subentity_code,
+            'secret_key1' => $request->secret_key1,
+            'secret_key2' => $request->secret_key2,
+            'secret_key3' => $request->secret_key3,
             // 'start_subscribe'    => $request->start_subscribe,
             // 'end_subscribe'      => $request->end_subscribe,
             // 'is_activation'      => $request->is_activation,

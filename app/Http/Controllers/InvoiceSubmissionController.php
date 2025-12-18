@@ -99,8 +99,9 @@ public function consolidate(Request $request)
         $query = DB::table('consolidate_invoice_item')
             ->whereBetween('issue_date', [$start, $end])
             ->where('connection_integrate', $selectedConnection)
-            ->where(function($q){
-                $q->whereNull('is_invoice')->orWhere('is_invoice', 0);
+            ->where(function ($q) {
+                $q->whereNull('is_invoice')
+                  ->orWhere('is_invoice', '!=', 1);
             });
 
     } else {
@@ -109,8 +110,9 @@ public function consolidate(Request $request)
             ->whereBetween('issue_date', [$start, $end])
             ->where('id_developer', $developerId)
             ->whereNull('submition_status')
-            ->where(function($q){
-                $q->whereNull('is_invoice')->orWhere('is_invoice', 0);
+            ->where(function ($q) {
+                $q->whereNull('is_invoice')
+                  ->orWhere('is_invoice', '!=', 1);
             });
     }
 
@@ -130,6 +132,7 @@ public function consolidate(Request $request)
         )
         ->where('c.id_developer', $developerId)
         ->where('ci.id_developer', $developerId)
+        ->where('c.customer_type', 'SUPPLIER')
         ->orderBy('c.registration_name', 'ASC')
         ->get();
 
@@ -237,7 +240,7 @@ public function ConsolidateSelected(Request $request)
                 'price_amount' => $item->price_amount,
                 'price_discount' => $item->price_discount,
                 'price_extension_amount' => $item->price_extension_amount,
-                'item_clasification_value' => '036',
+                'item_clasification_value' => '004',
                 'created_at' => now(),
             ]);
         }

@@ -985,7 +985,7 @@ public function submitSelected(Request $request)
 
     $invoice = new eInvoisModel;
     $invoice->submit($id);
-
+    
 
     $invoice = $record = DB::table('invoice')->where('unique_id', $session)->first();
     $supplier = DB::table('customer')->where('id_customer', $id_supplier)->first(); // Adjust ID as needed
