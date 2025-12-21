@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class DeveloperCustomerController extends Controller
@@ -97,13 +98,14 @@ class DeveloperCustomerController extends Controller
                 'tin_no' => 'required|string',
                 'identification_type' => 'required|string',
                 'identification_no' => 'required|string',
-                'phone' => 'required|string',
+                'phone' => 'required|digits_between:9,15',
                 'email' => 'required|string|email',
                 'city_name' => 'required|string',
                 'postal_zone' => 'required|string',
                 'country_subentity_code' => 'required|string',
                 'address_line_1' => 'required|string',
                 'address_line_2' => 'required|string',
+                'address_line_3' => 'nullable|string',
             ]);
     
             /*
@@ -287,9 +289,8 @@ public function update(Request $request, $id_customer)
         $request->validate([
             'registration_name' => 'required|string|max:255',
             'tin_no' => 'required|string|max:50',
-            'identification_type' => 'required|string|max:50',
             'identification_no' => 'required|string|max:50',
-            'phone' => 'required|string|max:50',
+            'phone' => 'required|digits_between:9,15',
             'email' => 'required|email|max:100',
             'city_name' => 'required|string|max:100',
             'postal_zone' => 'required|string|max:20',
