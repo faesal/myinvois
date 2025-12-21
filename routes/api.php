@@ -2,9 +2,13 @@
 
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\IntegrationInvoiceController;
+use App\Http\Controllers\IntegrationInvoiceController2;
 
+Route::any('/myinvois/cust_invoice', [IntegrationInvoiceController2::class, 'store']);
 
 Route::any('/myinvois', [IntegrationInvoiceController::class, 'storeFromIntegration']);
+Route::post('/myinvoice/add_customer', [IntegrationInvoiceController::class, 'addCustomer']);
+Route::post('/myinvois/validate', [IntegrationInvoiceController::class, 'validate']);
 
 
 Route::prefix('invoices')->group(function () {
@@ -33,9 +37,4 @@ Route::prefix('customers')->group(function () {
     Route::delete('/{id}', [CustomerController::class, 'destroy']);
 });
 
-// Route::prefix('v1/integrations')
-//     ->middleware('integrate.auth')
-//     ->group(function () {
-//         Route::any('/myinvois', [IntegrationInvoiceController::class, 'storeFromIntegration']);
-//     });
 
