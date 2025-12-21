@@ -3,199 +3,215 @@
 @section('content')
 
 <style>
+    body { background:#f4f6f9; }
+
     .invoice-container {
-        background: white;
-        border-radius: 10px;
-        padding: 20px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        background:#fff;
+        padding:20px;
+        border-radius:6px;
+        box-shadow:0 4px 10px rgba(0,0,0,.08);
     }
 
-    /* HEADER */
-    .invoice-header-wrapper {
-        position: relative;
-        margin-bottom: 20px;
+    /* ===== HEADER ===== */
+    .invoice-header table {
+        width:100%;
+        border:1px solid #000;
+        border-collapse:collapse;
     }
 
-    .invoice-header {
-    
-        padding: 20px;
-        height:150px;
-        border-radius: 6px;
-        text-align: center;
+    .invoice-header td {
+        padding:6px;
+        vertical-align:top;
     }
 
-    /* QR TOP RIGHT (DESKTOP) */
-    .invoice-qr-top {
-        position: absolute;
-        top: 15px;
-        right: 15px;
-        background: white;
-        padding: 6px;
-        border-radius: 6px;
+    .invoice-title {
+        font-size:14px;
+        font-weight:bold;
+        margin:0;
     }
 
-    .invoice-qr-top canvas {
-        width: 120px !important;
-        height: auto !important;
+    .invoice-sub {
+        font-size:10px;
+        margin:2px 0;
     }
 
+    /* VALIDATION STRIP */
+    .validation-strip {
+        border:1px solid #000;
+        margin-top:4px;
+        font-size:9px;
+        padding:4px;
+    }
+
+    /* SECTION */
     .section-title {
-        font-weight: bold;
-        font-size: 20px;
-        margin-bottom: 10px;
+        font-size:10px;
+        font-weight:bold;
+        margin:8px 0 4px;
     }
 
-    .table th {
-        background-color: #0056b3 !important;
-        color: white !important;
-        white-space: nowrap;
+    /* TABLE */
+    table.data-table {
+        width:100%;
+        border-collapse:collapse;
     }
 
-    /* MOBILE RESPONSIVE */
-    @media(max-width: 768px) {
-        .invoice-header {
-            padding-top: 10px;
-            padding-bottom: 10px;
-        }
+    table.data-table th,
+    table.data-table td {
+        border:1px solid #000;
+        padding:3px;
+        font-size:9px;
+    }
 
-        .invoice-header h4 {
-            font-size: 20px;
-        }
+    table.data-table th {
+        background:#eee;
+        font-weight:bold;
+    }
 
-        .invoice-header h6 {
-            font-size: 14px;
-        }
+    .right { text-align:right; }
 
-        .section-title {
-            font-size: 18px;
-            margin-top: 15px;
-        }
+    /* PDF MODE */
+    .pdf-mode {
+        font-size:9px;
+    }
 
-        /* QR CENTERED ON MOBILE */
-        .invoice-qr-top {
-            position: static;
-            text-align: center;
-            margin-bottom: 15px;
-        }
+    .pdf-mode canvas {
+        width:75px !important;
+        height:auto !important;
+        border:1px solid #000;
+        padding:2px;
+    }
 
-        .invoice-qr-top canvas {
-            width: 150px !important;
-        }
+    @media(max-width:768px){
+        .invoice-container { padding:12px; }
     }
 </style>
 
-<div class="invoice-container">
+<div class="container mt-3">
 
-    <!-- HEADER + QR -->
-    <div class="invoice-header-wrapper">
+<div id="invoicePDF" class="invoice-container">
 
-        <div class="invoice-qr-top">
-            <canvas id="invoiceQR"></canvas>
-        </div>
-
-        <div class="invoice-header">
-            <h4>MySyncTax e-Invoice</h4>
-            <h6>#{{ $invoice->invoice_no }}</h6>
-     
-            @if ( $invoice->uuid!='')
-       
-            <h6>LHDN Validation ID - {{ $invoice->uuid }}</h6>
-           
-            @endif
-        </div>
-
+    <!-- HEADER -->
+    <div class="invoice-header">
+        <table>
+            <tr>
+                <td width="75%">
+                    <div class="invoice-title">e-Invoice</div>
+                    <div class="invoice-sub">Invoice No.: {{ $invoice->invoice_no }}</div>
+                    
+                </td>
+                <td width="25%" align="right">
+                    <canvas id="invoiceQR"></canvas>
+                </td>
+            </tr>
+        </table>
     </div>
 
-    <hr>
+    <!-- VALIDATION STRIP (MACAM GRAB) -->
+    <div class="validation-strip">
+        <strong>IRBM Unique Identifier Number:</strong> {{ $invoice->uuid }}<br>
+        <strong>Date and Time of Validation:</strong>
+        {{ \Carbon\Carbon::parse($invoice->created_at)->format('d-m-Y H:i:s') }}
+    </div>
 
-    <!-- SUPPLIER & BUYER -->
-    <div class="row mb-4">
-        <div class="col-md-6 col-12 mb-3">
-            <div class="section-title">Supplier</div>
-            <p style="font-size:14px;">
-                <strong>Name:</strong> {{ $supplier->registration_name }}<br>
-                <strong>TIN:</strong> {{ $supplier->tin_no }}<br>
-                <strong>ID No:</strong> {{ $supplier->identification_no }}<br>
-                <strong>Email:</strong> {{ $supplier->email }}<br>
-                <strong>Phone:</strong> {{ $supplier->phone }}<br>
-                <strong>Address:</strong>
+    <!-- SUPPLIER / BUYER -->
+    <table class="data-table" style="margin-top:8px;">
+        <tr>
+            <td width="50%">
+                <div class="section-title">Supplier Details</div>
+                Name: {{ $supplier->registration_name }}<br>
+                TIN: {{ $supplier->tin_no }}<br>
+                Identification No.: {{ $supplier->identification_no }}<br>
+                Email: {{ $supplier->email }}<br>
+                Contact Number: {{ $supplier->phone }}<br>
+                Address:
                 {{ $supplier->address_line_1 }} {{ $supplier->address_line_2 }},
                 {{ $supplier->city_name }},
                 {{ $supplier->postal_zone }},
                 {{ $supplier->country_code }}
-            </p>
-        </div>
-
-        <div class="col-md-6 col-12 mb-3">
-            <div class="section-title">Buyer</div>
-            <p style="font-size:14px;">
-                <strong>Name:</strong> {{ $customer->registration_name }}<br>
-                <strong>TIN:</strong> {{ $customer->tin_no }}<br>
-                <strong>ID No:</strong> {{ $customer->identification_no }}<br>
-                <strong>Email:</strong> {{ $customer->email }}<br>
-                <strong>Phone:</strong> {{ $customer->phone }}<br>
-                <strong>Address:</strong>
+            </td>
+            <td width="50%">
+                <div class="section-title">Buyer Details</div>
+                Name: {{ $customer->registration_name }}<br>
+                TIN: {{ $customer->tin_no }}<br>
+                Identification No.: {{ $customer->identification_no }}<br>
+                Email: {{ $customer->email }}<br>
+                Contact Number: {{ $customer->phone }}<br>
+                Address:
                 {{ $customer->address_line_1 }} {{ $customer->address_line_2 }},
                 {{ $customer->city_name }},
                 {{ $customer->postal_zone }},
                 {{ $customer->country_code }}
-            </p>
-        </div>
-    </div>
+            </td>
+        </tr>
+    </table>
 
     <!-- ITEMS -->
     <div class="section-title">Invoice Items</div>
 
-    <div class="table-responsive">
-        <table class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>No</th>
-                    <th>Description</th>
-                    <th>Qty</th>
-                    <th>Unit Price</th>
-                    <th>Discount</th>
-                    <th>Total</th>
-                </tr>
-            </thead>
-
-            <tbody>
-                @php $i = 1; $total = 0; @endphp
-                @foreach ($items as $item)
-                    <tr>
-                        <td>{{ $i++ }}</td>
-                        <td style="white-space: normal;">{{ $item->item_description }}</td>
-                        <td>{{ $item->invoiced_quantity }}</td>
-                        <td>{{ number_format($item->price_amount, 2) }}</td>
-                        <td>{{ number_format($item->price_discount, 2) }}</td>
-                        <td>{{ number_format($item->line_extension_amount, 2) }}</td>
-                    </tr>
-                    @php $total += $item->line_extension_amount; @endphp
-                @endforeach
-            </tbody>
-        </table>
-    </div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>No</th>
+                <th>Description</th>
+                <th class="right">Qty</th>
+                <th class="right">Unit Price</th>
+                <th class="right">Discount</th>
+                <th class="right">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            @php $i=1; $total=0; @endphp
+            @foreach($items as $item)
+            <tr>
+                <td>{{ $i++ }}</td>
+                <td>{{ $item->item_description }}</td>
+                <td class="right">{{ $item->invoiced_quantity }}</td>
+                <td class="right">{{ number_format($item->price_amount,2) }}</td>
+                <td class="right">{{ number_format($item->price_discount,2) }}</td>
+                <td class="right">{{ number_format($item->line_extension_amount,2) }}</td>
+            </tr>
+            @php $total += $item->line_extension_amount; @endphp
+            @endforeach
+        </tbody>
+    </table>
 
     <!-- TOTAL -->
-    <div class="text-end mt-3">
-        <p><strong>Total Amount:</strong> MYR {{ number_format($total, 2) }}</p>
-        <p><strong>Taxable Amount:</strong> MYR {{ number_format($invoice->taxable_amount, 2) }}</p>
-        <p><strong>Tax Amount:</strong> MYR {{ number_format($invoice->tax_amount, 2) }}</p>
-    </div>
+    <table class="data-table" style="margin-top:6px;">
+        <tr>
+            <td class="right">Total Excluding Tax</td>
+            <td class="right" width="20%">MYR {{ number_format($total,2) }}</td>
+        </tr>
+        <tr>
+            <td class="right">Total Tax Amount</td>
+            <td class="right">MYR {{ number_format($invoice->tax_amount,2) }}</td>
+        </tr>
+        <tr>
+            <td class="right"><strong>Total Payable Amount</strong></td>
+            <td class="right"><strong>MYR {{ number_format($total,2) }}</strong></td>
+        </tr>
+    </table>
 
-    <div class="mt-4">
-        <a href="{{ route('developer.invoices.index') }}" class="btn btn-secondary">
-            ← Back
-        </a>
-    </div>
+</div>
+
+<!-- BUTTON -->
+<div class="mt-3">
+    <button id="btnGeneratePDF" class="btn btn-primary">
+        📄 Download PDF
+    </button>
+</div>
 
 </div>
 
 @endsection
 
 @section('scripts')
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
+   
 <script>
     const uuid = "{{ $invoice->uuid }}";
 
@@ -206,10 +222,31 @@
                 document.getElementById('invoiceQR'),
                 link.trim(),
                 {
-                    width: 200,
+                    width: 150,
                     errorCorrectionLevel: 'H'
                 }
             );
         });
+
+
+    // JS PDF
+    $('#btnGeneratePDF').on('click', function () {
+
+        const el = document.getElementById('invoicePDF');
+        el.classList.add('pdf-mode');
+
+        html2pdf().set({
+            margin: [5,5,5,5],
+            filename: 'Invoice-{{ $invoice->invoice_no }}.pdf',
+            image: { type:'jpeg', quality:0.98 },
+            html2canvas: { scale:2, scrollY:0 },
+            jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
+        }).from(el).save().then(() => {
+            el.classList.remove('pdf-mode');
+        });
+    });
 </script>
+
+
+
 @endsection

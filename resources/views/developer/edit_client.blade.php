@@ -47,6 +47,17 @@
         <h3 class="mb-4">Edit Account</h3>
 
         <form action="{{ route('developer.client.update', $client->id_customer) }}" method="POST">
+            @if ($errors->any())
+                <div class="alert alert-danger">
+                    <strong>Please fix the following errors:</strong>
+                    <ul class="mb-0">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
             @csrf
             @method('POST')
 
@@ -74,12 +85,19 @@
 
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Identification Type *</label>
-                    <select name="identification_type" class="form-control" required>
-                        <option value="">Please Choose</option>
-                        <option value="NRIC" {{ old('identification_type', $client->identification_type) == 'NRIC' ? 'selected' : '' }}>IC</option>
-                        <option value="BRN" {{ old('identification_type', $client->identification_type) == 'BRN' ? 'selected' : '' }}>BRN</option>
-                    </select>
+
+                    <!-- Visible (readonly) -->
+                    <input type="text"
+                        class="form-control bg-light text-secondary"
+                        value="{{ $client->identification_type }}"
+                        readonly>
+
+                    <!-- Hidden (actual submitted value) -->
+                    <input type="hidden"
+                        name="identification_type"
+                        value="{{ $client->identification_type }}">
                 </div>
+
 
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Identification Number *</label>
@@ -89,8 +107,16 @@
 
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Phone *</label>
-                    <input type="text" name="phone" class="form-control" 
+                    <input type="text" name="phone"
+                        class="form-control @error('phone') is-invalid @enderror"
                         value="{{ old('phone', $client->phone) }}" required>
+
+                    @error('phone')
+                        <div class="invalid-feedback">
+                            {{ $message }}
+                        </div>
+                    @enderror
+
                 </div>
 
                 <div class="col-md-6 mb-3">

@@ -123,7 +123,7 @@
                                         <td>{{ $inv->sale_id }}</td>
                                         <td>{{ $inv->registration_name }}</td>
                                         <td>{{ number_format($inv->price ?? 0, 2) }}</td>
-                                        <td>{{ \Carbon\Carbon::parse($inv->issue_date)->format('d-m-Y') }}</td>
+                                        <td>{{ \Carbon\Carbon::parse($inv->issue_date)->format('d-m-Y H:i:s') }}</td>
 
                                         <td class="text-center">
                                             @php

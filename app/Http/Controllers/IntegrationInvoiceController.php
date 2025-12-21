@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
-
+use App\Models\eInvoisModel;
+use Illuminate\Support\Facades\Session;
 class IntegrationInvoiceController extends Controller
 {
     /**
@@ -17,6 +18,50 @@ class IntegrationInvoiceController extends Controller
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
+    public function validate(Request $request)
+    {
+        // 1. Validate JSON input
+        $request->validate([
+            'mysynctax_key'     => 'required|string',
+            'mysynctax_secret'  => 'required|string',
+            'identification_type' => 'required|string',
+            'identification_no'   => 'required|string',
+        ]);
+    
+        // 2. Find customer by MySyncTax credential
+        $customer = DB::table('connection_integrate')
+            ->where('mysynctax_key', $request->mysynctax_key)
+            ->where('mysynctax_secret', $request->mysynctax_secret)
+            ->first();
+    
+        if (!$customer) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Invalid MySyncTax credentials'
+            ], 401);
+        }
+    
+        // 3. Set connection_integrate (important for multi ERP / POS)
+        Session::put('connection_integrate', $customer->connection_integrate);
+    
+        // 4. Call Model (LHDN API)
+        $model = new eInvoisModel();
+    
+        $response = $model->searchTaxPayerTin(
+            $request->taxpayer_name ?? '',
+            $request->identification_type,
+            $request->identification_no,
+            $request->file_type ?? null
+        );
+    
+        return response()->json([
+            'status' => true,
+            'connection_integrate' => $customer->connection_integrate,
+            'data' => $response
+        ]);
+    }
+    
+
     public function store(Request $request)
     {
         // Validate incoming JSON structure
@@ -464,5 +509,178 @@ class IntegrationInvoiceController extends Controller
             'qr_url'    => $shortUrl
         ], 201);
     }
+
+    public function addCustomer(Request $request)
+{
+    // =====================================================
+    // 1. Validate base request
+    // =====================================================
+    $request->validate([
+        'mysynctax_key'    => 'required|string',
+        'mysynctax_secret' => 'required|string',
+        'customers'        => 'required|array|min:1',
+    ]);
+
+    // =====================================================
+    // 2. Authenticate MySyncTax credentials
+    // =====================================================
+    $client = DB::table('connection_integrate')
+        ->where('mysynctax_key', $request->mysynctax_key)
+        ->where('mysynctax_secret', $request->mysynctax_secret)
+        ->first();
+
+    if (!$client) {
+        return response()->json([
+            'status'  => false,
+            'message' => 'Invalid MySyncTax credentials'
+        ], 401);
+    }
+
+    $connCode = $client->code;
+    $results  = [];
+
+    DB::beginTransaction();
+
+    try {
+        foreach ($request->customers as $index => $cust) {
+
+            // =================================================
+            // 3. Validate EACH customer (all required)
+            // =================================================
+            $validator = Validator::make($cust, [
+                'customer_type'           => 'required|string',
+                'tin_no'                  => 'required|string',
+                'registration_name'       => 'required|string',
+                'identification_no'       => 'required|string',
+                'identification_type'     => 'required|string',
+                'phone'                   => 'required|string',
+                'email'                   => 'required|email',
+                'city_name'               => 'required|string',
+                'postal_zone'             => 'required|string',
+                'country_subentity_code'  => 'required|string',
+                'country_code'            => 'required|string',
+                'address_line_1'          => 'required|string',
+                'address_line_2'          => 'required|string',
+                'address_line_3'          => 'required|string',
+                'start_subscribe'         => 'required|date',
+                'end_subscribe'           => 'required|date',
+                'is_activation'           => 'required',
+            ]);
+
+            if ($validator->fails()) {
+                $results[] = [
+                    'index'  => $index,
+                    'tin_no' => $cust['tin_no'] ?? null,
+                    'status' => 'validation_failed',
+                    'errors' => $validator->errors()
+                ];
+                continue;
+            }
+
+            // =================================================
+            // 4. Check existing customer
+            // =================================================
+            $existing = DB::table('customer')
+                ->where('connection_integrate', $connCode)
+                ->where('tin_no', $cust['tin_no'])
+                ->whereNull('deleted')
+                ->first();
+
+            if ($existing) {
+                $results[] = [
+                    'index'       => $index,
+                    'tin_no'      => $cust['tin_no'],
+                    'status'      => 'existing',
+                    'id_customer' => $existing->id_customer
+                ];
+                continue;
+            }
+
+            // =================================================
+            // 5. Insert new customer
+            // =================================================
+            $idCustomer = DB::table('customer')->insertGetId([
+                'id_developer'           => $client->id_developer,
+                'connection_integrate'   => $connCode,
+                'customer_type'          => $cust['customer_type'],
+                'tin_no'                 => $cust['tin_no'],
+                'unique_id'              => strtoupper(Str::random(15)),
+
+                'registration_name'      => $cust['registration_name'],
+                'identification_no'      => $cust['identification_no'],
+                'identification_type'    => $cust['identification_type'],
+                'sst_registration'       => $cust['sst_registration'] ?? null,
+
+                'phone'                  => $cust['phone'],
+                'email'                  => $cust['email'],
+
+                'city_name'              => $cust['city_name'],
+                'postal_zone'            => $cust['postal_zone'],
+                'country_subentity_code' => $cust['country_subentity_code'],
+                'country_code'           => $cust['country_code'],
+
+                'address_line_1'         => $cust['address_line_1'],
+                'address_line_2'         => $cust['address_line_2'],
+                'address_line_3'         => $cust['address_line_3'],
+
+                'subscribe_for'          => $cust['subscribe_for'] ?? null,
+                'start_subscribe'        => $cust['start_subscribe'],
+                'end_subscribe'          => $cust['end_subscribe'],
+                'is_activation'          => $cust['is_activation'],
+
+                'created_at'             => now(),
+                'updated_at'             => now(),
+            ]);
+
+            $results[] = [
+                'index'       => $index,
+                'tin_no'      => $cust['tin_no'],
+                'status'      => 'created',
+                'id_customer' => $idCustomer
+            ];
+        }
+
+        $hasExisting = collect($results)->contains(function ($row) {
+            return $row['status'] === 'existing';
+        });
+
+        $hasCreated = collect($results)->contains(function ($row) {
+            return $row['status'] === 'created';
+        });
+
+        DB::commit();
+
+        if ($hasExisting && !$hasCreated) {
+            $message = 'Duplicate customer detected. Existing customer record reused.';
+        } elseif ($hasExisting && $hasCreated) {
+            $message = 'Some customers already exist. Existing records reused and new customers created.';
+        } else {
+            $message = 'All customers have been successfully created.';
+        }
+
+        DB::commit();
+
+        return response()->json([
+            'status' => 'ok',
+            'message' => $message, 
+            'connection_integrate' => $connCode,
+            'results' => $results
+        ], 201);
+
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+
+        Log::error('Add customer API failed', [
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'status'  => false,
+            'message' => 'Failed to add customers'
+        ], 500);
+    }
+}
+
 
 }

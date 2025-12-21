@@ -68,6 +68,7 @@ class InvoiceSubmissionController extends Controller
 
     if ($request->connection_integrate && $request->connection_integrate !== 'ALL') {
         $query->where('i.connection_integrate', $request->connection_integrate);
+        Session::put('connection_integrate', $request->connection_integrate);
     }
 
     $invoices = $query->orderBy('i.issue_date', 'desc')->get();
@@ -77,6 +78,7 @@ class InvoiceSubmissionController extends Controller
         'invoices'
     ));
 }
+
 
 public function consolidate(Request $request)
 {

@@ -95,6 +95,17 @@
 
 
         <form action="{{ route('developer.companies.update', $company->id_customer) }}" method="POST">
+            @if ($errors->any())
+                <div class="alert alert-danger">
+                    <strong>Please fix the following errors:</strong>
+                    <ul class="mb-0">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
 
             @csrf
 
@@ -143,20 +154,20 @@
 
 
                 <div class="col-md-6 mb-3">
-
                     <label class="form-label">Identification Type *</label>
 
-                    <select name="identification_type" class="form-control" required>
+                    <!-- Visible (readonly) -->
+                    <input type="text"
+                        class="form-control bg-light text-secondary"
+                        value="{{ $company->identification_type }}"
+                        readonly>
 
-                        <option value="">Please Choose</option>
-
-                        <option value="NRIC" {{ old('identification_type', $company->identification_type) == 'NRIC' ? 'selected' : '' }}>IC</option>
-
-                        <option value="BRN" {{ old('identification_type', $company->identification_type) == 'BRN' ? 'selected' : '' }}>BRN</option>
-
-                    </select>
-
+                    <!-- Hidden (actual submitted value) -->
+                    <input type="hidden"
+                        name="identification_type"
+                        value="{{ $company->identification_type }}">
                 </div>
+
 
 
 
@@ -174,7 +185,16 @@
 
                     <label class="form-label">Phone *</label>
 
-                    <input type="text" name="phone" class="form-control" value="{{ old('phone', $company->phone) }}" required>
+                    <input type="text" name="phone"
+                        class="form-control @error('phone') is-invalid @enderror"
+                        value="{{ old('phone', $company->phone) }}" required>
+
+                    @error('phone')
+                        <div class="invalid-feedback">
+                            {{ $message }}
+                        </div>
+                    @enderror
+
 
                 </div>
 

@@ -94,6 +94,54 @@ class eInvoisModel extends Model
         return $client;
     }
 
+
+    public function validateTaxPayerTin(
+        string $tin,
+        string $idType,
+        string $idValue
+    ) {
+        $client = $this->getClient();
+    
+        // Login & token
+        $client->login();
+        $accessToken = $client->getAccessToken();
+        $client->setAccessToken($accessToken);
+    
+        // On behalf of supplier TIN (important for middleware)
+      
+    
+        return $client->validateTaxPayerTin(
+            $tin,
+            $idType,
+            $idValue
+        );
+    }
+
+    
+    public function searchTaxPayerTin(
+        ?string $taxPayerName,
+        string $idType,
+        string $idValue,
+        ?string $fileType = null
+    ) {
+        $client = $this->getClient();
+    
+        // Login & token
+        $client->login();
+        $accessToken = $client->getAccessToken();
+        $client->setAccessToken($accessToken);
+    
+        // On behalf of supplier TIN
+       
+        return $client->searchTaxPayerTin(
+            $taxPayerName,
+            $idType,
+            $idValue,
+            $fileType
+        );
+    }
+    
+
 public function qr_link($uuid)
 {
     $client = $this->getClient();
@@ -200,7 +248,7 @@ public function qr_link($uuid)
                 'price' => $record->price,
                 'taxable_amount' => $record->taxable_amount,
                 'tax_amount' => $record->tax_amount,
-                'tax_category_id' => $record->tax_category_id,
+                'tax_category_id' => '01',
                 'tax_exemption_reason' => $record->tax_exemption_reason,
                 'tax_scheme_id' => $record->tax_scheme_id,
                 'tax_percent' => $record->tax_percent,

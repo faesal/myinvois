@@ -46,12 +46,43 @@
 
         <h3 class="mb-4">Add New Account</h3>
 
+        <!-- ACCOUNT TYPE SELECTION -->
+        <div class="mb-4">
+            <label class="form-label fw-bold">Account Type *</label>
+
+            <div class="d-flex gap-4">
+                <div class="form-check">
+                    <input class="form-check-input account-type"
+                        type="radio"
+                        name="account_type"
+                        id="account_personal"
+                        value="personal">
+                    <label class="form-check-label" for="account_personal">
+                        Personal
+                    </label>
+                </div>
+
+                <div class="form-check">
+                    <input class="form-check-input account-type"
+                        type="radio"
+                        name="account_type"
+                        id="account_business"
+                        value="business">
+                    <label class="form-check-label" for="account_business">
+                        Business
+                    </label>
+                </div>
+            </div>
+        </div>
+
         <form action="{{ route('developer.client.store') }}" method="POST">
             @csrf
 
             <!-- ============================================================
                 CLIENT INFORMATION
             ============================================================ -->
+            <div id="account-form-section" style="display:none;">
+
             <div class="section-title">
                 <i class="fa-solid fa-building"></i>
                 LHDN Account Information
@@ -73,11 +104,13 @@
 
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Identification Type *</label>
-                    <select name="identification_type" class="form-control" required>
-                        <option value="">Please Choose</option>
-                        <option value="IC"  {{ old('identification_type') == 'IC' ? 'selected' : '' }}>IC</option>
-                        <option value="BRN" {{ old('identification_type') == 'BRN' ? 'selected' : '' }}>BRN</option>
-                    </select>
+                    <input type="text"
+                        name="identification_type"
+                        id="identification_type"
+                        class="form-control"
+                        readonly
+                        required>
+
                 </div>
 
                 <div class="col-md-6 mb-3">
@@ -224,6 +257,8 @@
                 These credentials must not be shared publicly.
             </div>
 
+            </div>
+
             <!-- ============================================================
                 ACTION BUTTONS
             ============================================================ -->
@@ -237,5 +272,27 @@
     </div> <!-- END CARD -->
 
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const radios = document.querySelectorAll('.account-type');
+    const formSection = document.getElementById('account-form-section');
+    const identificationType = document.getElementById('identification_type');
+
+    radios.forEach(radio => {
+        radio.addEventListener('change', function () {
+            if (this.value === 'personal') {
+                identificationType.value = 'IC';
+            }
+
+            if (this.value === 'business') {
+                identificationType.value = 'BRN';
+            }
+
+            formSection.style.display = 'block';
+        });
+    });
+});
+</script>
 
 @endsection

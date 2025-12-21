@@ -180,7 +180,7 @@
 
                                         <td>{{ $item->connection_integrate }}</td>
 
-                                        <td>{{ \Carbon\Carbon::parse($item->issue_date)->format('d/m/Y') }}</td>
+                                        <td>{{ \Carbon\Carbon::parse($item->issue_date)->format('d-m-Y H:i:s') }}</td>
 
                                     </tr>
 
