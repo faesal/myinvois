@@ -371,6 +371,7 @@ public function note(Request $request)
         $noteInvoiceId = DB::table('invoice')->insertGetId([
             'unique_id' => $uniqueId,
             'connection_integrate' => $connCode,
+            'sale_id_integrate' =>$originalInvoiceId,
             'id_developer' => $client->id_developer,
             'invoice_no' => strtoupper($label) . '-NOTE-' . now()->format('YmdHis'),
             'invoice_type_code' => $invoiceTypeCode,
