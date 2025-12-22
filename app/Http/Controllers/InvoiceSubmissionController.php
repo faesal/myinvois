@@ -351,7 +351,12 @@ public function submitSelectedInvoices(Request $request)
 
 
         session(['invoice_unique_id' => $inv->unique_id]);
-        session(['consolidate_status' => 1]);
+        
+        session(['consolidate_status' => '']);
+
+        if(empty($inv->id_customer))
+        session(['consolidate_status' => '1']);
+       
 
         DB::table('invoice')
             ->where('id_invoice', $inv->id_invoice)
