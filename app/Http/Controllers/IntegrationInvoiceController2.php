@@ -79,7 +79,7 @@ if (!$customer) {
     $customerId = DB::table('customer')->insertGetId([
         'id_developer'            => $client->id_developer,
         'connection_integrate'    => $connCode,
-        'customer_type'           => data_get($customerPayload, 'customer_type', 'CUSTOMER'),
+        'customer_type'           => 'CUSTOMER',
         'tin_no'                  => data_get($customerPayload, 'tin_no'),
         'unique_id'               => strtoupper(Str::random(12)),
 
@@ -239,8 +239,9 @@ if (!$customer) {
 
 
     $model = new \App\Models\eInvoisModel;
+    
+    $invoice_type_code=session(['invoice_type_code' => '01','invoice_unique_id'=>$uniqueId]);
     $model->submit($idCon);
-
     // =====================================================
     // 7. RESPONSE
     // =====================================================
@@ -254,7 +255,7 @@ if (!$customer) {
     ], 201);
 }
 
-public function submitNoteApi(Request $request)
+public function note(Request $request)
 {
     DB::beginTransaction();
 
@@ -344,14 +345,15 @@ public function submitNoteApi(Request $request)
         /* =====================================================
            3. ORIGINAL INVOICE
         ===================================================== */
-        $originalInvoiceId = data_get($payload, 'original_invoice_id');
+        $originalInvoiceId = data_get($payload, 'sale_id_integrate');
 
         if (!is_numeric($originalInvoiceId)) {
             throw new \Exception('original_invoice_id must be numeric');
         }
-
+        $mysynctax_uuid = data_get($payload, 'mysynctax_uuid');
         $original = DB::table('invoice')
-            ->where('id_invoice', $originalInvoiceId)
+            ->where('sale_id_integrate', $originalInvoiceId)
+            ->where('unique_id', $mysynctax_uuid)
             ->first();
 
         if (!$original) {
@@ -397,14 +399,12 @@ public function submitNoteApi(Request $request)
 
         foreach ($items as $item) {
 
-            $itemId = data_get($item, 'id_invoice_item');
+            $itemId = data_get($item, 'item_id');
 
-            if (!is_numeric($itemId)) {
-                throw new \Exception('id_invoice_item must be numeric');
-            }
+        
 
             $oriItem = DB::table('invoice_item')
-                ->where('id_invoice_item', $itemId)
+                ->where('item_id_integrate', $itemId)
                 ->first();
 
             if (!$oriItem) {
@@ -454,7 +454,7 @@ public function submitNoteApi(Request $request)
                 'price_extension_amount' => $lineAmount,
                 'tax' => $tax * $sign,
                 'item_description' => $desc,
-                'item_clasification_value' => data_get($item, 'item_clasification_value'),
+                'item_clasification_value' => '022',
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
@@ -488,7 +488,9 @@ public function submitNoteApi(Request $request)
             'invoice_type_code' => $invoiceTypeCode
         ]);
 
-        (new eInvoisModel)->submit($noteInvoiceId);
+        $model = new \App\Models\eInvoisModel;
+        $model->submit($noteInvoiceId);
+
 
         session()->forget([
             'invoice_unique_id',
