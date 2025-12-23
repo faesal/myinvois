@@ -29,6 +29,16 @@ class MySyncTaxUserController extends Controller
             ], 404);
         }
 
+
+        DB::table('connection_integrate')->insert([
+            'user_id'          => $developerId,
+            'code'             => 'DEV-' . strtoupper(Str::random(8)),
+            'name'             => $request->name,
+            'mysynctax_key'    => $mysynctax_key,
+            'mysynctax_secret' => $mysynctax_secret,
+            'api_token'        => $api_token,
+            'created_at'       => now(),
+        ]);
         // =====================================================
         // 2. Generate password (ONE TIME)
         // =====================================================

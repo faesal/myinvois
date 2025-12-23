@@ -93,7 +93,7 @@ if (!$customer) {
 
         'city_name'               => data_get($customerPayload, 'city_name'),
         'postal_zone'             => data_get($customerPayload, 'postal_zone'),
-        'country_subentity_code'  => data_get($customerPayload, 'country_subentity_code'),
+        'country_subentity_code'  => data_get($customerPayload, 'state_code'),
         'country_code'            => data_get($customerPayload, 'country_code', 'MYS'),
 
         'address_line_1'          => data_get($customerPayload, 'address_line_1'),

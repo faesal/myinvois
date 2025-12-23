@@ -20,6 +20,12 @@ use App\Http\Controllers\InvoiceSubmissionController;
 use App\Http\Controllers\DeveloperCustomerController;
 use App\Http\Controllers\ClientController;
 use Illuminate\Support\Facades\Artisan;
+use App\Http\Controllers\MySyncTaxUserController;
+
+Route::get('/admin/mysynctax/send-credential/{id}', [
+    MySyncTaxUserController::class,
+    'sendCredentialEmail'
+]);
 
 Route::get('/clear-controller-cache', function () {
     Artisan::call('route:clear');

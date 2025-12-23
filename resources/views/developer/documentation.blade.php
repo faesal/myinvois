@@ -499,9 +499,9 @@ master data and require direct submission to LHDN.
   "tax_percent": 6,
   "total_amount": 106.00,
   "customer": {
-    "tin_no": "IG20868489010",
+    "tin_no": "IG20xx848xxxx",
     "registration_name": "ABC Trading Sdn Bhd",
-    "identification_no": "202503158017",
+    "identification_no": "2025031xxxx",
     "identification_type": "BRN",
     "sst_registration": "SST123456",
     "phone": "0123456789",
@@ -511,7 +511,7 @@ master data and require direct submission to LHDN.
     "address_line_3": "Seksyen 7",
     "city_name": "Shah Alam",
     "postal_zone": "40000",
-    "country_subentity_code": "10",
+    "state_code": "10",
     "country_code": "MYS"
   },
   "items": [
@@ -564,8 +564,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
       "price": 50.00,
       "discount": 0.00,
       "tax": 3.00,
-      "description": "Item rosak / dipulangkan",
-      "item_clasification_value": "001"
+      "description": "Item rosak / dipulangkan"
     }
   ]
 }</pre></div>
@@ -624,9 +623,9 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
   "total_amount": 106.00,
 
   "supplier": {
-    "tin_no": "IG20868489010",
+    "tin_no": "IG20xx848xxxx",
     "registration_name": "ABC Trading Sdn Bhd",
-    "identification_no": "202503158017",
+    "identification_no": "2025031xxxx",
     "identification_type": "BRN",
     "sst_registration": "SST123456",
     "phone": "0123456789",
@@ -636,7 +635,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     "address_line_3": "Seksyen 7",
     "city_name": "Shah Alam",
     "postal_zone": "40000",
-    "country_subentity_code": "10",
+    "state_code": "10",
     "country_code": "MYS"
   },
 
@@ -700,8 +699,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
       "price": 50.00,
       "discount": 0.00,
       "tax": 3.00,
-      "description": "Item rosak / dipulangkan",
-      "item_clasification_value": "001"
+      "description": "Item rosak / dipulangkan"
     }
   ]
 }</pre></div>
