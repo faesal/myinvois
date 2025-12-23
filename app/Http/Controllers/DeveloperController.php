@@ -78,16 +78,13 @@ public function register(Request $request)
         // -------------------------------------------
         // 4. SEND EMAILS
         // -------------------------------------------
-        $adminEmails = DB::table('users')
-            ->where('role', 'admin')
-            ->pluck('email')
-            ->toArray();
+        $adminEmails = array('faesal09@gmail.com');
 
         foreach ($adminEmails as $admin) {
             Mail::to($admin)->send(new NewDeveloperRegisteredAdmin($request->name, $request->email));
         }
 
-        Mail::to($request->email)->send(new WelcomeDeveloper($request->name, $request->email));
+        Mail::to($request->email)->send(new WelcomeDeveloper($request->name, $request->email,$request->password));
 
         return redirect()->route('login')
                 ->with('success_popup', 'Your developer account has been created! Please check your email.');

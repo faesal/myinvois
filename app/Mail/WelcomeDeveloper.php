@@ -13,10 +13,11 @@ class WelcomeDeveloper extends Mailable
     public $name;
     public $email;
 
-    public function __construct($name, $email)
+    public function __construct($name, $email,$password)
     {
         $this->name  = $name;
         $this->email = $email;
+        $this->password = $password;
     }
 
 
@@ -27,6 +28,7 @@ class WelcomeDeveloper extends Mailable
             ->with([
                 'name' => $this->name,
                 'email' => $this->email,
+                'password' => $this->password
             ]);
 
     }

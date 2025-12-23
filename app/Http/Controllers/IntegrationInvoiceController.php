@@ -102,7 +102,7 @@ class IntegrationInvoiceController extends Controller
                             'identification_no'      => $cust['identification_no'],
                             'identification_type'    => $cust['identification_type'],
                             'sst_registration'       => $cust['sst_registration'] ?? $existing->sst_registration,
-    
+                            'is_selfbill_supplier'   => 1,
                             'phone'                  => $cust['phone'],
                             'email'                  => $cust['email'],
     

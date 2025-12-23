@@ -479,7 +479,7 @@ LHDN MyInvois rules.
 <h2>ERP - Invoice (With Customer)</h2>
 
 <div class="code-block">
-<pre>POST https://mysynctax.com/dev/api/myinvois/invoice</pre>
+<pre>POST https://mysynctax.com/v5/api/myinvois/invoice</pre>
 </div>
 
 <p>
@@ -543,7 +543,7 @@ master data and require direct submission to LHDN.
 <h2>Credit Note / Debit Note / Refund</h2>
 
 <div class="code-block">
-<pre>POST https://mysynctax.com/dev/api/myinvois/note</pre>
+<pre>POST https://mysynctax.com/v5/api/myinvois/note</pre>
 </div>
 
 <p>
@@ -606,7 +606,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     </p>
 
     <div class="code-block">
-        POST https://mysynctax.com/dev/api/myinvois/selfbill/invoice
+        POST https://mysynctax.com/v5/api/myinvois/selfbill/invoice
     </div>
 
     <h3>Request Example</h3>
@@ -683,7 +683,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     </p>
 
     <div class="code-block">
-        POST https://mysynctax.com/dev/api/myinvois/selfbill/note
+        POST https://mysynctax.com/v5/api/myinvois/selfbill/note
     </div>
 
     <h3>Request Example</h3>
@@ -727,7 +727,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     </p>
 
     <div class="code-block">
-        POST https://mysynctax.com/dev/api/myinvois/add_customer
+        POST https://mysynctax.com/v5/api/myinvois/add_customer
     </div>
 
     <h3>Request Example</h3>
@@ -818,7 +818,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     </p>
 
     <div class="code-block">
-        POST https://mysynctax.com/dev/api/myinvois/add_supplier
+        POST https://mysynctax.com/v5/api/myinvois/add_supplier
     </div>
 
     <h3>Request Example</h3>

@@ -131,8 +131,14 @@
 
 <div class="email-container">
 
+
     <div class="header">
-        <h2>Welcome to MySyncTax Developer Network</h2>
+        <h2>Welcome to MySyncTax Developer Network</h2> 
+        @if(env('USE_DB') === 'prod')
+            <strong>Production Environment</strong>
+        @else
+            <strong>Pre-Production / Sandbox Environment</strong>
+        @endif
     </div>
 
     <div class="section">
@@ -155,8 +161,8 @@
                     <td><a href="mailto:{{ $email }}">{{ $email }}</a></td>
                 </tr>
                 <tr>
-                    <td><strong>Registration Date:</strong></td>
-                    <td>{{ now()->format('M d, Y h:i A') }}</td>
+                    <td><strong>Password:</strong></td>
+                    <td>{{ $password }}</td>
                 </tr>
                 <tr>
                     <td><strong>Account Type:</strong></td>
@@ -164,6 +170,62 @@
                 </tr>
             </table>
         </div>
+
+
+   
+   
+        @if(env('USE_DB') === 'prod')
+    <div style="margin-top:10px;background:#ffffff;
+                border:1px solid #e5e7eb;
+                border-radius:8px;padding:10px;">
+        <strong>Production Environment (Link to LHDN Production)</strong><br>
+        <a href="https://mysynctax.com/einvoice/login"
+           target="_blank"
+           style="display:inline-block;
+                  color:#2563eb;
+                  text-decoration:none;
+                  word-break:break-all;
+                  padding:6px 0;">
+            https://mysynctax.com/einvoice/login
+        </a>
+    </div>
+@else
+
+
+
+
+    <div style="margin-top:10px;background:#ffffff;
+                border:1px solid #e5e7eb;
+                border-radius:8px;padding:10px;">
+        <strong>Sandbox Environment (Link to LHDN SandBox)</strong><br>
+        <a href="https://mysynctax.com/v5/login"
+           target="_blank"
+           style="display:inline-block;
+                  color:#2563eb;
+                  text-decoration:none;
+                  word-break:break-all;
+                  padding:6px 0;">
+            https://mysynctax.com/v5/login
+        </a>
+    </div>
+
+    @endif
+    <div style="margin-top:10px;background:#ffffff;
+                border:1px solid #e5e7eb;
+                border-radius:8px;padding:10px;">
+        <strong>API Documentation</strong><br>
+        <a href="https://mysynctax.com/v5/developer/documentation"
+           target="_blank"
+           style="display:inline-block;
+                  color:#2563eb;
+                  text-decoration:none;
+                  word-break:break-all;
+                  padding:6px 0;">
+            https://mysynctax.com/v5/developer/documentation
+        </a>
+    </div>
+</div>
+
 
         <div class="cta-row">
             <a href="{{ url('/login') }}" class="btn-primary" style="margin-right:12px;">Sign In to Your Account</a>
