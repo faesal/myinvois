@@ -3,12 +3,25 @@
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\IntegrationInvoiceController;
 use App\Http\Controllers\IntegrationInvoiceController2;
-
-Route::any('/myinvois/cust_invoice', [IntegrationInvoiceController2::class, 'store']);
+use App\Http\Controllers\SelfBillController;
 
 Route::any('/myinvois', [IntegrationInvoiceController::class, 'storeFromIntegration']);
-Route::post('/myinvoice/add_customer', [IntegrationInvoiceController::class, 'addCustomer']);
+Route::post('/myinvois/add_customer', [IntegrationInvoiceController::class, 'addCustomer']);
+Route::post('/myinvois/add_supplier', [IntegrationInvoiceController::class, 'addSupplier']);
+
 Route::post('/myinvois/validate', [IntegrationInvoiceController::class, 'validate']);
+
+Route::any('/myinvois/invoice', [IntegrationInvoiceController2::class, 'invoice']);
+Route::any('/myinvois/note', [IntegrationInvoiceController2::class, 'note']);
+
+
+Route::any('/myinvois/selfbill/invoice', [SelfBillController::class, 'invoice']);
+Route::any('/myinvois/selfbill/note', [SelfBillController::class, 'note']);
+
+
+
+
+
 
 
 Route::prefix('invoices')->group(function () {

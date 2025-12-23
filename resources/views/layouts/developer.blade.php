@@ -179,7 +179,7 @@
     <li class="nav-item">
         <a href="#sample-json-completed" class="nav-link">
             <i class="ph-file-code"></i>
-            <span>Sample JSON</span>
+            <span>Normal Invoice with <br> QR Receipt</span>
         </a>
     </li>
 
@@ -214,6 +214,50 @@
             <span>Code Samples</span>
         </a>
     </li>
+
+	<li class="nav-item">
+        <a href="#invoice-with-customer" class="nav-link">
+            <i class="ph-code"></i>
+            <span>ERP Invoice <br>(With Customer)</span>
+        </a>
+    </li>
+
+	<li class="nav-item">
+        <a href="#note-api" class="nav-link">
+            <i class="ph-code"></i>
+            <span>Credit Note, Debit Note, <br>Refund (To Customer)</span>
+        </a>
+    </li>
+
+	<li class="nav-item">
+        <a href="#selfbill-invoice" class="nav-link">
+            <i class="ph-code"></i>
+            <span>Self-Bill Invoice</span>
+        </a>
+    </li>
+
+	<li class="nav-item">
+        <a href="#selfbill-note" class="nav-link">
+            <i class="ph-code"></i>
+            <span>Credit,Debit,Refund <br>(To Supplier)</span>
+        </a>
+    </li>
+	
+	<li class="nav-item">
+        <a href="#add-customer" class="nav-link">
+            <i class="ph-code"></i>
+            <span>Add / Update Customer</span>
+        </a>
+    </li>
+
+	<li class="nav-item">
+        <a href="#add-supplier" class="nav-link">
+            <i class="ph-code"></i>
+            <span>Add / Update Supplier</span>
+        </a>
+    </li>
+
+	
     </ul>
 </div>
 

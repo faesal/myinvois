@@ -18,6 +18,349 @@ class IntegrationInvoiceController extends Controller
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
+    public function addSupplier(Request $request)
+    {
+        // =====================================================
+        // 1. Validate base request
+        // =====================================================
+        $request->validate([
+            'mysynctax_key'    => 'required|string',
+            'mysynctax_secret' => 'required|string',
+            'supplier'        => 'required|array|min:1',
+        ]);
+    
+        // =====================================================
+        // 2. Authenticate MySyncTax credentials
+        // =====================================================
+        $client = DB::table('connection_integrate')
+            ->where('mysynctax_key', $request->mysynctax_key)
+            ->where('mysynctax_secret', $request->mysynctax_secret)
+            ->first();
+    
+        if (!$client) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Invalid MySyncTax credentials'
+            ], 401);
+        }
+    
+        $connCode = $client->code;
+        $results  = [];
+    
+        DB::beginTransaction();
+    
+        try {
+    
+            foreach ($request->supplier as $index => $cust) {
+    
+                // =================================================
+                // 3. Validate EACH customer
+                // =================================================
+                $validator = Validator::make($cust, [
+                    'tin_no'                  => 'required|string',
+                    'registration_name'       => 'required|string',
+                    'identification_no'       => 'required|string',
+                    'identification_type'     => 'required|string',
+                    'phone'                   => 'required|string',
+                    'email'                   => 'required|email',
+                    'city_name'               => 'required|string',
+                    'postal_zone'             => 'required|string',
+                    'state_code'              => 'required|string',
+                    'country_code'            => 'required|string',
+                    'address_line_1'          => 'required|string',
+                    'address_line_2'          => 'required|string',
+                    'address_line_3'          => 'required|string',
+                ]);
+    
+                if ($validator->fails()) {
+                    $results[] = [
+                        'tin_no' => $cust['tin_no'] ?? null,
+                        'status' => 'validation_failed',
+                        'errors' => $validator->errors()
+                    ];
+                    continue;
+                }
+    
+                // =================================================
+                // 4. Check existing customer (by TIN + connection)
+                // =================================================
+                $existing = DB::table('customer')
+                    ->where('connection_integrate', $connCode)
+                    ->where('tin_no', $cust['tin_no'])
+                    ->whereNull('deleted')
+                    ->first();
+    
+                // =================================================
+                // 5A. UPDATE if exists
+                // =================================================
+                if ($existing) {
+    
+                    DB::table('customer')
+                        ->where('id_customer', $existing->id_customer)
+                        ->update([
+                            'registration_name'      => $cust['registration_name'],
+                            'identification_no'      => $cust['identification_no'],
+                            'identification_type'    => $cust['identification_type'],
+                            'sst_registration'       => $cust['sst_registration'] ?? $existing->sst_registration,
+    
+                            'phone'                  => $cust['phone'],
+                            'email'                  => $cust['email'],
+    
+                            'city_name'              => $cust['city_name'],
+                            'postal_zone'            => $cust['postal_zone'],
+                            'country_subentity_code' => $cust['state_code'],
+                            'country_code'           => $cust['country_code'],
+    
+                            'address_line_1'         => $cust['address_line_1'],
+                            'address_line_2'         => $cust['address_line_2'],
+                            'address_line_3'         => $cust['address_line_3'],
+    
+                            'updated_at'             => now(),
+                        ]);
+    
+                    $results[] = [
+                        'tin_no'      => $cust['tin_no'],
+                        'status'      => 'updated',
+                        'id_customer' => $existing->id_customer
+                    ];
+    
+                    continue;
+                }
+    
+                // =================================================
+                // 5B. INSERT if not exists
+                // =================================================
+                $idCustomer = DB::table('customer')->insertGetId([
+                    'id_developer'           => $client->id_developer,
+                    'connection_integrate'   => $connCode,
+                    'customer_type'          => 'CUSTOMER',
+                    'tin_no'                 => $cust['tin_no'],
+                    'unique_id'              => strtoupper(Str::random(15)),
+    
+                    'registration_name'      => $cust['registration_name'],
+                    'identification_no'      => $cust['identification_no'],
+                    'identification_type'    => $cust['identification_type'],
+                    'sst_registration'       => $cust['sst_registration'] ?? null,
+    
+                    'phone'                  => $cust['phone'],
+                    'email'                  => $cust['email'],
+    
+                    'city_name'              => $cust['city_name'],
+                    'postal_zone'            => $cust['postal_zone'],
+                    'country_subentity_code' => $cust['state_code'],
+                    'country_code'           => $cust['country_code'],
+    
+                    'address_line_1'         => $cust['address_line_1'],
+                    'address_line_2'         => $cust['address_line_2'],
+                    'address_line_3'         => $cust['address_line_3'],
+                    'is_selfbill_supplier'   => 1,
+                    'created_at'             => now(),
+                    'updated_at'             => now(),
+                ]);
+    
+                $results[] = [
+                    'tin_no'      => $cust['tin_no'],
+                    'status'      => 'created',
+                    'id_customer' => $idCustomer
+                ];
+            }
+    
+            DB::commit();
+    
+            return response()->json([
+                'status'  => 'ok',
+                'message' => 'Supplier processed successfully',
+                'results' => $results
+            ], 200);
+    
+        } catch (\Throwable $e) {
+    
+            DB::rollBack();
+    
+            Log::error('Add Supplier API failed', [
+                'error' => $e->getMessage()
+            ]);
+    
+            return response()->json([
+                'status'  => false,
+                'message' => 'Failed to add supplier'
+            ], 500);
+        }
+    }
+
+    public function addCustomer(Request $request)
+    {
+        // =====================================================
+        // 1. Validate base request
+        // =====================================================
+        $request->validate([
+            'mysynctax_key'    => 'required|string',
+            'mysynctax_secret' => 'required|string',
+            'customers'        => 'required|array|min:1',
+        ]);
+    
+        // =====================================================
+        // 2. Authenticate MySyncTax credentials
+        // =====================================================
+        $client = DB::table('connection_integrate')
+            ->where('mysynctax_key', $request->mysynctax_key)
+            ->where('mysynctax_secret', $request->mysynctax_secret)
+            ->first();
+    
+        if (!$client) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Invalid MySyncTax credentials'
+            ], 401);
+        }
+    
+        $connCode = $client->code;
+        $results  = [];
+    
+        DB::beginTransaction();
+    
+        try {
+    
+            foreach ($request->customers as $index => $cust) {
+    
+                // =================================================
+                // 3. Validate EACH customer
+                // =================================================
+                $validator = Validator::make($cust, [
+                    'tin_no'                  => 'required|string',
+                    'registration_name'       => 'required|string',
+                    'identification_no'       => 'required|string',
+                    'identification_type'     => 'required|string',
+                    'phone'                   => 'required|string',
+                    'email'                   => 'required|email',
+                    'city_name'               => 'required|string',
+                    'postal_zone'             => 'required|string',
+                    'state_code'              => 'required|string',
+                    'country_code'            => 'required|string',
+                    'address_line_1'          => 'required|string',
+                    'address_line_2'          => 'required|string',
+                    'address_line_3'          => 'required|string',
+                ]);
+    
+                if ($validator->fails()) {
+                    $results[] = [
+                     
+                        'tin_no' => $cust['tin_no'] ?? null,
+                        'status' => 'validation_failed',
+                        'errors' => $validator->errors()
+                    ];
+                    continue;
+                }
+    
+                // =================================================
+                // 4. Check existing customer (by TIN + connection)
+                // =================================================
+                $existing = DB::table('customer')
+                    ->where('connection_integrate', $connCode)
+                    ->where('tin_no', $cust['tin_no'])
+                    ->whereNull('deleted')
+                    ->first();
+    
+                // =================================================
+                // 5A. UPDATE if exists
+                // =================================================
+                if ($existing) {
+    
+                    DB::table('customer')
+                        ->where('id_customer', $existing->id_customer)
+                        ->update([
+                            'registration_name'      => $cust['registration_name'],
+                            'identification_no'      => $cust['identification_no'],
+                            'identification_type'    => $cust['identification_type'],
+                            'sst_registration'       => $cust['sst_registration'] ?? $existing->sst_registration,
+    
+                            'phone'                  => $cust['phone'],
+                            'email'                  => $cust['email'],
+    
+                            'city_name'              => $cust['city_name'],
+                            'postal_zone'            => $cust['postal_zone'],
+                            'country_subentity_code' => $cust['state_code'],
+                            'country_code'           => $cust['country_code'],
+    
+                            'address_line_1'         => $cust['address_line_1'],
+                            'address_line_2'         => $cust['address_line_2'],
+                            'address_line_3'         => $cust['address_line_3'],
+    
+                            'updated_at'             => now(),
+                        ]);
+    
+                    $results[] = [
+                        'tin_no'      => $cust['tin_no'],
+                        'status'      => 'updated',
+                        'id_customer' => $existing->id_customer
+                    ];
+    
+                    continue;
+                }
+    
+                // =================================================
+                // 5B. INSERT if not exists
+                // =================================================
+                $idCustomer = DB::table('customer')->insertGetId([
+                    'id_developer'           => $client->id_developer,
+                    'connection_integrate'   => $connCode,
+                    'customer_type'          => 'CUSTOMER',
+                    'tin_no'                 => $cust['tin_no'],
+                    'unique_id'              => strtoupper(Str::random(15)),
+    
+                    'registration_name'      => $cust['registration_name'],
+                    'identification_no'      => $cust['identification_no'],
+                    'identification_type'    => $cust['identification_type'],
+                    'sst_registration'       => $cust['sst_registration'] ?? null,
+    
+                    'phone'                  => $cust['phone'],
+                    'email'                  => $cust['email'],
+    
+                    'city_name'              => $cust['city_name'],
+                    'postal_zone'            => $cust['postal_zone'],
+                    'country_subentity_code' => $cust['state_code'],
+                    'country_code'           => $cust['country_code'],
+    
+                    'address_line_1'         => $cust['address_line_1'],
+                    'address_line_2'         => $cust['address_line_2'],
+                    'address_line_3'         => $cust['address_line_3'],
+    
+                    'created_at'             => now(),
+                    'updated_at'             => now(),
+                ]);
+    
+                $results[] = [
+                    'tin_no'      => $cust['tin_no'],
+                    'status'      => 'created',
+                    'id_customer' => $idCustomer
+                ];
+            }
+    
+            DB::commit();
+    
+            return response()->json([
+                'status'  => 'ok',
+                'message' => 'Customers processed successfully',
+                'results' => $results
+            ], 200);
+    
+        } catch (\Throwable $e) {
+    
+            DB::rollBack();
+    
+            Log::error('Add customer API failed', [
+                'error' => $e->getMessage()
+            ]);
+    
+            return response()->json([
+                'status'  => false,
+                'message' => 'Failed to add customers'
+            ], 500);
+        }
+    }
+    
+
+
     public function validate(Request $request)
     {
         // 1. Validate JSON input
@@ -169,6 +512,7 @@ class IntegrationInvoiceController extends Controller
                 'json_receive' => json_encode($request->all()),
                 'created_at' => now(),
                 'updated_at' => now(),
+                
             ]);
 
             // Insert consolidate_invoice_item entries
@@ -381,28 +725,37 @@ class IntegrationInvoiceController extends Controller
             $items, $connCode,$client, $request
         ) {
         
+            $taxableAmount = (float) data_get($payload, 'taxable_amount', 0);
+            $taxAmount     = (float) data_get($payload, 'tax_amount', 0);
+            $taxPercent    = data_get($payload, 'tax_percent',0);
+            $taxCategoryId = '01';
+            $taxSchemeId   = 'OTH';
             // Insert HEADER into consolidate_invoice
             $idCon = DB::table('consolidate_invoice')->insertGetId([
-                'unique_id'                        => $uniqueId,
-                'json_receive'                     => $request->getContent(),
-                'consolidate_date'                 => date('Y-m-d H:i:s'),
-                'id_developer'                     => $client->id_developer,        
-                'consolidate_total_item'           => $consolidateTotalItem,
-                'consolidate_complete_total'       => null,
-                'consolidate_total_amount_before'  => $amountBefore,
-                'consolidate_total_amount_after'   => null,
-                'consolidate_complete_status'      => null,
-        
-                'consolidate_list_sale_item_id'    => implode(',', $listSaleItemId),
-                'sale_id_integrate'                => $saleId,
-                'connection_integrate'             => $connCode,
-                'invoice_no'                       => $invoiceNo,
-                'issue_date'                       => $issueDate,
-                'payment_note_term'                => data_get($payload, 'payment_note_term', 'CASH'),
-        
-                'created_at'                       => now(),
-                'updated_at'                       => now(),
+                'unique_id'                       => $uniqueId,
+                'json_receive'                    => $request->getContent(),
+                'consolidate_date'                => date('Y-m-d H:i:s'),
+                'id_developer'                    => $client->id_developer,
+            
+                'consolidate_total_item'          => $consolidateTotalItem,
+                'consolidate_total_amount_before' => $amountBefore,
+                'sale_id_integrate'               => $saleId,
+                'connection_integrate'            => $connCode,
+                'invoice_no'                      => $invoiceNo,
+                'issue_date'                      => $issueDate,
+                'payment_note_term'               => data_get($payload, 'payment_note_term', 'CASH'),
+            
+                // ✅ TAX HEADER
+                'taxable_amount'                  => $taxableAmount,
+                'tax_amount'                      => $taxAmount,
+                'tax_percent'                     => $taxPercent,
+                'tax_category_id'                 => $taxCategoryId,
+                'tax_scheme_id'                   => $taxSchemeId,
+            
+                'created_at'                      => now(),
+                'updated_at'                      => now(),
             ]);
+            
         
         
             // Insert ITEMS into consolidate_invoice_item
@@ -413,29 +766,33 @@ class IntegrationInvoiceController extends Controller
                 $price_extension_amount = 
                     data_get($it, 'invoiced_quantity') * data_get($it, 'unit_price');
         
-                $rows[] = [
-                    'id_consolidate_invoice' => $idCon,
-                    'unique_id'              => $uniqueId,
-                    'connection_integrate'   => $connCode,
-                    'sale_id_integrate'      => $saleId,
-                    'id_developer'           => $client->id_developer,  
-                   
-                    'item_id_integrate'      => data_get($it, 'item_id'),
-                    'issue_date'             => $issueDate,
-                    'line_id'                => data_get($it, 'sorting_id'),
-                    'invoiced_quantity'      => data_get($it, 'invoiced_quantity'),
-                    'line_extension_amount'  => data_get($it, 'total'),
-        
-                    'item_description'       => data_get($it, 'item_description'),
-                    'price_amount'           => data_get($it, 'unit_price'),
-                    'price_discount'         => data_get($it, 'price_discount'),
-        
-                    'price_extension_amount' => $price_extension_amount,
-                    'item_clasification_type'=> data_get($it, 'item_clasification_type'),
-        
-                    'created_at'             => now(),
-                    'updated_at'             => now(),
-                ];
+                    $rows[] = [
+                        'id_consolidate_invoice' => $idCon,
+                        'unique_id'              => $uniqueId,
+                        'connection_integrate'   => $connCode,
+                        'sale_id_integrate'      => $saleId,
+                        'id_developer'           => $client->id_developer,
+                    
+                        'item_id_integrate'      => data_get($it, 'item_id'),
+                        'issue_date'             => $issueDate,
+                        'line_id'                => data_get($it, 'sorting_id'),
+                        'invoiced_quantity'      => data_get($it, 'invoiced_quantity'),
+                        'line_extension_amount'  => data_get($it, 'total'),
+                    
+                        'item_description'       => data_get($it, 'item_description'),
+                        'price_amount'           => data_get($it, 'unit_price'),
+                        'price_discount'         => data_get($it, 'price_discount'),
+                        'price_extension_amount' => $price_extension_amount,
+                    
+                        // ✅ ITEM TAX
+                        'item_clasification_type'  => '',
+                        'item_clasification_value' => '004',
+                        'tax'               => data_get($it, 'tax',0),
+                    
+                        'created_at'               => now(),
+                        'updated_at'               => now(),
+                    ];
+                    
             }
         
             foreach (array_chunk($rows, 500) as $chunk) {

@@ -298,72 +298,47 @@ html {
 
     <div class="doc-section" id="sample-json-completed">
 
-        <h2>Sample JSON</h2>
+    <h2>Normal Invoice with Receipt QR</h2>
 
-
-
-        <p>This example will generate <strong>completed</strong> status.</p>
+<p>
+This API generates a normal invoice together with a <strong>receipt QR code</strong>.
+If the customer <strong>does not scan the QR code</strong>, the transaction will be
+<strong>automatically treated as a consolidated invoice</strong> in accordance with
+LHDN MyInvois rules.
+</p>
 
 
 
         <div class="code-block">
 
-<pre>{
-
+<pre>
+{
   "mysynctax_key": "F3kW8nP1zS0aL9tQ4vB7uR6yJ2cX5mT8gH1eK3oN",
-
   "mysynctax_secret": "K8pR3sL1vF9gQ2wE6nC4bT7jH0mD5yU1aX8zV3kS4tN9fG2qM7rY0uJ5hP",
-
-
-
   "invoice_no": "INV-9002029",
-
   "sale_id_integrate": 9002029,
-
   "total_amount": 210.00,
-
   "payment_note_term": "CASH",
-
   "items": [
-
     {
-
-      "item_id":12,
-
+      "item_id": 12,
       "sorting_id": 1,
-
       "invoiced_quantity": 2,
-
       "unit_price": 60.00,
-
       "item_description": "Premium Nasi Ayam Set",
-
       "total": 120.00,
-
       "price_discount": 0
-
     },
-
     {
-
-      "item_id":13,
-
+      "item_id": 13,
       "sorting_id": 2,
-
       "invoiced_quantity": 1,
-
       "unit_price": 90.00,
-
       "item_description": "Iced Coffee Latte",
-
       "total": 90.00,
-
       "price_discount": 0
-
     }
-
   ]
-
 }
 
 </pre>
@@ -374,13 +349,6 @@ html {
 
     </div>
 
-
-
-
-
-
-
-    <!-- ===================== SEND DATA API ===================== -->
 
     <div class="doc-section" id="send-data">
 
@@ -506,8 +474,393 @@ html {
 
 
 
+<!-- ===================== NEW API: NORMAL INVOICE (WITH CUSTOMER) ===================== -->
+<div class="doc-section" id="invoice-with-customer">
+<h2>ERP - Invoice (With Customer)</h2>
+
+<div class="code-block">
+<pre>POST https://mysynctax.com/dev/api/myinvois/invoice</pre>
+</div>
+
+<p>
+This API is intended for <strong>ERP / Accounting systems</strong> that manage customer
+master data and require direct submission to LHDN.
+</p>
+
+<h3>Request Example</h3>
+<div class="code-block"><pre>{
+  "mysynctax_key": "oHwIlgfhsBPP30f7",
+  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+  "invoice_no": "INV-567-67567",
+  "sale_id_integrate": 567567,
+  "payment_note_term": "CASH",
+  "taxable_amount": 100.00,
+  "tax_amount": 6.00,
+  "tax_percent": 6,
+  "total_amount": 106.00,
+  "customer": {
+    "tin_no": "IG20868489010",
+    "registration_name": "ABC Trading Sdn Bhd",
+    "identification_no": "202503158017",
+    "identification_type": "BRN",
+    "sst_registration": "SST123456",
+    "phone": "0123456789",
+    "email": "finance@abctrading.com",
+    "address_line_1": "No 10, Jalan Teknologi",
+    "address_line_2": "Taman Teknologi",
+    "address_line_3": "Seksyen 7",
+    "city_name": "Shah Alam",
+    "postal_zone": "40000",
+    "country_subentity_code": "10",
+    "country_code": "MYS"
+  },
+  "items": [
+    {
+      "item_id": 101,
+      "sorting_id": 1,
+      "item_description": "USB Keyboard",
+      "invoiced_quantity": 2,
+      "unit_price": 30.00,
+      "price_discount": 0.00,
+      "total": 60.00,
+      "tax": 6
+    }
+  ]
+}</pre></div>
+
+<h3>Response Example</h3>
+<div class="code-block"><pre>{
+  "status": "ok",
+  "mysynctax_uuid": "917cb6323de00b0d2dd208d0263c22dd3c990350",
+  "invoice_id": 329,
+  "customer_status": "existing",
+  "customer_id": 90
+}</pre></div>
+</div>
+
+<!-- ===================== NEW API: CREDIT / DEBIT / REFUND ===================== -->
+<div class="doc-section" id="note-api">
+<h2>Credit Note / Debit Note / Refund</h2>
+
+<div class="code-block">
+<pre>POST https://mysynctax.com/dev/api/myinvois/note</pre>
+</div>
+
+<p>
+Used to submit adjustments for invoices that have already been submitted to LHDN.
+</p>
+
+<h3>Request Example</h3>
+<div class="code-block"><pre>{
+  "mysynctax_key": "oHwIlgfhsBPP30f7",
+  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+  "note_type": "refund",//credit,debit,refund
+  "mysynctax_uuid": "bfc2c97e589ceb9fe9cb4b603bb740d011cb3d53",
+  "sale_id_integrate": 5643,
+  "items": [
+    {
+      "item_id": 102,
+      "qty": 1,
+      "price": 50.00,
+      "discount": 0.00,
+      "tax": 3.00,
+      "description": "Item rosak / dipulangkan",
+      "item_clasification_value": "001"
+    }
+  ]
+}</pre></div>
+
+<h3>Response Example</h3>
+<div class="code-block"><pre>{
+  "status": "success",
+  "note_type": "refund",
+  "invoice_id": 332,
+  "message": "Refund Note submitted successfully"
+}</pre></div>
+</div>
+
+<!-- ===================== ERROR CODES ===================== -->
+<div class="doc-section" id="errors">
+<h2>Error Codes</h2>
+<table class="table table-bordered">
+<tr><th>HTTP Code</th><th>Description</th></tr>
+<tr><td>400</td><td>Invalid or malformed JSON</td></tr>
+<tr><td>401</td><td>API key or secret missing/invalid</td></tr>
+<tr><td>404</td><td>Invoice UUID not found</td></tr>
+<tr><td>409</td><td>Duplicate submission</td></tr>
+<tr><td>422</td><td>Item mismatch</td></tr>
+<tr><td>500</td><td>Server processing error</td></tr>
+</table>
+</div>
+
+</div>
+
+<!-- ===================== SELF-BILLED INVOICE ===================== -->
+<div class="doc-section" id="selfbill-invoice">
+    <h2>Self-Billed Invoice</h2>
+
+    <p>
+        Self-Billed Invoice is used when the supplier does not issue an e-Invoice
+        and the buyer generates the invoice on behalf of the supplier, as required
+        by LHDN MyInvois.
+    </p>
+
+    <div class="code-block">
+        POST https://mysynctax.com/dev/api/myinvois/selfbill/invoice
+    </div>
+
+    <h3>Request Example</h3>
+    <div class="code-block"><pre>{
+  "mysynctax_key": "oHwIlgfhsBPP30f7",
+  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+
+  "invoice_no": "INV-567-456",
+  "sale_id_integrate": 456,
+  "payment_note_term": "CASH",
+
+  "taxable_amount": 100.00,
+  "tax_amount": 6.00,
+  "tax_percent": 6,
+  "total_amount": 106.00,
+
+  "supplier": {
+    "tin_no": "IG20868489010",
+    "registration_name": "ABC Trading Sdn Bhd",
+    "identification_no": "202503158017",
+    "identification_type": "BRN",
+    "sst_registration": "SST123456",
+    "phone": "0123456789",
+    "email": "finance@abctrading.com",
+    "address_line_1": "No 10, Jalan Teknologi",
+    "address_line_2": "Taman Teknologi",
+    "address_line_3": "Seksyen 7",
+    "city_name": "Shah Alam",
+    "postal_zone": "40000",
+    "country_subentity_code": "10",
+    "country_code": "MYS"
+  },
+
+  "items": [
+    {
+      "item_id": 101,
+      "sorting_id": 1,
+      "item_description": "USB Keyboard",
+      "invoiced_quantity": 2,
+      "unit_price": 30.00,
+      "price_discount": 0.00,
+      "total": 60.00,
+      "tax": 6
+    },
+    {
+      "item_id": 102,
+      "sorting_id": 2,
+      "item_description": "USB Mouse",
+      "invoiced_quantity": 1,
+      "unit_price": 40.00,
+      "price_discount": 0.00,
+      "total": 40.00,
+      "tax": 6
+    }
+  ]
+}</pre></div>
+
+    <h3>Response Example</h3>
+    <div class="code-block"><pre>{
+  "status": "ok",
+  "mysynctax_uuid": "943e75230addb63b7fde84c4b2b9ce8a532ca07a",
+  "invoice_id": 343,
+  "customer_status": "existing",
+  "customer_id": 90
+}</pre></div>
+</div>
+<!-- ===================== SELF-BILLED NOTE ===================== -->
+<div class="doc-section" id="selfbill-note">
+    <h2>Self-Billed Credit / Debit / Refund</h2>
+
+    <p>
+        This API is used to submit Credit, Debit, or Refund Notes for
+        Self-Billed Invoices that have already been submitted to LHDN.
+    </p>
+
+    <div class="code-block">
+        POST https://mysynctax.com/dev/api/myinvois/selfbill/note
+    </div>
+
+    <h3>Request Example</h3>
+    <div class="code-block"><pre>{
+  "mysynctax_key": "oHwIlgfhsBPP30f7",
+  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+  "note_type": "refund",//credit/debit/refund
+  "mysynctax_uuid": "943e75230addb63b7fde84c4b2b9ce8a532ca07a",
+  "sale_id_integrate": 456,
+  "items": [
+    {
+      "item_id": 102,
+      "qty": 1,
+      "price": 50.00,
+      "discount": 0.00,
+      "tax": 3.00,
+      "description": "Item rosak / dipulangkan",
+      "item_clasification_value": "001"
+    }
+  ]
+}</pre></div>
+
+    <h3>Response Example</h3>
+    <div class="code-block"><pre>{
+  "status": "success",
+  "note_type": "refund",
+  "invoice_id": 344,
+  "message": "Refund Note submitted successfully"
+}</pre></div>
+</div>
 
 
+<!-- ===================== ADD NEW CUSTOMER ===================== -->
+<div class="doc-section" id="add-customer">
+    <h2>Add New Customer</h2>
+
+    <p>
+        This API is used to create or update customer master data in MySyncTax.
+        It supports bulk customer submission and is commonly used by ERP or POS
+        systems before invoice or self-billed submission.
+    </p>
+
+    <div class="code-block">
+        POST https://mysynctax.com/dev/api/myinvois/add_customer
+    </div>
+
+    <h3>Request Example</h3>
+    <div class="code-block"><pre>{
+  "mysynctax_key": "oHwIlgfhsBPP30f7",
+  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+  "customers": [
+    {
+      "tin_no": "EI00000000010",
+      "registration_name": "AHMAD1 BIN ALI",
+      "identification_type": "NRIC",
+      "identification_no": "900101105555",
+      "sst_registration": null,
+      "phone": "0134455667",
+      "email": "ahmad.ali@gmail.com",
+      "city_name": "Kota Bharu",
+      "postal_zone": "15000",
+      "state_code": "03",//Follow below state_code from LHDN
+      "country_code": "MYS",
+      "address_line_1": "Lot 123, Kampung Pantai",
+      "address_line_2": "Mukim Badang",
+      "address_line_3": "Kelantan"
+    }
+  ]
+}</pre></div>
+<!-- ===================== LHDN STATE CODE REFERENCE ===================== -->
+<div class="doc-section" id="state-code-reference">
+    <h2>LHDN State Code Reference</h2>
+
+    <p>
+        Use the following <strong>state_code</strong> values when submitting
+        customer or supplier address information to MySyncTax.
+        These codes follow the official LHDN lookup.
+    </p>
+
+    <table class="table table-bordered" style="width:400px">
+        <thead>
+            <tr>
+                <th>State Name</th>
+                <th>State Code</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td>Johor</td><td>01</td></tr>
+            <tr><td>Kedah</td><td>02</td></tr>
+            <tr><td>Kelantan</td><td>03</td></tr>
+            <tr><td>Melaka</td><td>04</td></tr>
+            <tr><td>Negeri Sembilan</td><td>05</td></tr>
+            <tr><td>Pahang</td><td>06</td></tr>
+            <tr><td>Pulau Pinang</td><td>07</td></tr>
+            <tr><td>Perak</td><td>08</td></tr>
+            <tr><td>Perlis</td><td>09</td></tr>
+            <tr><td>Selangor</td><td>10</td></tr>
+            <tr><td>Terengganu</td><td>11</td></tr>
+            <tr><td>Sabah</td><td>12</td></tr>
+            <tr><td>Sarawak</td><td>13</td></tr>
+            <tr><td>Wilayah Persekutuan Kuala Lumpur</td><td>14</td></tr>
+            <tr><td>Wilayah Persekutuan Labuan</td><td>15</td></tr>
+            <tr><td>Wilayah Persekutuan Putrajaya</td><td>16</td></tr>
+            <tr><td>Not Applicable</td><td>17</td></tr>
+        </tbody>
+    </table>
+</div>
+
+    <h3>Response Example</h3>
+    <div class="code-block"><pre>{
+  "status": "ok",
+  "message": "Customers processed successfully",
+  "results": [
+    {
+      "tin_no": "EI00000000010",
+      "status": "created",
+      "id_customer": 93
+    }
+  ]
+}</pre></div>
+</div>
+
+
+<!-- ===================== ADD / UPDATE SUPPLIER ===================== -->
+<div class="doc-section" id="add-supplier">
+    <h2>Add / Update Supplier</h2>
+
+    <p>
+        This API is used to create or update supplier master data in MySyncTax.
+        It is commonly required for <strong>Self-Billed Invoice</strong> and
+        ERP-based invoice submissions.
+    </p>
+
+    <div class="code-block">
+        POST https://mysynctax.com/dev/api/myinvois/add_supplier
+    </div>
+
+    <h3>Request Example</h3>
+    <div class="code-block"><pre>{
+  "mysynctax_key": "oHwIlgfhsBPP30f7",
+  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+  "supplier": [
+    {
+      "tin_no": "EI00000000010",
+      "registration_name": "AHMAD1 BIN ALI",
+      "identification_type": "NRIC",
+      "identification_no": "900101105555",
+      "sst_registration": null,
+      "phone": "0134455667",
+      "email": "ahmad.ali@gmail.com",
+      "city_name": "Kota Bharu",
+      "postal_zone": "15000",
+      "state_code": "03",
+      "country_code": "MYS",
+      "address_line_1": "Lot 123, Kampung Pantai",
+      "address_line_2": "Mukim Badang",
+      "address_line_3": "Kelantan"
+    }
+  ]
+}</pre></div>
+
+    <h3>Response Example</h3>
+    <div class="code-block"><pre>{
+  "status": "ok",
+  "message": "Customers processed successfully",
+  "results": [
+    {
+      "tin_no": "EI00000000010",
+      "status": "updated",
+      "id_customer": 93
+    }
+  ]
+}</pre></div>
+</div>
+
+
+    <!-- ===================== SEND DATA API ===================== -->
 
 
     <!-- ===================== CODE SAMPLES ===================== -->

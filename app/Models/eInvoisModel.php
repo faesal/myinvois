@@ -176,367 +176,270 @@ public function qr_link($uuid)
 }
 
 
-    public function submit($id_customer)
-    {
-        try {
-            
-            $client = $this->getClient();
-            $client->login();
-            $access_token = $client->getAccessToken();
-            $client->setAccessToken($access_token);
-    
-            //$id = 'INV20240418105410';
-            
-            // ... existing supplier, customer, delivery, and data setup code ...
-    
-            // Verify certificate existence and permissions
-            //$certPath = base_path('cert/certificate.crt');
-            $certPath = base_path('cert/certificate.crt');
-            $privatePath = base_path('cert/private.key');
-            
-            if (!file_exists($certPath) || !file_exists($privatePath)) {
-                throw new \Exception("Certificate files not found");
-            }
-    
-            // Verify certificate permissions
-            if (!is_readable($certPath) || !is_readable($privatePath)) {
-                throw new \Exception("Certificate files are not readable");
-            }
-    
-            // Verify certificate validity
-            $cert = openssl_x509_read(file_get_contents($certPath));
-            if (!$cert) {
-                throw new \Exception("Invalid certificate format");
-            }
-    
-            // Check certificate expiration
-            $certInfo = openssl_x509_parse($cert);
-            if ($certInfo['validTo_time_t'] < time()) {
-                throw new \Exception("Certificate has expired");
-            }
-    
-            $password = env('PKCS12_PASSWORD');
-            // Verify private key matches certificate
-            $privateKey = openssl_pkey_get_private(file_get_contents($privatePath), $password);
-            if (!$privateKey) {
-                throw new \Exception("Invalid private key or passphrase");
-            }
-    
-            // Verify key pair matches
-            if (!openssl_x509_check_private_key($cert, $privateKey)) {
-                throw new \Exception("Certificate and private key do not match");
-            }
-    
-            //$id = 'INV20240418105410';
-           // $session ="027FBCE3C52D52C";
-            $consolidate_status = '';
-            
-            $session = session('invoice_unique_id');
-            $consolidate_status = session('consolidate_status');
-            
-            $record = DB::table('invoice')->where('unique_id', $session)->first();
+public function submit($id_customer)
+{
+    try {
 
-            $id = $record->invoice_no;
-            session(['invoice_id' => $record->invoice_no]);
-            $invoice_type_code=session('invoice_type_code');
-            $data = [
-                'id_invoice' => $record->id_invoice,
-                'invoice_status' => $record->invoice_status,
-                'invoice_no' => $record->invoice_no,
-                'invoice_type_code' => $invoice_type_code,
-                'issue_date' => $record->issue_date,
-                'price' => $record->price,
-                'taxable_amount' => $record->taxable_amount,
-                'tax_amount' => $record->tax_amount,
-                'tax_category_id' => '01',
-                'tax_exemption_reason' => $record->tax_exemption_reason,
-                'tax_scheme_id' => $record->tax_scheme_id,
-                'tax_percent' => $record->tax_percent,
-                'payment_note_term' => $record->payment_note_term,
-                'payment_financial_account' => $record->payment_financial_account,
-                'include_signature' => $record->include_signature,
-                'uuid' => $record->uuid,
-                'long_id' => $record->long_id,
-                'payment_method' => $record->payment_method,
-                'created_at' => $record->created_at,
-                'updated_at' => $record->updated_at,
+        $client = $this->getClient();
+        $client->login();
+        $client->setAccessToken($client->getAccessToken());
+
+        /* =====================================================
+         * CERTIFICATE VALIDATION (KEKAL)
+         * ===================================================== */
+        $certPath    = base_path('cert/certificate.crt');
+        $privatePath = base_path('cert/private.key');
+
+        if (!file_exists($certPath) || !file_exists($privatePath)) {
+            throw new \Exception("Certificate files not found");
+        }
+
+        if (!is_readable($certPath) || !is_readable($privatePath)) {
+            throw new \Exception("Certificate files are not readable");
+        }
+
+        $cert = openssl_x509_read(file_get_contents($certPath));
+        if (!$cert) {
+            throw new \Exception("Invalid certificate format");
+        }
+
+        $certInfo = openssl_x509_parse($cert);
+        if ($certInfo['validTo_time_t'] < time()) {
+            throw new \Exception("Certificate has expired");
+        }
+
+        $privateKey = openssl_pkey_get_private(
+            file_get_contents($privatePath),
+            env('PKCS12_PASSWORD')
+        );
+
+        if (!$privateKey || !openssl_x509_check_private_key($cert, $privateKey)) {
+            throw new \Exception("Certificate and private key do not match");
+        }
+
+        /* =====================================================
+         * LOAD SESSION & INVOICE
+         * ===================================================== */
+        $session             = session('invoice_unique_id');
+        $consolidate_status  = session('consolidate_status');
+        $invoice_type_code   = session('invoice_type_code');
+
+        // 🔧 FIX: Self-Billed detection yang BETUL
+        $isSelfBilled = in_array($invoice_type_code, ['11','12','13','14']);
+
+        $record = DB::table('invoice')->where('unique_id', $session)->first();
+        if (!$record) {
+            throw new \Exception("Invoice record not found");
+        }
+
+        $id = $record->invoice_no;
+        session(['invoice_id' => $record->invoice_no]);
+
+        /* =====================================================
+         * DATA (KEKAL SEMUA FIELD)
+         * ===================================================== */
+        $data = [
+            'id_invoice' => $record->id_invoice,
+            'invoice_status' => $record->invoice_status,
+            'invoice_no' => $record->invoice_no,
+            'invoice_type_code' => $invoice_type_code,
+            'issue_date' => $record->issue_date,
+            'price' => $record->price,
+            'taxable_amount' => $record->taxable_amount,
+            'tax_amount' => $record->tax_amount,
+
+            // 🔧 FIX: Tax self-billed
+            'tax_category_id' => $isSelfBilled ? 'OTH' : '01',
+            'tax_scheme_id'   => $record->tax_scheme_id,
+            'tax_percent'     => $isSelfBilled ? 0 : $record->tax_percent,
+
+            'tax_exemption_reason' => $record->tax_exemption_reason,
+            'payment_note_term' => $record->payment_note_term,
+            'payment_financial_account' => $record->payment_financial_account,
+            'include_signature' => $record->include_signature,
+            'uuid' => $record->uuid,
+            'long_id' => $record->long_id,
+            'payment_method' => $record->payment_method,
+            'created_at' => $record->created_at,
+            'updated_at' => $record->updated_at,
+        ];
+
+        /* =====================================================
+         * CUSTOMER ID (KEKAL LOGIC)
+         * ===================================================== */
+        if (empty($record->id_customer) || $consolidate_status == 1) {
+            $customerId = 6;
+        } else {
+            $customerId = $record->id_customer;
+        }
+
+        /* =====================================================
+         * 🔧 FIX: SUPPLIER / CUSTOMER SWAP (FIELD KEKAL)
+         * ===================================================== */
+        if ($isSelfBilled) {
+            // buyer jadi supplier
+            $supplierRow = DB::table('customer')->where('id_customer', $record->id_customer)->first();
+            $customerRow = DB::table('customer')->where('id_customer', $record->id_supplier)->first();
+        } else {
+            $supplierRow = DB::table('customer')->where('id_customer', $record->id_supplier)->first();
+            $customerRow = DB::table('customer')->where('id_customer', $customerId)->first();
+        }
+
+        if (!$supplierRow || !$customerRow) {
+            throw new \Exception("Supplier / Customer record not found");
+        }
+
+        $supplier = [
+            'tin_no' => $supplierRow->tin_no,
+            'registration_name' => $supplierRow->registration_name,
+            'phone' => $supplierRow->phone,
+            'email' => $supplierRow->email,
+            'city_name' => $supplierRow->city_name,
+            'postal_zone' => $supplierRow->postal_zone,
+            'country_subentity_code' => $supplierRow->country_subentity_code,
+            'country_code' => $supplierRow->country_code,
+            'address_line_1' => $supplierRow->address_line_1,
+            'address_line_2' => $supplierRow->address_line_2,
+            'address_line_3' => $supplierRow->address_line_3,
+            'identification_type' => $supplierRow->identification_type,
+            'identification_no' => $supplierRow->identification_no
+        ];
+
+        $customer = [
+            'tin_no' => $customerRow->tin_no,
+            'sst_registration' => $customerRow->sst_registration,
+            'registration_name' => $customerRow->registration_name,
+            'phone' => $customerRow->phone,
+            'email' => $customerRow->email,
+            'city_name' => $customerRow->city_name,
+            'postal_zone' => $customerRow->postal_zone,
+            'country_subentity_code' => $customerRow->country_subentity_code,
+            'country_code' => $customerRow->country_code,
+            'address_line_1' => $customerRow->address_line_1,
+            'address_line_2' => $customerRow->address_line_2,
+            'address_line_3' => $customerRow->address_line_3,
+            'identification_type' => $customerRow->identification_type,
+            'identification_no' => $customerRow->identification_no
+        ];
+
+        /* =====================================================
+         * 🔧 FIX: DELIVERY
+         * ===================================================== */
+        if ($consolidate_status == 1 || $record->invoice_status == 'manual' || $isSelfBilled) {
+            $delivery = '';
+        } else {
+            $delivery = $supplier;
+        }
+
+        /* =====================================================
+         * ITEMS (KEKAL)
+         * ===================================================== */
+        $items = [];
+        $invoiceItems = DB::table('invoice_item')->where('unique_id', $session)->get();
+
+        foreach ($invoiceItems as $row) {
+            $items[] = [
+                'id_invoice_item' => $row->id_invoice_item,
+                'id_customer' => $row->id_customer,
+                'id_invoice' => $row->id_invoice,
+                'price_discount' => $row->price_discount,
+                'line_id' => $row->line_id,
+                'invoiced_quantity' => $row->invoiced_quantity,
+                'line_extension_amount' => $row->line_extension_amount,
+                'item_description' => $row->item_description,
+                'price_amount' => $row->price_amount,
+                'price_extension_amount' => $row->price_extension_amount,
+                'item_clasification_value' => $row->item_clasification_value
             ];
-     
-            //print_r($data );
-            if(empty($record->id_customer) || $consolidate_status==1){
-                $customer=6;
-            }else{
-                $customer=$record->id_customer;
-            }
-   
-            $supplierCustomer = DB::table('customer')->where('id_customer', $record->id_supplier)->first(); // Adjust ID as needed
-         
-            // 2. Transform DB record into array
-            $supplier = [
-                'tin_no' => $supplierCustomer->tin_no,
-                'NRIC' => $supplierCustomer->identification_no,
-                'BRN' => $supplierCustomer->sst_registration,
-                'registration_name' => $supplierCustomer->registration_name,
-                'phone' => $supplierCustomer->phone,
-                'email' => $supplierCustomer->email,
-                'city_name' => $supplierCustomer->city_name,
-                'postal_zone' => $supplierCustomer->postal_zone,
-                'country_subentity_code' => $supplierCustomer->country_subentity_code,
-                'country_code' => $supplierCustomer->country_code,
-                'address_line_1' => $supplierCustomer->address_line_1,
-                'address_line_2' => $supplierCustomer->address_line_2,
-                'address_line_3' => $supplierCustomer->address_line_3,
-                'identification_type' => $supplierCustomer->identification_type,
-                'identification_no' => $supplierCustomer->identification_no
-            ];
-        
-            $supplierCustomer = DB::table('customer')->where('id_customer', $customer)->first(); // Adjust ID as needed
-          
-            // 2. Transform DB record into array
-            $customer = [
-                'tin_no' => $supplierCustomer->tin_no,
-                'sst_registration' => $supplierCustomer->sst_registration,
-                'registration_name' => $supplierCustomer->registration_name,
-                'phone' => $supplierCustomer->phone,
-                'email' => $supplierCustomer->email,
-                'city_name' => $supplierCustomer->city_name,
-                'postal_zone' => $supplierCustomer->postal_zone,
-                'country_subentity_code' => $supplierCustomer->country_subentity_code,
-                'country_code' => $supplierCustomer->country_code,
-                'address_line_1' => $supplierCustomer->address_line_1,
-                'address_line_2' => $supplierCustomer->address_line_2,
-                'address_line_3' => $supplierCustomer->address_line_3,
-                'identification_type' => $supplierCustomer->identification_type,
-                'identification_no' => $supplierCustomer->identification_no
-            ];
-        
-            $supplierCustomer = DB::table('customer')->where('id_customer',$record->id_customer)->first(); // Adjust ID as needed
-           
-            $delivery = [
-                'tin_no' => $supplierCustomer->tin_no,
-                'registration_name' => $supplierCustomer->registration_name,
-                'phone' => $supplierCustomer->phone,
-                'email' => $supplierCustomer->email,
-                'city_name' => $supplierCustomer->city_name,
-                'postal_zone' => $supplierCustomer->postal_zone,
-                'country_subentity_code' => $supplierCustomer->country_subentity_code,
-                'country_code' => $supplierCustomer->country_code,
-                'address_line_1' => $supplierCustomer->address_line_1,
-                'address_line_2' => $supplierCustomer->address_line_2,
-                'address_line_3' => $supplierCustomer->address_line_3,
-                'identification_type' => $supplierCustomer->identification_type,
-                'identification_no' => $supplierCustomer->identification_no
-            ];
+        }
 
-            $invoiceItems = DB::table('invoice_item')->where('unique_id', $session)->get();
-           
-            $items = [];
-            
-            foreach ($invoiceItems as $row) {
-               // echo $item->id_invoice_item;
-                $items[] = [
-                    'id_invoice_item' => $row->id_invoice_item,
-                    'id_customer' => $row->id_customer,
-                    'id_invoice' => $row->id_invoice,
-                    'price_discount' => $row->price_discount,
-                    'line_id' => $row->line_id,
-                    'invoiced_quantity' => $row->invoiced_quantity,
-                    'line_extension_amount' => $row->line_extension_amount,
-                    'item_description' => $row->item_description,
-                    'price_amount' => $row->price_amount,
-                    'price_extension_amount' => $row->price_extension_amount,
-                    'item_clasification_value'=>$row->item_clasification_value
-                ];
-            }
-           
-            $data['items'] = $items;
-            if($consolidate_status==1 || $record->invoice_status=='manual'){
-            $delivery='';
-            }
-     
-            /*case InvoiceTypeCodes::CREDIT_NOTE:
-                return new CreditNote();
-                break;
-            case InvoiceTypeCodes::DEBIT_NOTE:
-                return new DebitNote();
-                break;
-            case InvoiceTypeCodes::REFUND_NOTE:
-                return new RefundNote();
-                break;
-            case InvoiceTypeCodes::SELF_BILLED_INVOICE:
-                return new SelfBilledInvoice();
-                break;
-            case InvoiceTypeCodes::SELF_BILLED_CREDIT_NOTE:
-                return new SelfBilledCreditNote();
-                break;
-            case InvoiceTypeCodes::SELF_BILLED_DEBIT_NOTE:
-                return new SelfBilledDebitNote();
-                break;
-            case InvoiceTypeCodes::SELF_BILLED_REFUND_NOTE:
-                return new SelfBilledRefundNote();
-                break;
-            default:
-                return new Invoice();
-                break;*/
+        $data['items'] = $items;
 
-        
-            
-            $example = new CreateDocumentExample();
+        /* =====================================================
+         * CREATE & SUBMIT DOCUMENT (KEKAL)
+         * ===================================================== */
+        $example = new CreateDocumentExample();
 
-            $invoiceTypes = [
-                '01' => InvoiceTypeCodes::INVOICE,
-                '02' => InvoiceTypeCodes::CREDIT_NOTE,
-                '03' => InvoiceTypeCodes::DEBIT_NOTE,
-                '04' => InvoiceTypeCodes::REFUND_NOTE,
-                '11' => InvoiceTypeCodes::SELF_BILLED_INVOICE,
-                '12' => InvoiceTypeCodes::SELF_BILLED_CREDIT_NOTE,
-                '13' => InvoiceTypeCodes::SELF_BILLED_DEBIT_NOTE,
-                '14' => InvoiceTypeCodes::SELF_BILLED_REFUND_NOTE,
-            ];
-            
-            $invoiceType = $invoiceTypes[$invoice_type_code] ?? InvoiceTypeCodes::INVOICE; // fallback to INVOICE if code not found
-           
-            
-            $invoice = $example->createJsonDocument(
-                $invoiceType,
-                $record->invoice_no,
-                $supplier,
-                $customer,
-                $delivery,
-                true,
-                $certPath,
-                $privatePath,
-                false,
-                [
-                    'SigningTime' => date('Y-m-d\TH:i:s\Z'),
-                    'DigestMethod' => 'http://www.w3.org/2001/04/xmlenc#sha256',
-                    'SignatureMethod' => 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
-                ],
-                $data
-            );
-            
-      
-            $documents = [];
-            $document = MyInvoisHelper::getSubmitDocument($id, $invoice);
-            $documents[] = $document;
-            //echo $document;
-            // echo hash('sha256', $invoice);
-          
-            //echo $invoice;
-     
-            $response = $client->submitDocument($documents);
-         
+        $invoiceTypes = [
+            '01' => InvoiceTypeCodes::INVOICE,
+            '02' => InvoiceTypeCodes::CREDIT_NOTE,
+            '03' => InvoiceTypeCodes::DEBIT_NOTE,
+            '04' => InvoiceTypeCodes::REFUND_NOTE,
+            '11' => InvoiceTypeCodes::SELF_BILLED_INVOICE,
+            '12' => InvoiceTypeCodes::SELF_BILLED_CREDIT_NOTE,
+            '13' => InvoiceTypeCodes::SELF_BILLED_DEBIT_NOTE,
+            '14' => InvoiceTypeCodes::SELF_BILLED_REFUND_NOTE,
+        ];
 
-            session(['consolidate_status' => '']);
-            session(['invoice_id' => '']);
-            session(['invoice_unique_id' =>'']);
-            session(['previous_uuid' => '']);
-            session(['previous_invoice_no' => '']);
-            session(['invoice_type_code' => '']);
-            //$invoice=$this->compareDigestValues($invoice);
-           // echo $invoice;
-            if (!empty($response['submissionUid']) && !empty($response['acceptedDocuments'][0]['uuid'])) {
-                // ... existing success handling code ...
-                // Record failure in message_header
-                //echo $longId = $client->getDocument($response['acceptedDocuments'][0]['uuid']);
-        
-                // Extract the Long ID from the response
-                //$longId = $longId['longID'] ?? null;
+        $invoiceJson = $example->createJsonDocument(
+            $invoiceTypes[$invoice_type_code],
+            $record->invoice_no,
+            $supplier,
+            $customer,
+            $delivery,
+            true,
+            $certPath,
+            $privatePath,
+            false,
+            [
+                'SigningTime' => date('Y-m-d\TH:i:s\Z'),
+            ],
+            $data
+        );
 
-                
-                DB::table('invoice')
-                ->where('unique_id', $session) // match using unique_id
-                ->update([
+        $document  = MyInvoisHelper::getSubmitDocument($id, $invoiceJson);
+        $response  = $client->submitDocument([$document]);
+        //print_r($invoiceJson);
+        /* =====================================================
+         * SAVE RESULT (KEKAL)
+         * ===================================================== */
+        if (!empty($response['acceptedDocuments'][0]['uuid'])) {
+
+            DB::table('invoice')->where('unique_id', $session)->update([
                 'submission_status' => 'submitted',
-                'uuid' =>  $response['acceptedDocuments'][0]['uuid'] ?? null,
-                'submission_uuid' => $response['submissionUid'] ?? null
-                
+                'uuid' => $response['acceptedDocuments'][0]['uuid'],
+                'submission_uuid' => $response['submissionUid']
             ]);
 
-            
-
-
-            if($consolidate_status==1){
-                DB::table('invoice')
-                ->where('unique_id', $session) // match using unique_id
-                ->update([
-                'id_customer' => 6
-                
-            ]);
-
-
-            }
-           
             DB::table('message_header')->insert([
-                'document_id' => $record->invoice_no?? null,
+                'document_id' => $record->invoice_no,
                 'type_submission' => $invoice_type_code,
                 'id_invoice' => $record->id_invoice,
-                'hashing_256'=>hash('sha256', $invoice),
+
+                // 🔧 FIX: Hash JSON
+                'hashing_256' => hash('sha256', json_encode($invoiceJson, JSON_UNESCAPED_SLASHES)),
+
                 'supplier_tin' => $supplier['tin_no'] ?? null,
                 'customer_tin' => $customer['tin_no'] ?? null,
                 'status_submission' => 'SUBMITTED',
-                'submission_uuid' => $response['submissionUid'] ?? null,
-                'uuid' => $response['acceptedDocuments'][0]['uuid'] ?? null,
-                'error_message' => '',
-                'submission_date' => now(),
+                'uuid' => $response['acceptedDocuments'][0]['uuid'],
+                'submission_uuid' => $response['submissionUid'],
+                'document_json' => json_encode($invoiceJson, JSON_PRETTY_PRINT),
+                'request_json' => json_encode([$document]),
+                'response_json' => json_encode($response),
                 'created_at' => now(),
                 'updated_at' => now(),
-                'document_json' => json_encode($invoice , JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-                'request_json' => json_encode($documents ?? []),
-                'response_json' => json_encode($response ?? [])
-            ]);
-    
-            DB::table('invoice')
-                ->where('unique_id', $session) // match using unique_id
-                ->update([
-                'submission_status' => 'submitted',
-                'uuid' =>  $response['acceptedDocuments'][0]['uuid'] ?? null,
-                'submission_uuid' => $response['submissionUid'] ?? null
-                
             ]);
 
-            DB::table('consolidate_invoice')
-            ->where('unique_id', $session) // match using unique_id
-            ->update([
-            'is_invoice' => '1'
-            
-            ]);
+            DB::table('consolidate_invoice')->where('unique_id', $session)->update(['is_invoice' => 1]);
+            DB::table('consolidate_invoice_item')->where('unique_id', $session)->update(['is_invoice' => 1]);
 
-            DB::table('consolidate_invoice_item')
-            ->where('unique_id', $session) // match using unique_id
-            ->update([
-            'is_invoice' => '1'
-            
-            ]);
-
-            } else if (!empty($response['errors'])) {
-                DB::table('invoice')
-                ->where('unique_id', $session) // match using unique_id
-                ->update([
-                'submission_status' => 'failed'
-                ]);
-
-
-                
-                throw new \Exception("Document submission failed: " . json_encode($response['errors']));
-            }
-    
             return response()->json($response);
-    
-        } catch (\Exception $e) {
-            // Log the error
-            \Log::error('Document submission failed: ' . $e->getMessage());
-            
-           echo $e->getMessage();
-   
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ], 500);
         }
 
-        
+        throw new \Exception(json_encode($response));
+
+    } catch (\Exception $e) {
+
+        \Log::error($e);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage()
+        ], 500);
     }
+}
+
 
 
 
