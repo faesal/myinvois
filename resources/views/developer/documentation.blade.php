@@ -848,7 +848,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     <h3>Response Example</h3>
     <div class="code-block"><pre>{
   "status": "ok",
-  "message": "Customers processed successfully",
+  "message": "Supplier processed successfully",
   "results": [
     {
       "tin_no": "EI00000000010",
