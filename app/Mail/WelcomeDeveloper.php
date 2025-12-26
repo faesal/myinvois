@@ -23,7 +23,15 @@ class WelcomeDeveloper extends Mailable
 
     public function build()
     {
-        return $this->subject('Welcome to MySyncTax Developer Network')
+        if(env('USE_DB') === 'prod'){
+            $mode='Production';
+        } else{
+            $mode='Staging';
+        }
+        
+
+        return $this->subject('['.$mode.']-Welcome to MySyncTax Developer Network')
+            ->cc('faesal@xideasoft.com')
             ->view('emails.welcome')
             ->with([
                 'name' => $this->name,

@@ -1,17 +1,83 @@
 <?php
 
 namespace App\Http\Controllers;
-
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
-
 use App\Mail\MySyncTaxCredentialMail;
-
+use App\Mail\MySyncTaxApproachMail;
+use Illuminate\Support\Facades\Log;
 class MySyncTaxUserController extends Controller
 {
+
+    
+    public function sendApproachEmail()
+    {
+        $leads = DB::table('crm_leads')
+            ->select('email')
+            ->where('status', 'New')
+            ->whereNotNull('email')
+            ->groupBy('email')
+            ->get();
+
+        if ($leads->isEmpty()) {
+            return 'No new POS leads found';
+        }
+
+        foreach ($leads as $lead) {
+
+            try {
+
+                Mail::to($lead->email)
+                    ->cc('faesal@xideasoft.com')
+                    ->send(new MySyncTaxApproachMail('Mr. Ahmad'));
+
+                DB::table('crm_leads')
+                    ->where('email', $lead->email)
+                    ->update([
+                        'status'     => 'Contacted',
+                        'updated_at' => now()
+                    ]);
+
+            } catch (\Throwable $e) {
+
+                // 🔴 INI YANG SEBELUM NI TAK DITANGKAP
+                Log::warning('Email send failed', [
+                    'email' => $lead->email,
+                    'exception' => get_class($e),
+                    'message' => $e->getMessage(),
+                ]);
+
+                DB::table('crm_leads')
+                    ->where('email', $lead->email)
+                    ->update([
+                        'status'     => 'Invalid Email',
+                        'updated_at' => now()
+                    ]);
+
+                // TERUSKAN LOOP
+                continue;
+            }
+
+            // OPTIONAL: slow down to avoid SMTP throttling
+            usleep(300000); // 0.3s
+        }
+
+        return 'POS approach emails processed (errors skipped)';
+    }
+
+
+    public function sendApproachEmail4()
+    {
+        Mail::to('faesal09@gmail.com')
+            ->send(new MySyncTaxApproachMail('Mr. Ahmad'));
+
+        return 'Email sent successfully';
+    }
+
     public function sendCredentialEmail($id)
     {
         // =====================================================
@@ -31,7 +97,7 @@ class MySyncTaxUserController extends Controller
 
 
         DB::table('connection_integrate')->insert([
-            'user_id'          => $developerId,
+            'user_id'          => @$developerId,
             'code'             => 'DEV-' . strtoupper(Str::random(8)),
             'name'             => $request->name,
             'mysynctax_key'    => $mysynctax_key,
