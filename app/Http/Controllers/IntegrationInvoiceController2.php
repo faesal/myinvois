@@ -76,6 +76,11 @@ class IntegrationInvoiceController2 extends Controller
              ->where('tin_no', data_get($customerPayload, 'tin_no'))
              ->first();
      
+        $supplier = DB::table('customer')
+             ->where('connection_integrate', $connCode)
+             ->where('customer_type', 'SUPPLIER')
+             ->first();
+ 
          if ($customer) {
      
              // ================= UPDATE CUSTOMER =================
@@ -171,6 +176,8 @@ class IntegrationInvoiceController2 extends Controller
                      ->update([
                          'invoice_no'           => $invoiceNo,
                          'price'                => $amountBefore,
+                         'id_customer'          => $customer->id_customer,
+                         'id_supplier'          => $supplier->id_customer ?? null,
                          'taxable_amount'       => data_get($payload, 'taxable_amount', 0),
                          'tax_amount'           => data_get($payload, 'tax_amount', 0),
                          'tax_percent'          => data_get($payload, 'tax_percent', 0),
@@ -233,6 +240,7 @@ class IntegrationInvoiceController2 extends Controller
                      'connection_integrate'   => $connCode,
                      'id_developer'           => $client->id_developer,
                      'id_customer'            => $customer->id_customer,
+                    
                      'line_id'                => data_get($it, 'sorting_id', $index + 1),
                      'invoiced_quantity'      => data_get($it, 'invoiced_quantity', 0),
                      'line_extension_amount'  => data_get($it, 'total', 0),
@@ -241,6 +249,7 @@ class IntegrationInvoiceController2 extends Controller
                      'price_discount'         => data_get($it, 'price_discount', 0),
                      'price_extension_amount' => data_get($it, 'total', 0),
                      'tax'                    => data_get($it, 'tax', 0),
+                     'item_clasification_value'=>'022',
                      'updated_at'             => now(),
                  ];
      
@@ -274,7 +283,9 @@ class IntegrationInvoiceController2 extends Controller
      
          if( $isAutoToLHDN ==1){
             $result = $model->submit($invoiceId);
+            $qr_lhdn=$model->qr_link_lhdn($uniqueId);
          }else{
+            $qr_lhdn='No LHDN QR Link Provided';
             $result = "Please manualy submit in system, since isAutoLHDN = 0";
          }
          
@@ -287,7 +298,9 @@ class IntegrationInvoiceController2 extends Controller
              'invoice_id'      => $invoiceId,
              'mysynctax_uuid'  => $uniqueId,
              'customer_status' => $customerStatus,
+             'qr_lhdn'         => $qr_lhdn,
              'customer_id'     => $customer->id_customer,
+             
              'result'          => $result
          ], 201);
      }
@@ -336,10 +349,10 @@ public function note(Request $request)
 
         $connCode = $client->code;
 
+      
         $supplier = DB::table('customer')
-            ->where('connection_integrate', $connCode)
-            ->first();
-
+        ->where('connection_integrate', $connCode)
+        ->first();
         /* =====================================================
            1A. SUPPLIER BASIC SANITY CHECK
         ===================================================== */
@@ -528,8 +541,24 @@ public function note(Request $request)
             'invoice_type_code' => $invoiceTypeCode
         ]);
 
+ 
+
+
         $model = new \App\Models\eInvoisModel;
-        $model->submit($noteInvoiceId);
+     
+         session([
+             'invoice_type_code' => $invoiceTypeCode,
+             'invoice_unique_id' => $uniqueId
+         ]);
+     
+
+        $isAutoToLHDN    = data_get($payload, 'isAutoToLHDN');
+        
+      
+        $result = $model->submit($noteInvoiceId);
+        $qr_lhdn=$model->qr_link_lhdn($uniqueId);
+        
+
 
 
         session()->forget([
@@ -545,8 +574,14 @@ public function note(Request $request)
             'status' => 'success',
             'note_type' => $noteType,
             'invoice_id' => $noteInvoiceId,
-            'message' => "{$label} Note submitted successfully"
+            'mysynctax_uuid'  => $uniqueId,
+       
+            'qr_lhdn'         => $qr_lhdn,
+            'message' => "{$label} Note submitted successfully",
+            'result'          => $result
         ]);
+
+       
 
     } catch (\Throwable $e) {
 

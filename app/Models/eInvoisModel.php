@@ -45,7 +45,7 @@ class eInvoisModel extends Model
     }
 
     public function checkExpired($connCode){
-        
+
         $supplier = DB::table('customer')
                     ->where('connection_integrate', $connCode)
                     ->where('customer_type', 'SUPPLIER')
@@ -279,12 +279,6 @@ class eInvoisModel extends Model
     
         $longId = $response['longID'] ?? null;
     
-        if (!$longId) {
-            return response()->json([
-                'status'  => false,
-                'message' => 'No QR Generated (Long ID not returned by LHDN)'
-            ], 500);
-        }
     
         // =====================================================
         // 6. Simpan long_id
@@ -302,7 +296,7 @@ class eInvoisModel extends Model
             ? env('MYINVOIS_PROD_URL')
             : env('MYINVOIS_PREPROD_URL');
     
-        return "{$base}/{$invoice->unique_id}/share/{$longId}";
+        return url("/qr_link/".$invoice->uuid);
     }
     
     
@@ -342,7 +336,7 @@ public function qr_link($uuid)
 
 public function submit($id_customer)
 {
-    try {
+
 
         $client = $this->getClient();
         $client->login();
@@ -448,7 +442,7 @@ public function submit($id_customer)
             $supplierRow = DB::table('customer')->where('id_customer', $record->id_supplier)->first();
             $customerRow = DB::table('customer')->where('id_customer', $customerId)->first();
         }
-
+    
         if (!$supplierRow || !$customerRow) {
             throw new \Exception("Supplier / Customer record not found");
         }
@@ -569,15 +563,15 @@ public function submit($id_customer)
             'supplier_tin' => $supplier['tin_no'] ?? null,
             'customer_tin' => $customer['tin_no'] ?? null,
             'status_submission' => 'SUBMITTED',
-            'uuid' => $response['acceptedDocuments'][0]['uuid'],
-            'submission_uuid' => $response['submissionUid'],
+            'uuid' => @$response['acceptedDocuments'][0]['uuid'],
+            'submission_uuid' => @$response['submissionUid'],
             'document_json' => json_encode($invoiceJson, JSON_PRETTY_PRINT),
             'request_json' => json_encode([$document]),
             'response_json' => json_encode($response),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-
+        try {
         if (!empty($response['acceptedDocuments'][0]['uuid'])) {
 
             DB::table('invoice')->where('unique_id', $session)->update([

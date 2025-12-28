@@ -348,9 +348,11 @@ public function submitSelectedInvoices(Request $request)
     Session::put('connection_integrate', $request->connection_integrate);
 
     foreach ($invoices as $inv) {
+        session([
+             'invoice_type_code' => $inv->invoice_type_code ,
+             'invoice_unique_id' => $inv->unique_id
+         ]);
 
-
-        session(['invoice_unique_id' => $inv->unique_id]);
         
         session(['consolidate_status' => '']);
 

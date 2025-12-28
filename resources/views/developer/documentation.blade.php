@@ -360,7 +360,7 @@ LHDN MyInvois rules.
 
 
 
-        <div class="code-block"><pre>POST https://mysynctax.com/v5/api/myinvois</pre></div>
+        <div class="code-block"><pre>POST {{url('')}}/api/myinvois</pre></div>
 
 
 
@@ -402,7 +402,7 @@ LHDN MyInvois rules.
 
   "mysynctax_uuid": "generated-unique-id"
 
-  "qr_url": "https://mysynctax.com/v5/redirect/9QqIe39"
+  "qr_url": "{{url('')}}/redirect/9QqIe39"
 
 }</pre>
 
@@ -479,7 +479,7 @@ LHDN MyInvois rules.
 <h2>ERP - Invoice (With Customer)</h2>
 
 <div class="code-block">
-<pre>POST https://mysynctax.com/v5/api/myinvois/invoice</pre>
+<pre>POST {{url('')}}/api/myinvois/invoice</pre>
 </div>
 
 <p>
@@ -488,20 +488,22 @@ master data and require direct submission to LHDN.
 </p>
 
 <h3>Request Example</h3>
-<div class="code-block"><pre>{
+<div class="code-block"><pre>
+  {
   "mysynctax_key": "oHwIlgfhsBPP30f7",
   "mysynctax_secret": "fYxPMD2A5hPDWNI6",
-  "invoice_no": "INV-567-67567",
-  "sale_id_integrate": 567567,
+  "isAutoToLHDN":1,
+  "invoice_no": "INV-567-45",
+  "sale_id_integrate": 23422,
   "payment_note_term": "CASH",
   "taxable_amount": 100.00,
   "tax_amount": 6.00,
-  "tax_percent": 6,
+  "tax_percent":6,
   "total_amount": 106.00,
   "customer": {
-    "tin_no": "IG20xx848xxxx",
+    "tin_no": "IG2xxxxxxx0",
     "registration_name": "ABC Trading Sdn Bhd",
-    "identification_no": "2025031xxxx",
+    "identification_no": "202xxxxxxxx7",
     "identification_type": "BRN",
     "sst_registration": "SST123456",
     "phone": "0123456789",
@@ -524,17 +526,44 @@ master data and require direct submission to LHDN.
       "price_discount": 0.00,
       "total": 60.00,
       "tax": 6
+    },
+    {
+      "item_id": 102,
+      "sorting_id": 2,
+      "item_description": "USB Mouse",
+      "invoiced_quantity": 1,
+      "unit_price": 40.00,
+      "price_discount": 0.00,
+      "total": 40.00,
+      "tax": 6
     }
   ]
-}</pre></div>
+}
+</pre></div>
 
 <h3>Response Example</h3>
-<div class="code-block"><pre>{
-  "status": "ok",
-  "mysynctax_uuid": "917cb6323de00b0d2dd208d0263c22dd3c990350",
-  "invoice_id": 329,
-  "customer_status": "existing",
-  "customer_id": 90
+<div class="code-block"><pre>
+  {
+    "status": "ok",
+    "invoice_id": 362,
+    "mysynctax_uuid": "22a0fd1c7222fc0c3ae8edd8da5ee2d7f1a65bde",
+    "customer_status": "updated",
+    "qr_lhdn": "https://preprod.myinvois.hasil.gov.my/Exxxxxxxxxxx93KX0SJDK10/share/07QS35CWPQ70C17B3KX0SJDxxxxxxxxxxx",
+    "customer_id": 90,
+    "result": {
+        "headers": {},
+        "original": {
+            "submissionUid": "RGPX2BQ2CZHwwwwxxxxxx",
+            "acceptedDocuments": [
+                {
+                    "uuid": "xxxxxxx93KX0SJDK10",
+                    "invoiceCodeNumber": "INV-567-3455"
+                }
+            ],
+            "rejectedDocuments": []
+        },
+        "exception": null
+    }
 }</pre></div>
 </div>
 
@@ -543,7 +572,7 @@ master data and require direct submission to LHDN.
 <h2>Credit Note / Debit Note / Refund</h2>
 
 <div class="code-block">
-<pre>POST https://mysynctax.com/v5/api/myinvois/note</pre>
+<pre>POST {{url('')}}/api/myinvois/note</pre>
 </div>
 
 <p>
@@ -605,7 +634,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     </p>
 
     <div class="code-block">
-        POST https://mysynctax.com/v5/api/myinvois/selfbill/invoice
+        POST {{url('')}}/api/myinvois/selfbill/invoice
     </div>
 
     <h3>Request Example</h3>
@@ -682,7 +711,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     </p>
 
     <div class="code-block">
-        POST https://mysynctax.com/v5/api/myinvois/selfbill/note
+        POST {{url('')}}/api/myinvois/selfbill/note
     </div>
 
     <h3>Request Example</h3>
@@ -725,7 +754,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     </p>
 
     <div class="code-block">
-        POST https://mysynctax.com/v5/api/myinvois/add_customer
+        POST {{url('')}}/api/myinvois/add_customer
     </div>
 
     <h3>Request Example</h3>
@@ -816,7 +845,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     </p>
 
     <div class="code-block">
-        POST https://mysynctax.com/v5/api/myinvois/add_supplier
+        POST {{url('')}}/api/myinvois/add_supplier
     </div>
 
     <h3>Request Example</h3>
@@ -877,7 +906,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 
 $.ajax({
 
-  url: "https://mysynctax.com/v5/api/myinvois",
+  url: "{{url('')}}/api/myinvois",
 
   type: "POST",
 
@@ -905,7 +934,7 @@ $.ajax({
 
 <pre>
 
-$ch = curl_init("https://mysynctax.com/v5/api/myinvois");
+$ch = curl_init("{{url('')}}/api/myinvois");
 
 curl_setopt($ch, CURLOPT_POST, 1);
 
@@ -939,7 +968,7 @@ using(var client = new HttpClient()) {
 
     var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-    var response = await client.PostAsync("https://mysynctax.com/v5/api/myinvois", content);
+    var response = await client.PostAsync("{{url('')}}/api/myinvois", content);
 
     var result = await response.Content.ReadAsStringAsync();
 
@@ -963,7 +992,7 @@ Dim json = JsonConvert.SerializeObject(payload)
 
 Dim content = New StringContent(json, Encoding.UTF8, "application/json")
 
-Dim response = Await client.PostAsync("https://mysynctax.com/v5/api/myinvois", content)
+Dim response = Await client.PostAsync("{{url('')}}/api/myinvois", content)
 
 Dim result = Await response.Content.ReadAsStringAsync()
 
@@ -981,7 +1010,7 @@ Dim result = Await response.Content.ReadAsStringAsync()
 
 import requests
 
-r = requests.post("https://mysynctax.com/v5/api/myinvois", json=payload)
+r = requests.post("{{url('')}}/api/myinvois", json=payload)
 
 print(r.json())
 
@@ -1001,7 +1030,7 @@ HttpClient client = HttpClient.newHttpClient();
 
 HttpRequest request = HttpRequest.newBuilder()
 
-    .uri(URI.create("https://mysynctax.com/v5/api/myinvois"))
+    .uri(URI.create("{{url('')}}/api/myinvois"))
 
     .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
 
@@ -1027,7 +1056,7 @@ System.out.println(response.body());
 
 const axios = require("axios");
 
-axios.post("https://mysynctax.com/v5/api/myinvois", payload)
+axios.post("{{url('')}}/api/myinvois", payload)
 
      .then(res => console.log(res.data));
 

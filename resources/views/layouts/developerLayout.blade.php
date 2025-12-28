@@ -663,10 +663,18 @@
 
 
             </ul>
+            <li>
 
+<a href="{{ url('/developer/documentation') }}">
+
+    <i class="fa-solid fa-file-invoice"></i> API Documentation
+
+</a>
+
+</li>
         </ul>
 
-
+       
 
     </div>
 

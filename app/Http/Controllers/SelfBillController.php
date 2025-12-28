@@ -241,25 +241,42 @@ if (!$customer) {
     $model = new \App\Models\eInvoisModel;
     
     $invoice_type_code=session(['invoice_type_code' => '11','invoice_unique_id'=>$uniqueId]);
-    $model->submit($idCon);
+    //$result= $model->submit($idCon);
     // =====================================================
     // 7. RESPONSE
     // =====================================================
-    return response()->json([
-        'status'           => 'ok',
-        'mysynctax_uuid'   => $uniqueId,
-        'invoice_id'=>$idCon,
-       // 'qr_url'           => "{$appUrl}/redirect/{$shortCode}",
-        'customer_status'  => $customerStatus,
-        'customer_id'      => $customer->id_customer
-    ], 201);
+    $isAutoToLHDN    = data_get($payload, 'isAutoToLHDN');
+    if( $isAutoToLHDN ==1){
+        $result = $model->submit($idCon);
+        $qr_lhdn=$model->qr_link_lhdn($uniqueId);
+     }else{
+        $qr_lhdn='No LHDN QR Link Provided';
+        $result = "Please manualy submit in system, since isAutoLHDN = 0";
+     }
+     
+ 
+     // =====================================================
+     // 8. RESPONSE
+     // =====================================================
+     return response()->json([
+         'status'          => 'ok',
+         'invoice_id'      => $idCon,
+         'mysynctax_uuid'  => $uniqueId,
+         'customer_status' => $customerStatus,
+         'qr_lhdn'         => $qr_lhdn,
+         'customer_id'     => $customer->id_customer,
+         
+         'result'          => $result
+     ], 201);
+
+
 }
 
 public function note(Request $request)
 {
     DB::beginTransaction();
 
-    try {
+   
 
         $payload = json_decode($request->getContent(), true);
 
@@ -490,7 +507,7 @@ public function note(Request $request)
         ]);
 
         $model = new \App\Models\eInvoisModel;
-        $model->submit($noteInvoiceId);
+        $result=$model->submit($noteInvoiceId);
 
 
         session()->forget([
@@ -502,12 +519,26 @@ public function note(Request $request)
 
         DB::commit();
 
-        return response()->json([
-            'status' => 'success',
-            'note_type' => $noteType,
-            'invoice_id' => $noteInvoiceId,
-            'message' => "{$label} Note submitted successfully"
-        ]);
+
+        try {
+   
+           
+            $qr_lhdn=$model->qr_link_lhdn($uniqueId);
+      
+         
+     
+         // =====================================================
+         // 8. RESPONSE
+         // =====================================================
+         return response()->json([
+             'status'          => 'ok',
+             'invoice_id'      => $noteInvoiceId,
+             'note_type' => $noteType,
+             'mysynctax_uuid'  => $uniqueId,
+             'qr_lhdn'         => $qr_lhdn,   
+             'result'          => $result
+         ], 201);
+    
 
     } catch (\Throwable $e) {
 
