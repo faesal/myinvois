@@ -13,247 +13,286 @@ class IntegrationInvoiceController2 extends Controller
      * Store invoice from MySyncTax integration (with tax + customer output)
      */
 
-public function invoice(Request $request)
-{
-    $payload = json_decode($request->getContent(), true);
+     public function invoice(Request $request)
+     {
+         $payload = json_decode($request->getContent(), true);
+     
+         if (!is_array($payload)) {
+             return response()->json([
+                 'status' => 'error',
+                 'message' => 'Invalid JSON received'
+             ], 400);
+         }
+         $isAutoToLHDN    = data_get($payload, 'isAutoToLHDN');
+         // =====================================================
+         // 1. AUTH
+         // =====================================================
+         $apiKey    = data_get($payload, 'mysynctax_key');
+         $apiSecret = data_get($payload, 'mysynctax_secret');
+     
+         if (!$apiKey || !$apiSecret) {
+             return response()->json([
+                 'status' => 'unauthorized',
+                 'message' => 'mysynctax_key and mysynctax_secret are required'
+             ], 401);
+         }
+     
+         $client = DB::table('connection_integrate')
+             ->where('mysynctax_key', $apiKey)
+             ->where('mysynctax_secret', $apiSecret)
+             ->first();
+     
+         if (!$client) {
+             return response()->json([
+                 'status' => 'unauthorized',
+                 'message' => 'Invalid MySyncTax credentials'
+             ], 401);
+         }
+     
+         $connCode = $client->code;
+     
+         // =====================================================
+         // 2. SUPPLIER
+         // =====================================================
+         $model = new \App\Models\eInvoisModel;
+         $check=$model->checkExpired($connCode);
+         if($check){
+            return $check;
+         }
+         // =====================================================
+         // 3. CUSTOMER (UPSERT + STATUS)
+         // =====================================================
+         $customerPayload = data_get($payload, 'customer');
+     
+         if (!data_get($customerPayload, 'tin_no')) {
+             return response()->json([
+                 'status'  => 'error',
+                 'message' => 'customer.tin_no is required'
+             ], 422);
+         }
+     
+         $customer = DB::table('customer')
+             ->where('connection_integrate', $connCode)
+             ->where('tin_no', data_get($customerPayload, 'tin_no'))
+             ->first();
+     
+         if ($customer) {
+     
+             // ================= UPDATE CUSTOMER =================
+             DB::table('customer')
+                 ->where('id_customer', $customer->id_customer)
+                 ->update([
+                     'registration_name'    => data_get($customerPayload, 'registration_name'),
+                     'identification_no'    => data_get($customerPayload, 'identification_no'),
+                     'identification_type'  => data_get($customerPayload, 'identification_type'),
+                     'phone'                => data_get($customerPayload, 'phone'),
+                     'email'                => data_get($customerPayload, 'email'),
+                     'address_line_1'       => data_get($customerPayload, 'address_line_1'),
+                     'address_line_2'       => data_get($customerPayload, 'address_line_2'),
+                     'address_line_3'       => data_get($customerPayload, 'address_line_3'),
+                     'city_name'            => data_get($customerPayload, 'city_name'),
+                     'postal_zone'          => data_get($customerPayload, 'postal_zone'),
+                     'country_subentity_code'=> data_get($customerPayload, 'state_code'),
+                     'country_code'         => data_get($customerPayload, 'country_code', 'MYS'),
+                     'updated_at'           => now(),
+                 ]);
+     
+             $customerStatus = 'updated';
+     
+         } else {
+     
+             // ================= CREATE CUSTOMER =================
+             $customerId = DB::table('customer')->insertGetId([
+                 'id_developer'         => $client->id_developer,
+                 'connection_integrate' => $connCode,
+                 'customer_type'        => 'CUSTOMER',
+                 'tin_no'               => data_get($customerPayload, 'tin_no'),
+                 'unique_id'            => strtoupper(Str::random(12)),
+                 'registration_name'    => data_get($customerPayload, 'registration_name'),
+                 'identification_no'    => data_get($customerPayload, 'identification_no'),
+                 'identification_type'  => data_get($customerPayload, 'identification_type'),
+                 'phone'                => data_get($customerPayload, 'phone'),
+                 'email'                => data_get($customerPayload, 'email'),
+                 'address_line_1'       => data_get($customerPayload, 'address_line_1'),
+                 'address_line_2'       => data_get($customerPayload, 'address_line_2'),
+                 'address_line_3'       => data_get($customerPayload, 'address_line_3'),
+                 'city_name'            => data_get($customerPayload, 'city_name'),
+                 'postal_zone'          => data_get($customerPayload, 'postal_zone'),
+                 'country_subentity_code'=> data_get($customerPayload, 'state_code'),
+                 'country_code'         => data_get($customerPayload, 'country_code', 'MYS'),
+                 'created_at'           => now(),
+                 'updated_at'           => now(),
+             ]);
+     
+             $customer = DB::table('customer')->where('id_customer', $customerId)->first();
+             $customerStatus = 'created';
+         }
+     
+         // =====================================================
+         // 4. BASIC INVOICE DATA
+         // =====================================================
+         $invoiceNo = data_get($payload, 'invoice_no');
+         $saleId    = (int) data_get($payload, 'sale_id_integrate');
+         $items     = data_get($payload, 'items', []);
+     
+         if (!$invoiceNo || !$saleId || empty($items)) {
+             return response()->json([
+                 'status' => 'error',
+                 'message' => 'invoice_no, sale_id_integrate & items are required'
+             ], 400);
+         }
+     
+         $amountBefore = (float) data_get($payload, 'total_amount', 0);
+         $issueDate    = now();
+     
+         DB::beginTransaction();
+     
+         try {
+     
+             // =================================================
+             // 5. FIND EXISTING INVOICE
+             // =================================================
+             $existingInvoice = DB::table('invoice')
+                 ->where('connection_integrate', $connCode)
+                 ->where('sale_id_integrate', $saleId)
+                 ->first();
+     
+            if (!empty($existingInvoice) &&  !empty($existingInvoice->long_id)){
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Invoice already sent to LHDN, If you want to make adjustment Please Do Credit Note, Debit Note Or Refund'
+                    ], 400);
+            }
 
-    if (!is_array($payload)) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Invalid JSON received'
-        ], 400);
-    }
-
-    // =====================================================
-    // 1. AUTHENTICATION
-    // =====================================================
-    $apiKey    = data_get($payload, 'mysynctax_key');
-    $apiSecret = data_get($payload, 'mysynctax_secret');
-
-    if (!$apiKey || !$apiSecret) {
-        return response()->json([
-            'status' => 'unauthorized',
-            'message' => 'mysynctax_key and mysynctax_secret are required'
-        ], 401);
-    }
-
-    $client = DB::table('connection_integrate')
-        ->where('mysynctax_key', $apiKey)
-        ->where('mysynctax_secret', $apiSecret)
-        ->first();
-
-    $supplier = DB::table('customer')
-    ->where('connection_integrate',  $client->code)
-    ->first();
-   
-    if (!$client) {
-        return response()->json([
-            'status' => 'unauthorized',
-            'message' => 'Invalid MySyncTax credentials'
-        ], 401);
-    }
-
-    $connCode = $client->code;
-
-// =====================================================
-// CUSTOMER (CREATE OR REUSE – FULL FIELDS)
-// =====================================================
-$customerPayload = data_get($payload, 'customer');
-
-if (!$customerPayload || !data_get($customerPayload, 'tin_no')) {
-    return response()->json([
-        'status'  => 'error',
-        'message' => 'customer.tin_no is required'
-    ], 422);
-}
-
-$customer = DB::table('customer')
-    ->where('connection_integrate', $connCode)
-    ->where('tin_no', data_get($customerPayload, 'tin_no'))
-    ->whereNull('deleted')
-    ->first();
-
-$customerStatus = 'existing';
-
-if (!$customer) {
-    $customerId = DB::table('customer')->insertGetId([
-        'id_developer'            => $client->id_developer,
-        'connection_integrate'    => $connCode,
-        'customer_type'           => 'CUSTOMER',
-        'tin_no'                  => data_get($customerPayload, 'tin_no'),
-        'unique_id'               => strtoupper(Str::random(12)),
-
-        'registration_name'       => data_get($customerPayload, 'registration_name'),
-        'identification_no'       => data_get($customerPayload, 'identification_no'),
-        'identification_type'     => data_get($customerPayload, 'identification_type'),
-        'sst_registration'        => data_get($customerPayload, 'sst_registration'),
-
-        'phone'                   => data_get($customerPayload, 'phone'),
-        'email'                   => data_get($customerPayload, 'email'),
-
-        'city_name'               => data_get($customerPayload, 'city_name'),
-        'postal_zone'             => data_get($customerPayload, 'postal_zone'),
-        'country_subentity_code'  => data_get($customerPayload, 'state_code'),
-        'country_code'            => data_get($customerPayload, 'country_code', 'MYS'),
-
-        'address_line_1'          => data_get($customerPayload, 'address_line_1'),
-        'address_line_2'          => data_get($customerPayload, 'address_line_2'),
-        'address_line_3'          => data_get($customerPayload, 'address_line_3'),
-
-        'created_at'              => now(),
-        'updated_at'              => now(),
-    ]);
-
-    $customer = DB::table('customer')
-        ->where('id_customer', $customerId)
-        ->first();
-
-    $customerStatus = 'created';
-}
-
-
-    // =====================================================
-    // 3. EXTRACT INVOICE DATA (UNCHANGED)
-    // =====================================================
-    $uniqueId  = sha1($request->getContent());
-    $invoiceNo = data_get($payload, 'invoice_no');
-    $issueDate = now();
-    $saleId    = (int) data_get($payload, 'sale_id_integrate', 0);
-    $items     = data_get($payload, 'items', []);
-
-    if (!$invoiceNo || empty($items)) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'invoice_no and items are required'
-        ], 400);
-    }
-
-    $consolidateTotalItem = collect($items ?? [])->sum(function ($i) {
-        return (int) data_get($i, 'invoiced_quantity', 0);
-    });
-
-    $amountBefore = (float) data_get($payload, 'total_amount', 0);
-    $listSaleItemId = array_map('intval', data_get($payload, 'list_sale_item_id', []));
-
-    // =====================================================
-    // 4. DUPLICATE CHECK (UNCHANGED)
-    // =====================================================
-    $existing = DB::table('invoice')
-        ->where('connection_integrate', $connCode)
-        ->where('unique_id', $uniqueId)
-        ->first();
-
-    if ($existing) {
-        return response()->json([
-            'status' => 'duplicate_ignored',
-            'mysynctax_uuid' => $existing->unique_id
-        ], 409);
-    }
-
-    $listItemId = collect($items)->pluck('item_id')->toArray();
-
-    // =====================================================
-    // 5. TRANSACTION (HEADER + ITEMS)
-    // =====================================================
-    $idCon = DB::transaction(function () use (
-        $payload, $uniqueId, $invoiceNo, $issueDate,
-        $saleId, $consolidateTotalItem, $amountBefore,
-        $listSaleItemId, $items, $connCode, $client, $request, $customer,$supplier
-    ) {
-        $invoice_id = DB::table('invoice')->insertGetId([
-            'invoice_no'               => $invoiceNo,
-            'unique_id'                => $uniqueId,
-        
-            'sale_id_integrate'        => $saleId,
-            'connection_integrate'     => $connCode,
-        
-            'id_developer'             => $client->id_developer,
-            'id_customer'              =>  $customer->id_customer ,
-            'id_supplier'              => $supplier->id_customer,
-        
-            'invoice_status'           => 'Valid',
-            'invoice_type_code'        => '01', // Normal Invoice
-            'tax_category_id'          => '01',
-            'tax_exemption_reason'     => '',
-            'tax_scheme_id'            => 'OTH',
-        
-            'payment_note_term'        => data_get($payload, 'payment_note_term', 'CASH'),
-            'payment_financial_account'=> '-',
-            'payment_method'           => data_get($payload, 'payment_method', 'Cash'),
-        
-            'issue_date'               => $issueDate,
-        
-            'price'                    => $amountBefore,
-            'taxable_amount'           => data_get($payload, 'taxable_amount', 0),
-            'tax_amount'               => data_get($payload, 'tax_amount', 0),
-            'tax_percent'              => data_get($payload, 'tax_percent', 0),
-        
-            'created_at'               => now(),
-            'updated_at'               => now(),
-        ]);
-        
-        $rows = [];
-
-        foreach ($items as $index => $it) {
-
-            $qty   = (float) data_get($it, 'invoiced_quantity', 0);
-            $price = (float) data_get($it, 'unit_price', 0);
-
-            $rows[] = [
-                'id_invoice'             => $invoice_id,
-                'sale_id_integrate'      => $saleId,
-                'connection_integrate'   => $connCode,
-                'unique_id'              => $uniqueId,
-                'id_developer'            => $client->id_developer,
-                'id_customer'            => $customer->id_customer,
-                'line_id'                => data_get($it, 'sorting_id', $index + 1),
-                'invoiced_quantity'      => $qty,
-
-                'line_extension_amount'  => data_get($it, 'total', $qty * $price),
-
-                'item_description'       => data_get($it, 'item_description', 'Unnamed Item'),
-                'price_amount'           => $price,
-                'item_id_integrate'      => data_get($it, 'item_id', 0),
-                'price_discount'         => data_get($it, 'price_discount', 0),
-                'price_extension_amount' => $qty * $price,
-                'tax'  =>  data_get($it, 'tax', 0),
-                'item_clasification_value'=>'022',
-
-                'created_at'             => now(),
-                'updated_at'             => now(),
-            ];
-        }
-
-
-        DB::table('invoice_item')->insert($rows);
-       
-        
-        return $invoice_id;
-
-        
-    });
-
-    // =====================================================
-    // 6. FINAL UPDATE + QR (UNCHANGED)
-    // =====================================================
-
-
-    $model = new \App\Models\eInvoisModel;
-    
-    $invoice_type_code=session(['invoice_type_code' => '01','invoice_unique_id'=>$uniqueId]);
-    $model->submit($idCon);
-    // =====================================================
-    // 7. RESPONSE
-    // =====================================================
-    return response()->json([
-        'status'           => 'ok',
-        'mysynctax_uuid'   => $uniqueId,
-        'invoice_id'=>$idCon,
-       // 'qr_url'           => "{$appUrl}/redirect/{$shortCode}",
-        'customer_status'  => $customerStatus,
-        'customer_id'      => $customer->id_customer
-    ], 201);
-}
+             if ($existingInvoice) {
+     
+                 DB::table('invoice')
+                     ->where('id_invoice', $existingInvoice->id_invoice)
+                     ->update([
+                         'invoice_no'           => $invoiceNo,
+                         'price'                => $amountBefore,
+                         'taxable_amount'       => data_get($payload, 'taxable_amount', 0),
+                         'tax_amount'           => data_get($payload, 'tax_amount', 0),
+                         'tax_percent'          => data_get($payload, 'tax_percent', 0),
+                         'tax_category_id'      => '01',
+                         'tax_exemption_reason' => '',
+                         'tax_scheme_id'        => 'OTH',
+                         'updated_at'           => now(),
+                     ]);
+     
+                 $invoiceId = $existingInvoice->id_invoice;
+                 $uniqueId  = $existingInvoice->unique_id;
+     
+             } else {
+     
+                 $uniqueId = sha1($connCode.$saleId.json_encode($payload));
+     
+                 $invoiceId = DB::table('invoice')->insertGetId([
+                     'invoice_no'               => $invoiceNo,
+                     'unique_id'                => $uniqueId,
+                     'sale_id_integrate'        => $saleId,
+                     'connection_integrate'     => $connCode,
+                     'id_developer'             => $client->id_developer,
+                     'id_customer'              => $customer->id_customer,
+                     'id_supplier'              => $supplier->id_customer ?? null,
+                     'invoice_status'           => 'Valid',
+                     'invoice_type_code'        => '01',
+                     'tax_category_id'          => '01',
+                     'tax_exemption_reason'     => '',
+                     'tax_scheme_id'            => 'OTH',
+                     'issue_date'               => $issueDate,
+                     'price'                    => $amountBefore,
+                     'taxable_amount'           => data_get($payload, 'taxable_amount', 0),
+                     'tax_amount'               => data_get($payload, 'tax_amount', 0),
+                     'tax_percent'              => data_get($payload, 'tax_percent', 0),
+                     'payment_note_term'        => data_get($payload, 'payment_note_term', 'CASH'),
+                     'payment_financial_account'=> '-',
+                     'payment_method'           => data_get($payload, 'payment_method', 'Cash'),
+                     'created_at'               => now(),
+                     'updated_at'               => now(),
+                 ]);
+             }
+     
+             // =================================================
+             // 6. UPSERT ITEMS (UNCHANGED)
+             // =================================================
+             foreach ($items as $index => $it) {
+     
+                 $itemId = data_get($it, 'item_id');
+     
+                 $existingItem = DB::table('invoice_item')
+                     ->where('connection_integrate', $connCode)
+                     ->where('sale_id_integrate', $saleId)
+                     ->where('item_id_integrate', $itemId)
+                     ->first();
+     
+                 $row = [
+                     'id_invoice'             => $invoiceId,
+                     'unique_id'              => $uniqueId,
+                     'sale_id_integrate'      => $saleId,
+                     'connection_integrate'   => $connCode,
+                     'id_developer'           => $client->id_developer,
+                     'id_customer'            => $customer->id_customer,
+                     'line_id'                => data_get($it, 'sorting_id', $index + 1),
+                     'invoiced_quantity'      => data_get($it, 'invoiced_quantity', 0),
+                     'line_extension_amount'  => data_get($it, 'total', 0),
+                     'item_description'       => data_get($it, 'item_description'),
+                     'price_amount'           => data_get($it, 'unit_price', 0),
+                     'price_discount'         => data_get($it, 'price_discount', 0),
+                     'price_extension_amount' => data_get($it, 'total', 0),
+                     'tax'                    => data_get($it, 'tax', 0),
+                     'updated_at'             => now(),
+                 ];
+     
+                 if ($existingItem) {
+                     DB::table('invoice_item')
+                         ->where('id_invoice_item', $existingItem->id_invoice_item)
+                         ->update($row);
+                 } else {
+                     $row['item_id_integrate'] = $itemId;
+                     $row['created_at'] = now();
+                     DB::table('invoice_item')->insert($row);
+                 }
+             }
+     
+             DB::commit();
+     
+         } catch (\Throwable $e) {
+             DB::rollBack();
+             throw $e;
+         }
+     
+         // =====================================================
+         // 7. SUBMIT MyInvois
+         // =====================================================
+         $model = new \App\Models\eInvoisModel;
+     
+         session([
+             'invoice_type_code' => '01',
+             'invoice_unique_id' => $uniqueId
+         ]);
+     
+         if( $isAutoToLHDN ==1){
+            $result = $model->submit($invoiceId);
+         }else{
+            $result = "Please manualy submit in system, since isAutoLHDN = 0";
+         }
+         
+     
+         // =====================================================
+         // 8. RESPONSE
+         // =====================================================
+         return response()->json([
+             'status'          => 'ok',
+             'invoice_id'      => $invoiceId,
+             'mysynctax_uuid'  => $uniqueId,
+             'customer_status' => $customerStatus,
+             'customer_id'     => $customer->id_customer,
+             'result'          => $result
+         ], 201);
+     }
+     
+     
 
 public function note(Request $request)
 {

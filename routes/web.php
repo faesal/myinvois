@@ -21,10 +21,16 @@ use App\Http\Controllers\DeveloperCustomerController;
 use App\Http\Controllers\ClientController;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\MySyncTaxUserController;
+use App\Http\Controllers\DeveloperProfileController;
+
 
 Route::get('/admin/mysynctax/send-credential/{id}', [
     MySyncTaxUserController::class,
     'sendCredentialEmail'
+]);
+Route::get('/sendApproachEmail', [
+    MySyncTaxUserController::class,
+    'sendApproachEmail'
 ]);
 
 Route::get('/clear-controller-cache', function () {
@@ -142,6 +148,12 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('/developer/client/update/{id_customer}', [ClientController::class, 'update'])
         ->name('developer.client.update');
+
+    Route::get('/developer/profile', [DeveloperProfileController::class, 'edit'])
+        ->name('developer.profile.edit');
+
+    Route::put('/developer/profile', [DeveloperProfileController::class, 'update'])
+        ->name('developer.profile.update');
 
 
     // Invoices

@@ -56,11 +56,11 @@ class Handler extends ExceptionHandler
         $guard=Arr::get($exception->guards(),'0');
         switch($guard){
             case 'admin':
-                $login="/admin/login";
+                $login="/login";
             break;
 
             default:
-                $login="user/login";
+                $login="/login";
         }
         return Redirect()->guest($login);
     }

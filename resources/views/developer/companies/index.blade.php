@@ -264,10 +264,10 @@
                                     <a href="#" class="btn btn-sm btn-warning">Pay</a>
 
                                     <!-- ⭐ Login Button -->
-                                    <button class="btn btn-sm btn-info loginBtn"
+                                    <!--<button class="btn btn-sm btn-info loginBtn"
                                             data-url="v5/subscriberLogin/{{ $c->user_uuid }}">
                                         Login
-                                    </button>
+                                    </button>-->
                                 </td>
 
                         </tr>

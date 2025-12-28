@@ -188,7 +188,7 @@
         </tr>
         <tr>
             <td class="right"><strong>Total Payable Amount</strong></td>
-            <td class="right"><strong>MYR {{ number_format($total,2) }}</strong></td>
+            <td class="right"><strong>MYR {{ number_format($invoice->price,2) }}</strong></td>
         </tr>
     </table>
 

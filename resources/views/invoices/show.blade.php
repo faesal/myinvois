@@ -145,7 +145,7 @@
         </table>
 
         <div class="text-end">
-        <p><strong>Total Amount:</strong> MYR {{ number_format($total, 2) }}</p>
+        <p><strong>Total Amount:</strong> MYR {{ number_format($invoice->price, 2) }}</p>
             <p><strong>Taxable Amount:</strong> MYR {{ number_format($invoice->taxable_amount, 2) }}</p>
             <p><strong>Tax Amount:</strong> MYR {{ number_format($invoice->tax_amount, 2) }}</p>
         </div>

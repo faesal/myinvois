@@ -81,10 +81,14 @@ public function register(Request $request)
         $adminEmails = array('faesal09@gmail.com');
 
         foreach ($adminEmails as $admin) {
-            Mail::to($admin)->send(new NewDeveloperRegisteredAdmin($request->name, $request->email));
+            Mail::to($admin)
+            ->cc('faesal@xideasoft.com')
+            ->send(new NewDeveloperRegisteredAdmin($request->name, $request->email));
         }
 
-        Mail::to($request->email)->send(new WelcomeDeveloper($request->name, $request->email,$request->password));
+        Mail::to($request->email)
+        ->cc('faesal@xideasoft.com')
+        ->send(new WelcomeDeveloper($request->name, $request->email,$request->password));
 
         return redirect()->route('login')
                 ->with('success_popup', 'Your developer account has been created! Please check your email.');

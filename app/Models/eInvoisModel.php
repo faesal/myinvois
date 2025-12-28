@@ -44,6 +44,29 @@ class eInvoisModel extends Model
         }
     }
 
+    public function checkExpired($connCode){
+        
+        $supplier = DB::table('customer')
+                    ->where('connection_integrate', $connCode)
+                    ->where('customer_type', 'SUPPLIER')
+                    ->where(function ($q) {
+                        $q->whereNull('start_subscribe')
+                        ->orWhere('start_subscribe', '<=', now());
+                    })
+                    ->where(function ($q) {
+                        $q->whereNull('end_subscribe')
+                        ->orWhere('end_subscribe', '>=', now());
+                    })
+                    ->first();
+     
+        if (!$supplier) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Subscription expired or inactive.'
+            ], 403);
+        }
+
+    }
     public function loadCredentials($connection)
     {
 
@@ -142,6 +165,147 @@ class eInvoisModel extends Model
     }
     
 
+    public function longID($unique_id)
+    {
+        // =====================================================
+        // 1. Ambil invoice dari DB
+        // =====================================================
+        $invoice = DB::table('invoice')
+            ->where('unique_id', $unique_id)
+            ->first();
+    
+        if (!$invoice) {
+            abort(404, 'Invoice not found');
+        }
+    
+        // =====================================================
+        // 2. Guard: Jika UUID / unique_id tiada
+        // =====================================================
+     
+    
+        // =====================================================
+        // 3. Jika long_id sudah ada → terus return QR
+        // =====================================================
+        if (!empty($invoice->long_id)) {
+            $base = env('USE_DB') === 'prod'
+                ? env('MYINVOIS_PROD_URL')
+                : env('MYINVOIS_PREPROD_URL');
+    
+            //return "{$base}/{$invoice->uuid}/share/{$invoice->long_id}";
+        }
+    
+        // =====================================================
+        // 4. Login MyInvois Client
+        // =====================================================
+        $client = $this->getClient();
+        $client->login();
+    
+        $client->setAccessToken($client->getAccessToken());
+    
+        // =====================================================
+        // 5. Fetch document dari LHDN
+        // =====================================================
+        $response = $client->getDocument($invoice->uuid);
+    
+        $longId = $response['longID'] ?? null;
+    
+     
+    
+        // =====================================================
+        // 6. Simpan long_id
+        // =====================================================
+        DB::table('invoice')
+            ->where('id_invoice', $invoice->id_invoice)
+            ->update([
+                'long_id' => $longId,
+            ]);
+    
+        // =====================================================
+        // 7. Return QR Share Link
+        // =====================================================
+        $base = env('USE_DB') === 'prod'
+            ? env('MYINVOIS_PROD_URL')
+            : env('MYINVOIS_PREPROD_URL');
+    
+       // return "{$base}/{$invoice->unique_id}/share/{$longId}";
+    }
+
+    public function qr_link_lhdn($unique_id)
+    {
+        // =====================================================
+        // 1. Ambil invoice dari DB
+        // =====================================================
+        $invoice = DB::table('invoice')
+            ->where('unique_id', $unique_id)
+            ->first();
+    
+        if (!$invoice) {
+            abort(404, 'Invoice not found');
+        }
+    
+        // =====================================================
+        // 2. Guard: Jika UUID / unique_id tiada
+        // =====================================================
+        if (empty($invoice->unique_id)) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'No QR Generated (Invoice not submitted to LHDN)'
+            ], 422);
+        }
+    
+        // =====================================================
+        // 3. Jika long_id sudah ada → terus return QR
+        // =====================================================
+        if (!empty($invoice->long_id)) {
+            $base = env('USE_DB') === 'prod'
+                ? env('MYINVOIS_PROD_URL')
+                : env('MYINVOIS_PREPROD_URL');
+    
+            return "{$base}/{$invoice->uuid}/share/{$invoice->long_id}";
+        }
+    
+        // =====================================================
+        // 4. Login MyInvois Client
+        // =====================================================
+        $client = $this->getClient();
+        $client->login();
+    
+        $client->setAccessToken($client->getAccessToken());
+    
+        // =====================================================
+        // 5. Fetch document dari LHDN
+        // =====================================================
+        $response = $client->getDocument($invoice->uuid);
+    
+        $longId = $response['longID'] ?? null;
+    
+        if (!$longId) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'No QR Generated (Long ID not returned by LHDN)'
+            ], 500);
+        }
+    
+        // =====================================================
+        // 6. Simpan long_id
+        // =====================================================
+        DB::table('invoice')
+            ->where('id_invoice', $invoice->id_invoice)
+            ->update([
+                'long_id' => $longId,
+            ]);
+    
+        // =====================================================
+        // 7. Return QR Share Link
+        // =====================================================
+        $base = env('USE_DB') === 'prod'
+            ? env('MYINVOIS_PROD_URL')
+            : env('MYINVOIS_PREPROD_URL');
+    
+        return "{$base}/{$invoice->unique_id}/share/{$longId}";
+    }
+    
+    
 public function qr_link($uuid)
 {
     $client = $this->getClient();
@@ -393,6 +557,27 @@ public function submit($id_customer)
         /* =====================================================
          * SAVE RESULT (KEKAL)
          * ===================================================== */
+
+         $MessageID= DB::table('message_header')->insertGetId([
+            'document_id' => $record->invoice_no,
+            'type_submission' => $invoice_type_code,
+            'id_invoice' => $record->id_invoice,
+
+            // 🔧 FIX: Hash JSON
+            'hashing_256' => hash('sha256', json_encode($invoiceJson, JSON_UNESCAPED_SLASHES)),
+
+            'supplier_tin' => $supplier['tin_no'] ?? null,
+            'customer_tin' => $customer['tin_no'] ?? null,
+            'status_submission' => 'SUBMITTED',
+            'uuid' => $response['acceptedDocuments'][0]['uuid'],
+            'submission_uuid' => $response['submissionUid'],
+            'document_json' => json_encode($invoiceJson, JSON_PRETTY_PRINT),
+            'request_json' => json_encode([$document]),
+            'response_json' => json_encode($response),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         if (!empty($response['acceptedDocuments'][0]['uuid'])) {
 
             DB::table('invoice')->where('unique_id', $session)->update([
@@ -401,29 +586,10 @@ public function submit($id_customer)
                 'submission_uuid' => $response['submissionUid']
             ]);
 
-            DB::table('message_header')->insert([
-                'document_id' => $record->invoice_no,
-                'type_submission' => $invoice_type_code,
-                'id_invoice' => $record->id_invoice,
-
-                // 🔧 FIX: Hash JSON
-                'hashing_256' => hash('sha256', json_encode($invoiceJson, JSON_UNESCAPED_SLASHES)),
-
-                'supplier_tin' => $supplier['tin_no'] ?? null,
-                'customer_tin' => $customer['tin_no'] ?? null,
-                'status_submission' => 'SUBMITTED',
-                'uuid' => $response['acceptedDocuments'][0]['uuid'],
-                'submission_uuid' => $response['submissionUid'],
-                'document_json' => json_encode($invoiceJson, JSON_PRETTY_PRINT),
-                'request_json' => json_encode([$document]),
-                'response_json' => json_encode($response),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
+            
             DB::table('consolidate_invoice')->where('unique_id', $session)->update(['is_invoice' => 1]);
             DB::table('consolidate_invoice_item')->where('unique_id', $session)->update(['is_invoice' => 1]);
-
+            $this->qr_link_lhdn($session);
             return response()->json($response);
         }
 
@@ -432,6 +598,8 @@ public function submit($id_customer)
     } catch (\Exception $e) {
 
         \Log::error($e);
+
+        DB::table('message_header')->where('id', $MessageID)->update(['error_message' => $e->getMessage()]);
 
         return response()->json([
             'status' => 'error',
