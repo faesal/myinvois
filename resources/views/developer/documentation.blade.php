@@ -543,20 +543,20 @@ master data and require direct submission to LHDN.
 
 <h3>Response Example</h3>
 <div class="code-block"><pre>
-  {
+{
     "status": "ok",
-    "invoice_id": 362,
-    "mysynctax_uuid": "22a0fd1c7222fc0c3ae8edd8da5ee2d7f1a65bde",
+    "invoice_id": 410,
+    "mysynctax_uuid": "a461cd55016ece31242098e2b409c086fea6e3f3",
     "customer_status": "updated",
-    "qr_lhdn": "https://preprod.myinvois.hasil.gov.my/Exxxxxxxxxxx93KX0SJDK10/share/07QS35CWPQ70C17B3KX0SJDxxxxxxxxxxx",
+    "qr_lhdn": "{{url('')}}/qr_link/1DB9HRPJ1F1VJZ34PYSRVJDK10",
     "customer_id": 90,
     "result": {
         "headers": {},
         "original": {
-            "submissionUid": "RGPX2BQ2CZHwwwwxxxxxx",
+            "submissionUid": "X7T2BQBCW6A55280PYSRVJDK10",
             "acceptedDocuments": [
                 {
-                    "uuid": "xxxxxxx93KX0SJDK10",
+                    "uuid": "1DB9HRPJ1F1VJZ34PYSRVJDK10",
                     "invoiceCodeNumber": "INV-567-3455"
                 }
             ],
@@ -599,12 +599,30 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 }</pre></div>
 
 <h3>Response Example</h3>
-<div class="code-block"><pre>{
-  "status": "success",
-  "note_type": "refund",
-  "invoice_id": 332,
-  "message": "Refund Note submitted successfully"
-}</pre></div>
+<div class="code-block"><pre>
+{
+    "status": "success",
+    "note_type": "refund",
+    "invoice_id": 409,
+    "mysynctax_uuid": "f8259315-45bf-41ba-bd6d-ae9abb93ac32",
+    "qr_lhdn": "{{url('')}}/qr_link/9QJTTE3H66GCHRHB4A3PVJDK10",
+    "message": "Refund Note submitted successfully",
+    "result": {
+        "headers": {},
+        "original": {
+            "submissionUid": "5PBX6XF31R26SH0J3A3PVJDK10",
+            "acceptedDocuments": [
+                {
+                    "uuid": "9QJTTE3H66GCHRHB4A3PVJDK10",
+                    "invoiceCodeNumber": "REFUND-NOTE-20251229001155"
+                }
+            ],
+            "rejectedDocuments": []
+        },
+        "exception": null
+    }
+}
+</pre></div>
 </div>
 
 <!-- ===================== ERROR CODES ===================== -->
@@ -693,13 +711,32 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 }</pre></div>
 
     <h3>Response Example</h3>
-    <div class="code-block"><pre>{
-  "status": "ok",
-  "mysynctax_uuid": "943e75230addb63b7fde84c4b2b9ce8a532ca07a",
-  "invoice_id": 343,
-  "customer_status": "existing",
-  "customer_id": 90
-}</pre></div>
+    <div class="code-block"><pre>
+
+    {
+    "status": "ok",
+    "invoice_id": 406,
+    "mysynctax_uuid": "173a8b67d01a40b2c2e0dd11efcc6wxxxxx",
+    "customer_status": "existing",
+    "qr_lhdn": "{{url('')}}/qr_link/JGT0YJCDKZ5R23JMX89Fxxxxxx",
+    "customer_id": 90,
+    "result": {
+        "headers": {},
+        "original": {
+            "submissionUid": "6RTRCJFS0EKWTRGTwxxxxxx",
+            "acceptedDocuments": [
+                {
+                    "uuid": "JGT0YJCDKZ5R23JMXxxxxx",
+                    "invoiceCodeNumber": "INV-567-123"
+                }
+            ],
+            "rejectedDocuments": []
+        },
+        "exception": null
+    }
+}
+
+    </pre></div>
 </div>
 <!-- ===================== SELF-BILLED NOTE ===================== -->
 <div class="doc-section" id="selfbill-note">
@@ -715,7 +752,8 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     </div>
 
     <h3>Request Example</h3>
-    <div class="code-block"><pre>{
+    <div class="code-block"><pre>
+  {
   "mysynctax_key": "oHwIlgfhsBPP30f7",
   "mysynctax_secret": "fYxPMD2A5hPDWNI6",
   "note_type": "refund",//credit/debit/refund
@@ -734,12 +772,30 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 }</pre></div>
 
     <h3>Response Example</h3>
-    <div class="code-block"><pre>{
-  "status": "success",
-  "note_type": "refund",
-  "invoice_id": 344,
-  "message": "Refund Note submitted successfully"
-}</pre></div>
+    <div class="code-block"><pre>
+    {
+    "status": "ok",
+    "invoice_id": 404,
+    "note_type": "refund",
+    "mysynctax_uuid": "57f15d7c-b432-4c69-bd66-cadxxxxxx",
+    "qr_lhdn": "{{url('')}}/qr_link/xaasxxxxxx",
+    "result": {
+        "headers": {},
+        "original": {
+            "submissionUid": "X6BEP9R6MN4xxxxxx",
+            "acceptedDocuments": [
+                {
+                    "uuid": "F440ZCK2EXZBxxxxx",
+                    "invoiceCodeNumber": "REFUND-NOTE-20251229000704"
+                }
+            ],
+            "rejectedDocuments": []
+        },
+        "exception": null
+    }
+}
+
+    </pre></div>
 </div>
 
 
