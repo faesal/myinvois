@@ -3,185 +3,180 @@
 @section('content')
 
 <style>
-    @media (max-width: 768px) {
-        .filter-col {
-            margin-bottom: 15px;
-        }
-        .badge {
-            width: 100%;
-            display: inline-block;
-            padding: 8px !important;
-            font-size: 0.75rem !important;
-        }
-        .btn-info {
-            width: 100%;
-        }
+@media (max-width: 768px) {
+    .filter-col {
+        margin-bottom: 15px;
     }
+    .badge {
+        width: 100%;
+        padding: 8px !important;
+        font-size: 0.75rem !important;
+    }
+    .btn-info {
+        width: 100%;
+    }
+}
 </style>
 
 <div class="container-fluid">
 
-    <h3 class="mb-4">Invoice Submissions</h3>
+<h3 class="mb-4">Invoice Submissions</h3>
 
-    <!-- =======================
-         FILTER BAR
-    ======================= -->
-    <div class="card mb-4">
-        <div class="card-body">
+<!-- =======================
+     FILTER BAR
+======================= -->
+<div class="card mb-4">
+    <div class="card-body">
 
-            <form method="POST" action="{{ route('developer.invoices.index') }}">
-                <div class="row g-3">
-                @csrf
-                    <div class="col-md-2 col-6 filter-col">
-                        <label>Start Date</label>
-                        <input type="date" name="start_date" value="{{ request('start_date') }}" class="form-control">
-                    </div>
+        <form method="POST" action="{{ route('developer.invoices.index') }}">
+            @csrf
+            <div class="row g-3">
 
-                    <div class="col-md-2 col-6 filter-col">
-                        <label>End Date</label>
-                        <input type="date" name="end_date" value="{{ request('end_date') }}" class="form-control">
-                    </div>
+                <div class="col-md-2 col-6 filter-col">
+                    <label>Start Date</label>
+                    <input type="date" name="start_date" value="{{ request('start_date') }}" class="form-control">
+                </div>
 
-                    <div class="col-md-2 col-6 filter-col">
-                        <label>Status</label>
-                        <select name="status" class="form-control">
-                            <option value="ALL">All</option>
-                            <option value="Submitted" {{ request('status') == 'Submitted' ? 'selected' : '' }}>Submitted</option>
-                            <option value="Failed" {{ request('status') == 'Failed' ? 'selected' : '' }}>Failed</option>
-                            <option value="Pending" {{ request('status') == 'Pending' ? 'selected' : '' }}>Pending</option>
-                        </select>
-                    </div>
+                <div class="col-md-2 col-6 filter-col">
+                    <label>End Date</label>
+                    <input type="date" name="end_date" value="{{ request('end_date') }}" class="form-control">
+                </div>
 
-                    <div class="col-md-3 col-12 filter-col">
-                        <label>LHDN Account</label>
-                        <select name="connection_integrate" class="form-control">
-                            <option value="">Please choose</option>
-                            @foreach ($customers as $c)
-                                <option value="{{ $c->connection_integrate }}"
-                                    {{ request('connection_integrate') == $c->connection_integrate ? 'selected' : '' }}>
-                                    {{ $c->registration_name }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
+                <div class="col-md-2 col-6 filter-col">
+                    <label>Status</label>
+                    <select name="status" class="form-control">
+                        <option value="ALL">All</option>
+                        <option value="Submitted" {{ request('status')=='Submitted'?'selected':'' }}>Submitted</option>
+                        <option value="Failed" {{ request('status')=='Failed'?'selected':'' }}>Failed</option>
+                        <option value="Pending" {{ request('status')=='Pending'?'selected':'' }}>Pending</option>
+                    </select>
+                </div>
 
-                    <div class="col-md-3 col-12 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary w-100">
-                            Search
-                        </button>
-                    </div>
+                <div class="col-md-2 col-6 filter-col">
+                    <label>Invoice Type</label>
+                    <select name="invoice_type" class="form-control">
+                        <option value="ALL">All</option>
+                        @foreach ($invoiceTypes as $type)
+                            <option value="{{ $type->code }}"
+                                {{ request('invoice_type') == $type->code ? 'selected' : '' }}>
+                                {{ $type->description }}
+                            </option>
+                        @endforeach
+                    </select>
 
                 </div>
-            </form>
 
-        </div>
-    </div>
+                <div class="col-md-3 col-12 filter-col">
+                    <label>LHDN Account</label>
+                    <select name="connection_integrate" class="form-control">
+                        <option value="">Please choose</option>
+                        @foreach ($customers as $c)
+                            <option value="{{ $c->connection_integrate }}"
+                                {{ request('connection_integrate')==$c->connection_integrate?'selected':'' }}>
+                                {{ $c->registration_name }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
 
-    <!-- =======================
-         SUBMIT SELECTED BUTTON
-    ======================= -->
-    <div class="mb-3">
-        <button class="btn btn-success" id="submitSelectedBtn" type="button">
-            Submit Selected
-        </button>
-    </div>
-
-    <!-- =======================
-         INVOICE TABLE
-    ======================= -->
-    <div class="card">
-        <div class="card-body">
-
-            <div class="table-responsive">
-                <table id="invoiceTable" class="table table-bordered table-striped" width="100%">
-                    <thead>
-                        <tr>
-                            <th>
-                                <input type="checkbox" id="select-all">
-                            </th>
-                            <th>Invoice ID</th>
-                            <th>Sale ID</th>
-                            <th>Customer</th>
-                            <th>Amount (RM)</th>
-                            <th>Date</th>
-                            <th>LHDN Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-                       
-
-                            @if(request()->filled('connection_integrate') && $invoices->isNotEmpty())
-                                @foreach ($invoices as $inv)
-                                    <tr>
-                                        <td class="text-center">
-                                            <input type="checkbox" class="select-item" value="{{ $inv->id_invoice }}">
-                                        </td>
-
-                                        <td>{{ $inv->invoice_no }}</td>
-                                        <td>{{ $inv->sale_id }}</td>
-                                        <td>{{ $inv->registration_name }}</td>
-                                        <td>{{ number_format($inv->price ?? 0, 2) }}</td>
-                                        <td>{{ \Carbon\Carbon::parse($inv->issue_date)->format('d-m-Y H:i:s') }}</td>
-
-                                        <td class="text-center">
-                                            @php
-                                                $rawStatus = strtoupper(trim($inv->submission_status));
-                                                $status = $rawStatus !== '' ? $rawStatus : 'PENDING';
-
-                                                $colors = [
-                                                    'SUBMITTED' => 'primary',
-                                                    'FAILED'    => 'danger',
-                                                    'PENDING'   => 'warning',
-                                                ];
-
-                                                $color = $colors[$status] ?? 'warning';
-                                            @endphp
-
-                                            <span class="badge rounded-pill bg-{{ $color }}" style="padding:6px 12px;">
-                                                {{ $status }}
-                                            </span>
-                                        </td>
-
-                                        <td class="text-center">
-                                    
-                                    
-                                      @php
-                                      if(@$inv->id_customer)
-                                      $invoice=$inv->id_customer.'/'.$inv->id_invoice;
-                                      else
-                                      $invoice='6/'.$inv->id_invoice;;
-
-                                      @endphp
-                                      <a target="_blank" href="{{url('/invoice/'. $invoice)}}"
-                                        class="btn btn-sm btn-info">View</a>
-                                        </td>
-                                    </tr>
-                                @endforeach
-                            @endif
-                        </tbody>
-
-                </table>
-                @if(!request()->filled('connection_integrate'))
-                    <div class="text-center text-muted py-2">
-                        <i>Please choose a customer and click Search to display invoices.</i>
-                    </div>
-                @endif
-
-                @if(request()->filled('connection_integrate') && $invoices->isEmpty())
-                    <div class="text-center text-muted py-2">
-                        <i>No invoices found for the selected customer.</i>
-                    </div>
-                @endif
+                <div class="col-md-3 col-12 d-flex align-items-end">
+                    <button class="btn btn-primary w-100">Search</button>
+                </div>
 
             </div>
+        </form>
 
-        </div>
     </div>
-
 </div>
 
+<!-- =======================
+     SUBMIT SELECTED
+======================= -->
+<div class="mb-3">
+    <button class="btn btn-success" id="submitSelectedBtn">Submit Selected</button>
+</div>
+
+<!-- =======================
+     TABLE
+======================= -->
+<div class="card">
+<div class="card-body">
+<div class="table-responsive">
+
+<table id="invoiceTable" class="table table-bordered table-striped">
+<thead>
+<tr>
+    <th><input type="checkbox" id="select-all"></th>
+    <th>Invoice ID</th>
+    <th>Sale ID</th>
+    <th>Invoice Type</th>
+    <th>Customer</th>
+    <th>Amount (RM)</th>
+    <th>Date</th>
+    <th>LHDN Status</th>
+    <th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+@if(request()->filled('connection_integrate') && $invoices->isNotEmpty())
+@foreach($invoices as $inv)
+<tr>
+    <td class="text-center">
+        <input type="checkbox" class="select-item" value="{{ $inv->id_invoice }}">
+    </td>
+
+    <td>{{ $inv->invoice_no }}</td>
+    <td>{{ $inv->sale_id }}</td>
+
+    <td>
+    {{ $inv->invoice_type_name ?? '-' }}
+    </td>
+
+
+    <td>{{ $inv->registration_name }}</td>
+    <td>{{ number_format($inv->price ?? 0,2) }}</td>
+    <td>{{ \Carbon\Carbon::parse($inv->issue_date)->format('d-m-Y H:i:s') }}</td>
+
+    <td class="text-center">
+        @php
+            $status = strtoupper(trim($inv->submission_status ?: 'PENDING'));
+            $map = ['SUBMITTED'=>'primary','FAILED'=>'danger','PENDING'=>'warning'];
+        @endphp
+        <span class="badge rounded-pill bg-{{ $map[$status] ?? 'secondary' }}">
+            {{ $status }}
+        </span>
+    </td>
+
+    <td class="text-center">
+        @php
+            $invoice = ($inv->id_customer ?: 6).'/'.$inv->id_invoice;
+        @endphp
+        <a href="{{ url('/invoice/'.$invoice) }}" target="_blank" class="btn btn-sm btn-info">View</a>
+    </td>
+</tr>
+@endforeach
+@endif
+</tbody>
+</table>
+
+@if(!request()->filled('connection_integrate'))
+<div class="text-center text-muted py-2">
+    <i>Please choose a customer and click Search.</i>
+</div>
+@endif
+
+@if(request()->filled('connection_integrate') && $invoices->isEmpty())
+<div class="text-center text-muted py-2">
+    <i>No invoices found.</i>
+</div>
+@endif
+
+</div>
+</div>
+</div>
+
+</div>
 @endsection
 
 

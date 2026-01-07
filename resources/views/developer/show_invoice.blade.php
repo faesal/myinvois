@@ -35,6 +35,19 @@
         margin:2px 0;
     }
 
+    /* LOGO & QR ALIGNMENT */
+    .header-right-container {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    .lhdn-logo {
+        width: 160px;
+        height: auto;
+    }
+
     /* VALIDATION STRIP */
     .validation-strip {
         border:1px solid #000;
@@ -82,6 +95,11 @@
         padding:2px;
     }
 
+    /* Ensure logo stays small in PDF */
+    .pdf-mode .lhdn-logo {
+        width: 80px !important;
+    }
+
     @media(max-width:768px){
         .invoice-container { padding:12px; }
     }
@@ -91,30 +109,29 @@
 
 <div id="invoicePDF" class="invoice-container">
 
-    <!-- HEADER -->
     <div class="invoice-header">
         <table>
             <tr>
-                <td width="75%">
+                <td width="65%">
                     <div class="invoice-title">e-Invoice</div>
                     <div class="invoice-sub">Invoice No.: {{ $invoice->invoice_no }}</div>
-                    
                 </td>
-                <td width="25%" align="right">
-                    <canvas id="invoiceQR"></canvas>
+                <td width="35%" align="right">
+                    <div class="header-right-container">
+                        <img src="https://www.mysynctax.com/dev/assets/images/LHDN_logo.png" class="lhdn-logo" alt="LHDN Logo">
+                        <canvas id="invoiceQR"></canvas>
+                    </div>
                 </td>
             </tr>
         </table>
     </div>
 
-    <!-- VALIDATION STRIP (MACAM GRAB) -->
     <div class="validation-strip">
         <strong>IRBM Unique Identifier Number:</strong> {{ $invoice->uuid }}<br>
         <strong>Date and Time of Validation:</strong>
         {{ \Carbon\Carbon::parse($invoice->created_at)->format('d-m-Y H:i:s') }}
     </div>
 
-    <!-- SUPPLIER / BUYER -->
     <table class="data-table" style="margin-top:8px;">
         <tr>
             <td width="50%">
@@ -146,7 +163,6 @@
         </tr>
     </table>
 
-    <!-- ITEMS -->
     <div class="section-title">Invoice Items</div>
 
     <table class="data-table">
@@ -176,7 +192,6 @@
         </tbody>
     </table>
 
-    <!-- TOTAL -->
     <table class="data-table" style="margin-top:6px;">
         <tr>
             <td class="right">Total Excluding Tax</td>
@@ -194,7 +209,6 @@
 
 </div>
 
-<!-- BUTTON -->
 <div class="mt-3">
     <button id="btnGeneratePDF" class="btn btn-primary">
         📄 Download PDF
@@ -209,9 +223,7 @@
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
-   
 <script>
     const uuid = "{{ $invoice->uuid }}";
 
@@ -239,14 +251,15 @@
             margin: [5,5,5,5],
             filename: 'Invoice-{{ $invoice->invoice_no }}.pdf',
             image: { type:'jpeg', quality:0.98 },
-            html2canvas: { scale:2, scrollY:0 },
+            html2canvas: { 
+                scale:2, 
+                scrollY:0,
+                useCORS: true // Added to allow the LHDN logo to load in PDF
+            },
             jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
         }).from(el).save().then(() => {
             el.classList.remove('pdf-mode');
         });
     });
 </script>
-
-
-
 @endsection

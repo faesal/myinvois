@@ -451,6 +451,7 @@ public function submit($id_customer)
             'tin_no' => $supplierRow->tin_no,
             'registration_name' => $supplierRow->registration_name,
             'phone' => $supplierRow->phone,
+            'msicCode' => $supplierRow->msicCode,
             'email' => $supplierRow->email,
             'city_name' => $supplierRow->city_name,
             'postal_zone' => $supplierRow->postal_zone,
@@ -486,7 +487,7 @@ public function submit($id_customer)
         if ($consolidate_status == 1 || $record->invoice_status == 'manual' || $isSelfBilled) {
             $delivery = '';
         } else {
-            $delivery = $supplier;
+            $delivery = $customer;
         }
 
         /* =====================================================

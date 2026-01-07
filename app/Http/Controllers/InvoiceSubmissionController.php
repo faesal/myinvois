@@ -11,7 +11,7 @@ use DB;
 
 class InvoiceSubmissionController extends Controller
 {
-   public function index(Request $request)
+   public function index2(Request $request)
 {
     $developerId = auth()->user()->id;
 
@@ -78,6 +78,100 @@ class InvoiceSubmissionController extends Controller
         'invoices'
     ));
 }
+
+    public function index(Request $request)
+{
+    $developerId = auth()->user()->id;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Customers (SUPPLIER) for LHDN Account dropdown
+    |--------------------------------------------------------------------------
+    */
+    $customers = DB::table('customer')
+        ->where('id_developer', $developerId)
+        ->where('customer_type', 'SUPPLIER')
+        ->orderBy('registration_name')
+        ->get();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Invoice Types (for filter)
+    |--------------------------------------------------------------------------
+    */
+    $invoiceTypes = DB::table('invoice_type')
+        ->orderBy('code')
+        ->get();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Invoice Query
+    |--------------------------------------------------------------------------
+    */
+    $query = DB::table('invoice AS i')
+        ->leftJoin('customer AS c', 'i.id_supplier', '=', 'c.id_customer')
+        ->leftJoin('connection_integrate AS ci', 'i.connection_integrate', '=', 'ci.code')
+        ->leftJoin('invoice_type AS itype', 'i.invoice_type_code', '=', 'itype.code')
+        ->leftJoin('invoice_item AS it', function ($join) use ($developerId) {
+            $join->on('it.id_invoice', '=', 'i.id_invoice')
+                 ->where('it.id_developer', '=', $developerId);
+        })
+        ->select(
+            'i.id_invoice',
+            'i.invoice_no',
+            'i.issue_date',
+            'i.submission_status',
+            'i.price',
+            'i.invoice_type_code',
+            'itype.description AS invoice_type_name',
+            'c.registration_name',
+            'i.id_customer',
+            'i.id_supplier',
+            'i.connection_integrate',
+            'ci.name AS connection_name',
+            DB::raw('MIN(it.sale_id_integrate) AS sale_id')
+        )
+        ->where('ci.id_developer', $developerId)
+        ->where('c.id_developer', $developerId)
+        ->where('c.customer_type', 'SUPPLIER')
+        ->groupBy('i.id_invoice');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Filters
+    |--------------------------------------------------------------------------
+    */
+    if ($request->start_date) {
+        $query->whereDate('i.issue_date', '>=', $request->start_date);
+    }
+
+    if ($request->end_date) {
+        $query->whereDate('i.issue_date', '<=', $request->end_date);
+    }
+
+    if ($request->status && $request->status !== 'ALL') {
+        $query->where('i.submission_status', $request->status);
+    }
+
+    if ($request->connection_integrate && $request->connection_integrate !== 'ALL') {
+        $query->where('i.connection_integrate', $request->connection_integrate);
+    }
+
+    if ($request->invoice_type && $request->invoice_type !== 'ALL') {
+        $query->where('i.invoice_type_code', $request->invoice_type);
+    }
+
+    $invoices = $query
+        ->orderBy('i.issue_date', 'desc')
+        ->get();
+
+    return view('developer.invoice_submissions', compact(
+        'customers',
+        'invoiceTypes',
+        'invoices'
+    ));
+}
+
 
 
 public function consolidate(Request $request)

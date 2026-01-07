@@ -546,17 +546,17 @@ master data and require direct submission to LHDN.
 {
     "status": "ok",
     "invoice_id": 410,
-    "mysynctax_uuid": "a461cd55016ece31242098e2b409c086fea6e3f3",
+    "mysynctax_uuid": "a461cd55016ece31242098e2bxxxxxx3",
     "customer_status": "updated",
-    "qr_lhdn": "{{url('')}}/qr_link/1DB9HRPJ1F1VJZ34PYSRVJDK10",
+    "qr_lhdn": "{{url('')}}/qr_link/1DB9HRPxxxxxxVJxxx4PYSRVJDK10",
     "customer_id": 90,
     "result": {
         "headers": {},
         "original": {
-            "submissionUid": "X7T2BQBCW6A55280PYSRVJDK10",
+            "submissionUid": "X7T2BQBCW6A55280PYxxxxxx",
             "acceptedDocuments": [
                 {
-                    "uuid": "1DB9HRPJ1F1VJZ34PYSRVJDK10",
+                    "uuid": "1DB9HRPJ1F1VJZ34PYsssss",
                     "invoiceCodeNumber": "INV-567-3455"
                 }
             ],

@@ -261,6 +261,16 @@
         </li>
 
         <li class="nav-item">
+    <a href="{{ route('consolidate.import') }}" class="nav-link {{ request()->routeIs('consolidate.*') ? 'active' : '' }}">
+        <i class="ph-upload-simple"></i>
+        <span>
+            Consolidate Import
+            <span class="d-block fw-normal text-body opacity-50">Batch Excel Import</span>
+        </span>
+    </a>
+</li>
+
+        <li class="nav-item">
             <a href="{{url('listing_submission')}}" class="nav-link">
                 <i class="ph-upload-simple"></i>
                 <span>
