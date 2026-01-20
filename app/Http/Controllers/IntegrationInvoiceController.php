@@ -18,6 +18,28 @@ class IntegrationInvoiceController extends Controller
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
+
+     public function validateTIN(Request $request)
+     {
+         $model = new \App\Models\eInvoisModel;
+         $request->validate([
+             'mysynctax_key'    => 'required|string',
+             'mysynctax_secret' => 'required|string'
+         ]);
+     
+         // =====================================================
+         // 2. Authenticate MySyncTax credentials
+         // =====================================================
+         $client = DB::table('connection_integrate')
+             ->where('mysynctax_key', $request->mysynctax_key)
+             ->where('mysynctax_secret', $request->mysynctax_secret)
+             ->first();
+         //echo 'test';
+         Session::put('connection_integrate', $client->code);
+         $response=$model->validateTaxPayerTin($request->tin,$request->idType='NRIC', $request->idValue='930105045119');
+         print_r($response);
+     }
+
     public function addSupplier(Request $request)
     {
         // =====================================================

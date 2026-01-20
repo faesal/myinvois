@@ -261,11 +261,22 @@
         </li>
 
         <li class="nav-item">
-    <a href="{{ route('consolidate.import') }}" class="nav-link {{ request()->routeIs('consolidate.*') ? 'active' : '' }}">
+    <a href="{{ route('consolidate.import') }}" class="nav-link {{ request()->routeIs('consolidate.import') ? 'active' : '' }}">
         <i class="ph-upload-simple"></i>
         <span>
             Consolidate Import
             <span class="d-block fw-normal text-body opacity-50">Batch Excel Import</span>
+        </span>
+    </a>
+</li>
+
+<li class="nav-item">
+    <a href="{{ route('consolidate.listing') }}" 
+       class="nav-link {{ request()->routeIs('consolidate.listing') ? 'active' : '' }}">
+        <i class="ph-list-bullets"></i>
+        <span>
+            Consolidate Listing
+            <span class="d-block fw-normal text-body opacity-50">View all invoices</span>
         </span>
     </a>
 </li>

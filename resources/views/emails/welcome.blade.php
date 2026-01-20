@@ -189,6 +189,20 @@
             https://mysynctax.com/einvoice/login
         </a>
     </div>
+    <div style="margin-top:10px;background:#ffffff;
+                border:1px solid #e5e7eb;
+                border-radius:8px;padding:10px;">
+        <strong>API Documentation</strong><br>
+        <a href="https://mysynctax.com/v5/developer/documentation"
+           target="_blank"
+           style="display:inline-block;
+                  color:#2563eb;
+                  text-decoration:none;
+                  word-break:break-all;
+                  padding:6px 0;">
+            https://mysynctax.com/einvoice/developer/documentation
+        </a>
+    </div>
 @else
 
 
@@ -209,7 +223,6 @@
         </a>
     </div>
 
-    @endif
     <div style="margin-top:10px;background:#ffffff;
                 border:1px solid #e5e7eb;
                 border-radius:8px;padding:10px;">
@@ -224,6 +237,8 @@
             https://mysynctax.com/v5/developer/documentation
         </a>
     </div>
+    @endif
+   
 </div>
 
 

@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Redirect;
 use App\Models\eInvoisModel;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Session;
+use App\Services\MyInvois\MyInvoisService;
+use Exception;
 
 class InvoiceController extends Controller
 {
@@ -27,219 +29,183 @@ class InvoiceController extends Controller
 
     public function __construct()
     {
-       /* $this->clientId = "68459bb8-ed45-4ea6-8846-5ba2740a5e2f";
+        /* $this->clientId = "68459bb8-ed45-4ea6-8846-5ba2740a5e2f";
         $this->clientSecret = "ed9d15f7-1886-48f7-b642-9d85ab995881";
         $this->prodMode = true;*/
     }
 
-    /**
-     * Sync ONE order from the custom NLBH POS into invoice/invoice_item.
-     * GET /invoice/sync-nlbh?sale_id=123
-     */
-        public function syncFromNlbh(Request $request)
-        {
-            // Accept "sale_id" (maps to orders.id)
-            $sale_id = $request->query('sale_id');
+    public function test($id)
+    {
+        $xml = app(MyInvoisService::class)->generate($id);
 
-            if (!is_numeric($sale_id)) {
-                return response()->json(['error' => 'Invalid sale_id.'], 400);
-            }
+        return response($xml, 200)
+            ->header('Content-Type', 'application/xml');
+    }
 
-            // Force the integration to NLBH only
-            $pos = env('CUSTOM_INTEGRATE', 'nlbh');
-            if (strtolower($pos) !== 'nlbh') {
-                // Even if env is different, we strictly allow only nlbh here
-                $pos = 'nlbh';
-            }
+    public function syncFromNlbh(Request $request)
+    {
+        $sale_id = $request->query('sale_id');
 
-            // Put the connection flag into session for downstream logic
-            Session::put('connection_integrate', $pos);
+        if (!is_numeric($sale_id)) {
+            return response()->json(['error' => 'Invalid sale_id.'], 400);
+        }
 
-            // Build dynamic DB connection from .env (DB_NLBH_*)
-            $config = [
-                'driver'    => env('DB_NLBH_CONNECTION', 'mysql'),
-                'host'      => env('DB_NLBH_HOST'),
-                'port'      => env('DB_NLBH_PORT', 3306),
-                'database'  => env('DB_NLBH_DATABASE'),
-                'username'  => env('DB_NLBH_USERNAME'),
-                'password'  => env('DB_NLBH_PASSWORD'),
-                'charset'   => 'utf8mb4',
-                'collation' => 'utf8mb4_unicode_ci',
-                'prefix'    => '',
-                'strict'    => false,
-            ];
+        $pos = env('CUSTOM_INTEGRATE', 'nlbh');
+        if (strtolower($pos) !== 'nlbh') {
+            $pos = 'nlbh';
+        }
 
-            // Basic sanity check
-            if (empty($config['host']) || empty($config['database']) || empty($config['username'])) {
-                return response()->json(['error' => 'NLBH DB connection is not configured properly in .env'], 500);
-            }
+        Session::put('connection_integrate', $pos);
 
-            Config::set("database.connections.dynamic_pos", $config);
+        $config = [
+            'driver'    => env('DB_NLBH_CONNECTION', 'mysql'),
+            'host'      => env('DB_NLBH_HOST'),
+            'port'      => env('DB_NLBH_PORT', 3306),
+            'database'  => env('DB_NLBH_DATABASE'),
+            'username'  => env('DB_NLBH_USERNAME'),
+            'password'  => env('DB_NLBH_PASSWORD'),
+            'charset'   => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix'    => '',
+            'strict'    => false,
+        ];
 
-            // Check if invoice already exists for this sale_id & integration
-            $existing = DB::table('invoice')
-                ->where('sale_id_integrate', $sale_id)
-                ->where('connection_integrate', $pos)
+        if (empty($config['host']) || empty($config['database']) || empty($config['username'])) {
+            return response()->json(['error' => 'NLBH DB connection is not configured properly in .env'], 500);
+        }
+
+        Config::set("database.connections.dynamic_pos", $config);
+
+        $existing = DB::table('invoice')
+            ->where('sale_id_integrate', $sale_id)
+            ->where('connection_integrate', $pos)
+            ->first();
+
+        if ($existing) {
+            return redirect()->to(url("/createcustomer/{$existing->unique_id}"));
+        }
+
+        $id_supplier = DB::table('customer')
+            ->where('connection_integrate', $pos)
+            ->value('id_customer');
+
+        if (!$id_supplier) {
+            return response()->json(['error' => 'Supplier not found for POS (connection_integrate = nlbh)'], 404);
+        }
+
+        try {
+            $order = DB::connection('dynamic_pos')
+                ->table('orders')
+                ->where('id', $sale_id)
                 ->first();
 
-            if ($existing) {
-                // Already synced — go to the same customer creation step
-                return redirect()->to(url("/createcustomer/{$existing->unique_id}"));
+            if (!$order) {
+                return response()->json(['error' => 'Order not found'], 404);
             }
 
-            // Get supplier (your own "customer" record tagged with this integration)
-            $id_supplier = DB::table('customer')
-                ->where('connection_integrate', $pos)
-                ->value('id_customer');
+            $items = DB::connection('dynamic_pos')
+                ->table('order_items as oi')
+                ->leftJoin('products as p', 'oi.product_id', '=', 'p.id')
+                ->where('oi.order_id', $sale_id)
+                ->select(
+                    'oi.id',
+                    'oi.product_id',
+                    'oi.size',
+                    'oi.addons',
+                    'oi.qty',
+                    'oi.total',
+                    DB::raw("COALESCE(p.slug, 'Unnamed Item') as product_name")
+                )
+                ->get();
 
-            if (!$id_supplier) {
-                return response()->json(['error' => 'Supplier not found for POS (connection_integrate = nlbh)'], 404);
-            }
+            $sst = (float)($order->sst ?? 0);
+            $vat = (float)($order->vat ?? 0);
+            $taxAmount = $sst + $vat;
 
-            try {
-                // ---- Pull order header ----
-                $order = DB::connection('dynamic_pos')
-                    ->table('orders')
-                    ->where('id', $sale_id)
-                    ->first();
+            $grandTotal = (float)($order->grand_total ?? 0);
+            $baseTotal  = (float)($order->total ?? 0);
 
-                if (!$order) {
-                    return response()->json(['error' => 'Order not found'], 404);
-                }
+            $price = $grandTotal > 0 ? $grandTotal : max($baseTotal + $taxAmount, 0);
+            $taxableAmount = max($price - $taxAmount, 0);
 
-                // ---- Pull order items + product names ----
-                $items = DB::connection('dynamic_pos')
-                    ->table('order_items as oi')
-                    ->leftJoin('products as p', 'oi.product_id', '=', 'p.id')
-                    ->where('oi.order_id', $sale_id)
-                    ->select(
-                        'oi.id',
-                        'oi.product_id',
-                        'oi.size',
-                        'oi.addons',
-                        'oi.qty',
-                        'oi.total',
-                        DB::raw("COALESCE(p.slug, 'Unnamed Item') as product_name")
-                    )
-                    ->get();
+            DB::beginTransaction();
 
-                // Compute amounts safely
-                $sst = (float)($order->sst ?? 0);
-                $vat = (float)($order->vat ?? 0);
-                $taxAmount = $sst + $vat;
+            $unique_id = strtoupper(bin2hex(random_bytes(8)));
 
-                $grandTotal = (float)($order->grand_total ?? 0);
-                $baseTotal  = (float)($order->total ?? 0);
+            $invoice_id = DB::table('invoice')->insertGetId([
+                'invoice_no'                => $sale_id,
+                'unique_id'                 => $unique_id,
+                'sale_id_integrate'         => $sale_id,
+                'connection_integrate'      => $pos,
+                'id_supplier'               => $id_supplier,
+                'invoice_status'            => 'Valid',
+                'invoice_type_code'         => '01',
+                'tax_category_id'           => '01',
+                'tax_exemption_reason'      => '',
+                'tax_scheme_id'             => 'OTH',
+                'payment_note_term'         => 'CASH',
+                'payment_financial_account' => '-',
+                'issue_date'                => $order->created_at ?? now(),
+                'price'                     => $price,
+                'taxable_amount'            => $taxableAmount,
+                'tax_amount'                => $taxAmount,
+                'tax_percent'               => 0,
+                'payment_method'            => $order->payment_method ?? 'Cash',
+                'created_at'                => now(),
+                'updated_at'                => now(),
+            ]);
 
-                // Prefer grand_total if present; otherwise fall back to total + taxes
-                $price = $grandTotal > 0 ? $grandTotal : max($baseTotal + $taxAmount, 0);
-                $taxableAmount = max($price - $taxAmount, 0);
+            $line = 0;
+            foreach ($items as $it) {
+                $line++;
+                $qty = (int)($it->qty ?? 1);
+                $lineTotal = (float)($it->total ?? 0);
+                $unitPrice = $qty > 0 ? $lineTotal / $qty : $lineTotal;
 
-                DB::beginTransaction();
+                $desc = trim($it->product_name . (isset($it->size) && $it->size !== '' ? " ({$it->size})" : ''));
 
-                $unique_id = strtoupper(bin2hex(random_bytes(8)));
-
-                // ---- Insert invoice ----
-                $invoice_id = DB::table('invoice')->insertGetId([
-                    'invoice_no'                => $sale_id, // using order id as invoice_no
-                    'unique_id'                 => $unique_id,
-                    'sale_id_integrate'         => $sale_id,
-                    'connection_integrate'      => $pos,
-                    'id_supplier'               => $id_supplier,
-
-                    'invoice_status'            => 'Valid',
-                    'invoice_type_code'         => '01',
-                    'tax_category_id'           => '01',
-                    'tax_exemption_reason'      => '',
-                    'tax_scheme_id'             => 'OTH',
-
-                    'payment_note_term'         => 'CASH',
-                    'payment_financial_account' => '-',
-
-                    'issue_date'                => $order->created_at ?? now(),
-
-                    'price'                     => $price,           // gross
-                    'taxable_amount'            => $taxableAmount,   // net (approx.)
-                    'tax_amount'                => $taxAmount,
-                    'tax_percent'               => 0,                // set as needed
-                    'payment_method'            => $order->payment_method ?? 'Cash',
-
-                    'created_at'                => now(),
-                    'updated_at'                => now(),
+                DB::table('invoice_item')->insert([
+                    'id_invoice'                 => $invoice_id,
+                    'sale_id_integrate'          => $sale_id,
+                    'connection_integrate'       => $pos,
+                    'unique_id'                  => $unique_id,
+                    'line_id'                    => $line,
+                    'invoiced_quantity'          => $qty,
+                    'line_extension_amount'      => $lineTotal,
+                    'item_description'           => $desc,
+                    'price_amount'               => $unitPrice,
+                    'price_discount'             => 0,
+                    'price_extension_amount'     => $lineTotal,
+                    'item_clasification_value'   => '008',
+                    'created_at'                 => now(),
+                    'updated_at'                 => now(),
                 ]);
-
-                // ---- Insert invoice items ----
-                $line = 0;
-                foreach ($items as $it) {
-                    $line++;
-                    $qty = (int)($it->qty ?? 1);
-                    $lineTotal = (float)($it->total ?? 0);
-                    $unitPrice = $qty > 0 ? $lineTotal / $qty : $lineTotal;
-
-                    // Build an item description (product + optional size)
-                    $desc = trim($it->product_name . (isset($it->size) && $it->size !== '' ? " ({$it->size})" : ''));
-
-                    DB::table('invoice_item')->insert([
-                        'id_invoice'                 => $invoice_id,
-                        'sale_id_integrate'          => $sale_id,
-                        'connection_integrate'       => $pos,
-                        'unique_id'                  => $unique_id,
-
-                        'line_id'                    => $line,
-                        'invoiced_quantity'          => $qty,
-                        'line_extension_amount'      => $lineTotal,     // total for the line
-                        'item_description'           => $desc,
-
-                        // Unit price & extensions
-                        'price_amount'               => $unitPrice,
-                        'price_discount'             => 0,              // no discount info in schema
-                        'price_extension_amount'     => $lineTotal,
-
-                        // Default classification (adjust if you have mapping)
-                        'item_clasification_value'   => '008',
-
-                        'created_at'                 => now(),
-                        'updated_at'                 => now(),
-                    ]);
-                }
-
-                DB::commit();
-
-                // Stash for downstream pages
-                Session::put('invoice_unique_id', $unique_id);
-                Session::put('id_supplier', $id_supplier);
-
-                return redirect()->to(url("/createcustomer/{$unique_id}"));
-            } catch (\Throwable $e) {
-                DB::rollBack();
-                return response()->json([
-                    'error'   => 'Failed to sync invoice (nlbh)',
-                    'details' => $e->getMessage(),
-                ], 500);
             }
+
+            DB::commit();
+
+            Session::put('invoice_unique_id', $unique_id);
+            Session::put('id_supplier', $id_supplier);
+
+            return redirect()->to(url("/createcustomer/{$unique_id}"));
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'error'   => 'Failed to sync invoice (nlbh)',
+                'details' => $e->getMessage(),
+            ], 500);
         }
-    
-
-
-    public function validateTaxPayerTin($tin, $idType, $idValue)
-    {
-        $invoice = new eInvoisModel;
-        $response = $invoice->validate_tin($tin, $idType, $idValue);
-
-        print_r($response);
     }
 
     public function create()
     {
         if (auth()->user()->role === 'admin') {
-            // Admin boleh tengok semua
             $customers = DB::table('customer')
                 ->whereNull('deleted')
                 ->where('customer_type', 'CUSTOMER')
                 ->orderBy('id_customer', 'desc')
                 ->get();
         } else {
-            // Subscriber hanya boleh tengok customer dengan connection_integrate mereka
             $customers = DB::table('customer')
                 ->whereNull('deleted')
                 ->where('customer_type', 'CUSTOMER')
@@ -254,119 +220,108 @@ class InvoiceController extends Controller
     {
         DB::beginTransaction();
 
-        $connection_integrate='kd';
-        $id_supplier=3;
+        $connection_integrate = 'kd';
+        $id_supplier = 3;
         $uniqueId = Str::uuid();
-            // 1. Handle Customer
-            if ($request->buyer_type === 'new') {
-                $customer_id = DB::table('customer')->insertGetId([
-                    'registration_name' => $request->company_name,
-                    'tin_no' => $request->tin_number,
-                    'connection_integrate'=>$connection_integrate,
-                    'identification_no' => $request->registration_number,
-                    'email' => $request->email,
-                    'phone'=>$request->phone,
-                    'city_name'=>$request->city_name,
-                    'postal_zone'=>$request->postal_zone,
-                    'identification_type'=>$request->identification_type,
-                    'country_subentity_code'=>$request->country_subentity_code,
-                    'country_code'=>'MYS',
-                    'address_line_1' => $request->address1,
-                    'address_line_2' => $request->address2,
-                    'address_line_3' => $request->address3,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            } else {
-                $customer_id = $request->customer_id;
-            }
-      
-            // 2. Create Invoice
-            $invoiceId = DB::table('invoice')->insertGetId([
-                'invoice_no' => $request->invoice_no,
-                'connection_integrate'=>$connection_integrate,
-                'id_customer' => $customer_id,
-                'id_supplier' => $id_supplier,
-                'invoice_type_code' => '01',
-                'issue_date' => now(),
-                'payment_note_term' => 'Cash',
+
+        if ($request->buyer_type === 'new') {
+            $customer_id = DB::table('customer')->insertGetId([
+                'registration_name' => $request->company_name,
+                'tin_no' => $request->tin_number,
+                'connection_integrate' => $connection_integrate,
+                'identification_no' => $request->registration_number,
+                'email' => $request->email,
+                'phone' => $request->phone,
+                'city_name' => $request->city_name,
+                'postal_zone' => $request->postal_zone,
+                'identification_type' => $request->identification_type,
+                'country_subentity_code' => $request->country_subentity_code,
+                'country_code' => 'MYS',
+                'address_line_1' => $request->address1,
+                'address_line_2' => $request->address2,
+                'address_line_3' => $request->address3,
                 'created_at' => now(),
                 'updated_at' => now(),
-                'unique_id'=>$uniqueId
+            ]);
+        } else {
+            $customer_id = $request->customer_id;
+        }
+
+        $invoiceId = DB::table('invoice')->insertGetId([
+            'invoice_no' => $request->invoice_no,
+            'connection_integrate' => $connection_integrate,
+            'id_customer' => $customer_id,
+            'id_supplier' => $id_supplier,
+            'invoice_type_code' => '01',
+            'issue_date' => now(),
+            'payment_note_term' => 'Cash',
+            'created_at' => now(),
+            'updated_at' => now(),
+            'unique_id' => $uniqueId
+        ]);
+
+        $total = 0;
+        $totalTax = 0;
+        foreach ($request->items as $item) {
+            $qty = floatval($item['qty']);
+            $price = floatval($item['unit_price']);
+            $taxRate = floatval($item['tax_rate']);
+            $amount = $qty * $price;
+            $tax = $amount * ($taxRate / 100);
+            $totalItem = $amount + $tax;
+
+            DB::table('invoice_item')->insert([
+                'connection_integrate' => $connection_integrate,
+                'unique_id' => $uniqueId,
+                'id_customer' => $customer_id,
+                'id_invoice' => $invoiceId,
+                'item_description' => $item['description'],
+                'invoiced_quantity' => $qty,
+                'price_amount' => $price,
+                'tax' => $taxRate,
+                'price_amount' => $totalItem,
+                'line_extension_amount' => $totalItem,
+                'created_at' => now(),
+                'updated_at' => now(),
+                'item_clasification_value' => '022'
             ]);
 
-   
-            // 3. Create Items
-            $total = 0;
-            $totalTax=0;
-            foreach ($request->items as $item) {
-                $qty = floatval($item['qty']);
-                $price = floatval($item['unit_price']);
-                $taxRate = floatval($item['tax_rate']);
-                $amount = $qty * $price;
-                $tax = $amount * ($taxRate / 100);
-                $totalItem = $amount + $tax;
+            $totalTax += $taxRate;
+            $total += $totalItem;
+        }
 
-                DB::table('invoice_item')->insert([
-                    'connection_integrate'=>$connection_integrate,
-                    'unique_id'=>$uniqueId,
-                    'id_customer'=>$customer_id,
-                    'id_invoice' => $invoiceId,
-                    'item_description' => $item['description'],
-                    'invoiced_quantity' => $qty,
-                    'price_amount' => $price,
-                    'tax' => $taxRate,
-                    'price_amount' => $totalItem,
-                    'line_extension_amount' => $totalItem,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                    'item_clasification_value'=>'022'
-                ]);
+        DB::table('invoice')->where('id_invoice', $invoiceId)->update([
+            'price' => $total,
+            'tax_amount' => $totalTax,
+            'taxable_amount' => $total,
+            'updated_at' => now()
+        ]);
 
-                $totalTax +=$taxRate;
-                $total += $totalItem;
-            }
+        session(['invoice_unique_id' => $uniqueId]);
+        session(['id_supplier' => $id_supplier]);
 
-           
-
-            // 4. Update invoice total
-            DB::table('invoice')->where('id_invoice', $invoiceId)->update([
-                'price' => $total,
-                'tax_amount' => $totalTax,
-                'taxable_amount'=>$total,
-                'updated_at' => now()
-            ]);
-            
-
-            session(['invoice_unique_id' => $uniqueId]);
-            session(['id_supplier' => $id_supplier]);
-           
-
-            
-            DB::commit();
-            $invoice = new eInvoisModel;
-            $invoice->submit($invoiceId);
-            
-            return redirect()->route('invoice.create')->with('success', 'Invoice created successfully!');
-       
-    }
-    
-
-    public function qr_link($uuid){
-
+        DB::commit();
         $invoice = new eInvoisModel;
-        echo $response = $invoice->qr_link($uuid);
+        $invoice->submit($invoiceId);
+
+        return redirect()->route('invoice.create')->with('success', 'Invoice created successfully!');
+    }
+
+    public function qr_link($uuid)
+    {
+        $record = DB::table('invoice')->where('unique_id', $uuid)->first();
+        $invoice = new eInvoisModel();
+        echo $response = $invoice->qr_link_lhdn($uuid);
         exit();
     }
 
-
-    public function resubmit($id_invoice){
-
-        $record = DB::table('invoice')->where('id_invoice',$id_invoice)->first();
-       // print_r($record);
-        $invoice = new eInvoisModel;
-        $invoice_type_code=session(['invoice_type_code' => '01','invoice_unique_id'=>$record->unique_id]);
-        $invoice->submit($id_invoice);
+    public function resubmit($id_invoice)
+    {
+        $record = DB::table('invoice')->where('id_invoice', $id_invoice)->first();
+        $invoice = new eInvoisModel($record->connection_integrate);
+        session(['invoice_type_code' => $record->invoice_type_code, 'invoice_unique_id' => $record->unique_id]);
+        $result = $invoice->submit($id_invoice);
+        print_r($result);
     }
 
     public function selectItems(Request $request)
@@ -380,58 +335,44 @@ class InvoiceController extends Controller
         $selectedConnection = $request->input('connection');
 
         $query = DB::table('consolidate_invoice_item')
-        ->whereBetween('issue_date', [$start, $end]);
+            ->whereBetween('issue_date', [$start, $end]);
 
-        // Jika bukan admin, tapis ikut session connection_integrate
         if (auth()->user()->role != 'admin') {
             $query->where('connection_integrate', session('connection_integrate'));
-        }
-        // Jika admin dan ada selectedConnection, tapis berdasarkan pilihan
-        elseif ($selectedConnection) {
+        } elseif ($selectedConnection) {
             $query->where('connection_integrate', $selectedConnection);
         }
 
         $query->whereNull('submition_status');
-
         $items = $query->orderBy('issue_date')->get();
- 
 
         $availableConnectionsQuery = DB::table('consolidate_invoice_item')
-        ->select('connection_integrate')
-        ->distinct();
-    
+            ->select('connection_integrate')
+            ->distinct();
+
         if (auth()->user()->role !== 'admin') {
             $availableConnectionsQuery->where('connection_integrate', session('connection_integrate'));
         }
-        
+
         $availableConnections = $availableConnectionsQuery->pluck('connection_integrate')->toArray();
-        
 
         return view('consolidate.select', compact('items', 'start', 'end', 'availableConnections'));
     }
 
 public function submitSelected(Request $request)
 {
+    $developerId = auth()->user()->id; 
     $selectedIds = $request->input('selected_items', []);
-
     $selected_connection = session('connection_integrate');
-    
+
     if (empty($selectedIds)) {
-        return response()->json([
-            'success' => false,
-            'message' => 'No items selected.'
-        ], 400);
+        return response()->json(['success' => false, 'message' => 'No items selected.'], 400);
     }
 
-    $items = DB::table('consolidate_invoice_item')
-        ->whereIn('id_invoice_item', $selectedIds)
-        ->get();
+    $items = DB::table('consolidate_invoice_item')->whereIn('id_invoice_item', $selectedIds)->get();
 
     if ($items->isEmpty()) {
-        return response()->json([
-            'success' => false,
-            'message' => 'No invoice items found for submission.'
-        ], 400);
+        return response()->json(['success' => false, 'message' => 'No items found.'], 400);
     }
 
     $customer = DB::table('customer')
@@ -440,45 +381,52 @@ public function submitSelected(Request $request)
         ->whereNull('deleted')
         ->first();
 
-    if (!$customer) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Customer not found for selected connection.'
-        ], 400);
-    }
-
     $items = collect($items);
     $chunks = $items->chunk(25);
-
     $invoiceBaseNo = 'CONSOLIDATE-' . now()->format('Ymd-His');
     $version = 1;
 
     foreach ($chunks as $chunk) {
+        // 🔥 Get sale_id_integrate from first item in chunk (Following reference)
+        $saleId = $chunk->first()->sale_id_integrate;
 
-        $total = $chunk->sum('line_extension_amount');
-        $uniqueId = Str::uuid();
+        // Calculate total
+        $total = (float) $chunk->sum('line_extension_amount');
+        $uniqueId = (string) Str::uuid();
         $invoiceNo = $invoiceBaseNo . '-V' . $version;
 
+        // -----------------------------------------------
+        // STEP 1: INSERT INTO INVOICE (HEADER)
+        // -----------------------------------------------
         $invoiceId = DB::table('invoice')->insertGetId([
             'unique_id' => $uniqueId,
+            'sale_id_integrate' => $saleId,
             'connection_integrate' => $selected_connection,
             'invoice_status' => 'manual',
-            'id_customer' => 6,
+            'submission_status' => 'Pending', // Mark as Pending for Step 2
+            'id_developer' => $developerId,
+            'id_customer' => 6, 
             'id_supplier' => $customer->id_customer,
             'invoice_no' => $invoiceNo,
             'invoice_type_code' => '01',
             'issue_date' => now(),
-            'price' => $total,
-            'taxable_amount' => 0,
+            'tax_scheme_id' => 'OTH',
+            'tax_category_id' => '01',
+            'price' => number_format($total, 2, '.', ''),
+            'taxable_amount' => number_format($total, 2, '.', ''),
+            'tax_amount' => '0.00', // Reference logic: starts at 0.00
+            'tax_percent' => '0.00',
             'payment_note_term' => 'CASH',
-            'tax_amount' => 0,
-            'tax_percent' => 0,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
+        // -----------------------------------------------
+        // STEP 2: INSERT INTO INVOICE_ITEM
+        // -----------------------------------------------
         foreach ($chunk as $index => $item) {
             DB::table('invoice_item')->insert([
+                'id_developer' => $developerId,
                 'unique_id' => $uniqueId,
                 'issue_date' => $item->issue_date,
                 'connection_integrate' => $item->connection_integrate,
@@ -487,128 +435,107 @@ public function submitSelected(Request $request)
                 'line_id' => $index + 1,
                 'id_invoice' => $invoiceId,
                 'invoiced_quantity' => $item->invoiced_quantity,
-                'line_extension_amount' => $item->line_extension_amount,
+                'line_extension_amount' => number_format((float)$item->line_extension_amount, 2, '.', ''),
                 'item_description' => $item->item_description,
-                'price_amount' => $item->price_amount,
-                'price_discount' => $item->price_discount,
-                'price_extension_amount' => $item->price_extension_amount,
-                'item_clasification_value' => $item->item_clasification_value,
-                'created_at' => now()
+                'price_amount' => number_format((float)$item->price_amount, 2, '.', ''),
+                'price_discount' => number_format((float)($item->price_discount ?? 0), 2, '.', ''),
+                'price_extension_amount' => number_format((float)$item->price_extension_amount, 2, '.', ''),
+                'tax' => '0.00',
+                'item_clasification_value' => '004', // Using reference default
+                'created_at' => now(),
             ]);
         }
 
+        // Mark original items as submitted
         DB::table('consolidate_invoice_item')
             ->whereIn('id_invoice_item', $chunk->pluck('id_invoice_item'))
             ->update([
                 'submition_status' => 'submitted',
+                'is_invoice' => 1,
                 'updated_at' => now()
             ]);
-
-        session([
-            'invoice_unique_id' => $uniqueId,
-            'consolidate_status' => 1,
-            'invoice_id' => $invoiceNo
-        ]);
-
-        $invoice = new eInvoisModel;
-        $invoice->submit($invoiceId);
 
         $version++;
     }
 
     return response()->json([
         'success' => true,
-        'message' => 'Selected items submitted as multiple invoices.'
+        'message' => 'Items consolidated successfully. Please submit them from the Listing page.'
     ]);
-}
 
-
-
-    public function show_invoice($id_supplier,$id_customer,$id_invoice)
+}    public function show_invoice($id_supplier, $id_customer, $id_invoice)
     {
-    
-    $invoice = $record = DB::table('invoice')->where('id_invoice', $id_invoice)->first();
-    $supplier = DB::table('customer')->where('id_customer', $id_supplier)->first(); // Adjust ID as needed
-    $customer = DB::table('customer')->where('id_customer', $id_customer)->first(); // Adjust ID as needed
-    $items = DB::table('invoice_item')->where('id_invoice', $id_invoice)->get();
- 
+        $invoice = DB::table('invoice')->where('id_invoice', $id_invoice)->first();
+        $supplier = DB::table('customer')->where('id_customer', $id_supplier)->first();
+        $customer = DB::table('customer')->where('id_customer', $id_customer)->first();
+        $items = DB::table('invoice_item')->where('id_invoice', $id_invoice)->get();
 
-    // Generate PDF
-    //$pdf = PDF::loadView('invoices.show', compact('invoice', 'customer', 'items'));
-
-    // Save PDF temporarily
-    //$pdfPath = storage_path("app/public/invoice_{$invoice->invoice_no}.pdf");
-   // $pdf->save($pdfPath);
-    
-    // Send Email
-    
-    
-
-    return view('invoices.show', compact('invoice', 'customer','supplier', 'items'))
-        ->with('success', 'Invoice sent to customer.');
+        return view('invoices.show', compact('invoice', 'customer', 'supplier', 'items'))
+            ->with('success', 'Invoice sent to customer.');
     }
 
+    /**
+     * Updated Listing Submission to handle 'Pending' status logic
+     */
     public function listing_submission(Request $request)
-{
-    $query = DB::table('invoice')
-        ->leftJoin('customer', 'invoice.id_customer', '=', 'customer.id_customer')
-        ->select(
-            'invoice.uuid',
-            'invoice.submission_status',
-            'invoice.invoice_no',
-            'invoice.id_supplier',
-            'invoice.id_customer',
-            'invoice.id_invoice',
-            'invoice.issue_date',
-            'invoice.price',
-            'invoice.invoice_status',
-            'customer.registration_name as customer_name'
-        );
+    {
+        $query = DB::table('invoice AS i')
+            ->leftJoin('customer AS c', 'i.id_customer', '=', 'c.id_customer')
+            ->select(
+                'i.uuid',
+                'i.submission_status',
+                'i.invoice_no',
+                'i.id_supplier',
+                'i.id_customer',
+                'i.id_invoice',
+                'i.issue_date',
+                'i.price',
+                'i.invoice_status',
+                'c.registration_name as customer_name'
+            );
 
-    // ⬇️ Filter ikut tarikh mula
-    if ($request->filled('start_date')) {
-        $query->whereDate('invoice.issue_date', '>=', $request->start_date);
+        if ($request->filled('start_date')) {
+            $query->whereDate('i.issue_date', '>=', $request->start_date);
+        }
+        if ($request->filled('end_date')) {
+            $query->whereDate('i.issue_date', '<=', $request->end_date);
+        }
+
+        if ($request->filled('status')) {
+            if ($request->status == 'pending') {
+                $query->where(function ($q) {
+                    $q->whereNull('i.submission_status')
+                        ->orWhere('i.submission_status', '')
+                        ->orWhere('i.submission_status', 'Pending');
+                });
+            } else {
+                $query->where('i.submission_status', $request->status);
+            }
+        }
+
+        if (auth()->user()->role !== 'admin') {
+            $query->where('i.connection_integrate', session('connection_integrate'));
+        }
+
+        $invoices = $query->orderBy('i.id_invoice', 'asc')->get();
+        return view('invoices.submission', compact('invoices'));
     }
-
-    // ⬇️ Filter ikut tarikh akhir
-    if ($request->filled('end_date')) {
-        $query->whereDate('invoice.issue_date', '<=', $request->end_date);
-    }
-
-    // ⬇️ Filter ikut status submission
-    if ($request->filled('status')) {
-        $query->where('invoice.submission_status', $request->status);
-    }
-
-    // ⬇️ Tambah role-based filtering
-    if (auth()->user()->role !== 'admin') {
-        $query->where('invoice.connection_integrate', session('connection_integrate'));
-    }
-
-    // ⬇️ Dapatkan keputusan
-    $invoices = $query->orderBy('invoice.id_invoice', 'asc')->get();
-
-    return view('invoices.submission', compact('invoices'));
-}
-
 
     public function syncFromPOS(Request $request)
     {
-        $pos = $request->query('pos'); // e.g., bill
+        $pos = $request->query('pos');
         $sale_id = $request->query('sale_id');
-    
+
         if (!is_numeric($sale_id)) {
             return response()->json(['error' => 'Invalid sale_id.'], 400);
         }
-    
+
         Session::put('connection_integrate', $pos);
-    
-        // Dynamically load config from .env
         $connections = explode(',', env('INTEGRATE_POS_CONNECTIONS'));
         if (!in_array($pos, $connections)) {
             return response()->json(['error' => 'POS connection not allowed'], 403);
         }
-    
+
         $connectionKey = strtoupper($pos);
         $config = [
             'driver' => 'mysql',
@@ -621,44 +548,38 @@ public function submitSelected(Request $request)
             'prefix' => '',
             'strict' => false,
         ];
-    
+
         Config::set("database.connections.dynamic_pos", $config);
-    
-        // Check if invoice already exists
+
         $existing = DB::table('invoice')
             ->where('sale_id_integrate', $sale_id)
             ->where('connection_integrate', $pos)
             ->first();
-    
 
         $id_supplier = DB::table('customer')
             ->where('connection_integrate', $pos)
             ->value('id_customer');
 
         if (!$id_supplier) {
-            return response()->json(['error' => 'Supplier not found for POS'], 404);
+            return response()->json(['error' => 'Supplier not found'], 404);
         }
 
         session(['id_supplier' => $id_supplier]);
 
-        
-    
         try {
-           
-    
             $sale = DB::connection('dynamic_pos')->table('phppos_sales')->where('sale_id', $sale_id)->first();
             if (!$sale) return response()->json(['error' => 'Sale not found'], 404);
-    
+
             $items = DB::connection('dynamic_pos')
                 ->table('phppos_sales_items as si')
                 ->join('phppos_items as i', 'si.item_id', '=', 'i.item_id')
                 ->where('si.sale_id', $sale_id)
                 ->select('si.*', 'i.name as item_name')
                 ->get();
-    
+
             DB::beginTransaction();
             $unique_id = strtoupper(bin2hex(random_bytes(8)));
-      
+
             $invoice_id = DB::table('invoice')->insertGetId([
                 'invoice_no' => $sale_id,
                 'unique_id' => $unique_id,
@@ -681,7 +602,7 @@ public function submitSelected(Request $request)
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-    
+
             foreach ($items as $item) {
                 DB::table('invoice_item')->insert([
                     'id_invoice' => $invoice_id,
@@ -700,570 +621,145 @@ public function submitSelected(Request $request)
                     'updated_at' => now(),
                 ]);
             }
-    
+
             DB::commit();
-           
-            session(['invoice_unique_id' => $unique_id]);
-            session(['id_supplier' => $id_supplier]);
-    
+            session(['invoice_unique_id' => $unique_id, 'id_supplier' => $id_supplier]);
             return Redirect::to(url("/createcustomer/{$unique_id}"));
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['error' => 'Failed to sync invoice', 'details' => $e->getMessage()], 500);
+            return response()->json(['error' => 'Failed to sync', 'details' => $e->getMessage()], 500);
         }
-
-        if ($existing) {
-            return Redirect::to(url("/createcustomer/{$existing->unique_id}"));
-        }
-    }
-    
-
-    public function import(Request $request)
-    {
-    $file = $request->file('file');
-
-    if (!$file || !$file->isValid()) {
-        return back()->withErrors(['msg' => 'Fail tidak sah']);
-    }
-
-    $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getPathname());
-    $invoiceSheet = $spreadsheet->getSheetByName('invoice');
-    $invoiceItemSheet = $spreadsheet->getSheetByName('invoice_item');
-
-    $invoices = $invoiceSheet->toArray(null, true, true, true);
-    $items = $invoiceItemSheet->toArray(null, true, true, true);
-
-    // Kumpul invoice_no yang ada dalam invoice_item
-    $invoiceNosInItem = collect(array_slice($items, 1))->pluck('A')->map(function ($v) {
-        return trim($v);
-    })->unique()->toArray();
-
-    $errors = [];
-
-    DB::beginTransaction();
-    try {
-        foreach (array_slice($invoices, 1) as $rowIndex => $row) {
-            $invoice_no = trim($row['A']);
-            $customer_name = trim($row['B']);
-            $id_supplier = $row['C'];
-            $issue_date = $row['D'];
-            $price = $row['E'];
-            $taxable_amount = $row['F'];
-            $tax_amount = $row['G'];
-            $payment_method = $row['H'];
-
-            // ✅ Validate: invoice has matching items
-            if (!in_array($invoice_no, $invoiceNosInItem)) {
-                $errors[] = "❌ Baris " . ($rowIndex + 2) . ": Invoice '$invoice_no' tiada item.";
-                continue; // skip insert
-            }
-
-            // ✅ Check or auto-create customer
-            $customer = DB::table('customers')->where('customer_name', $customer_name)->first();
-            if (!$customer) {
-                // Auto-insert customer
-                $id_customer = DB::table('customers')->insertGetId([
-                    'customer_name' => $customer_name,
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
-            } else {
-                $id_customer = $customer->id_customer;
-            }
-
-            // ✅ Insert invoice
-            $id_invoice = DB::table('invoice')->insertGetId([
-                'invoice_no' => $invoice_no,
-                'id_customer' => $id_customer,
-                'id_supplier' => $id_supplier,
-                'issue_date' => $issue_date,
-                'price' => $price,
-                'taxable_amount' => $taxable_amount,
-                'tax_amount' => $tax_amount,
-                'payment_method' => $payment_method,
-                'invoice_status' => 'Valid',
-                'invoice_type_code' => '01',
-                'created_at' => now(),
-                'updated_at' => now()
-            ]);
-
-            // ✅ Insert invoice items
-            foreach (array_slice($items, 1) as $item) {
-                if (trim($item['A']) === $invoice_no) {
-                    DB::table('invoice_item')->insert([
-                        'id_invoice' => $id_invoice,
-                        'id_customer' => $id_customer,
-                        'line_id' => $item['B'],
-                        'invoiced_quantity' => $item['C'],
-                        'item_description' => $item['D'],
-                        'price_amount' => $item['E'],
-                        'price_discount' => $item['F'],
-                        'price_extension_amount' => $item['G']
-                    ]);
-                }
-            }
-        }
-
-        DB::commit();
-
-        if (count($errors) > 0) {
-            return back()->with('partial_success', 'Import sebahagian berjaya.')->withErrors($errors);
-        } else {
-            return back()->with('success', 'Import berjaya sepenuhnya.');
-        }
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return back()->withErrors(['msg' => 'Gagal import sepenuhnya: ' . $e->getMessage()]);
-    }
-    }
-
-    public function export()
-    {
-        $customers = DB::table('customers')->select('id_customer', 'customer_name')->get();
-
-        $spreadsheet = new Spreadsheet();
-
-        // Sheet: customer_list
-        $customerSheet = $spreadsheet->getActiveSheet();
-        $customerSheet->setTitle('customer_list');
-        $customerSheet->fromArray(['id_customer', 'customer_name'], null, 'A1');
-
-        foreach ($customers as $index => $customer) {
-            $row = $index + 2;
-            $customerSheet->setCellValue("A$row", $customer->id_customer);
-            $customerSheet->setCellValue("B$row", $customer->customer_name);
-        }
-
-        // Sheet: invoice
-        $invoiceSheet = $spreadsheet->createSheet();
-        $invoiceSheet->setTitle('invoice');
-        $invoiceSheet->fromArray([
-            'invoice_no', 'id_customer', 'id_supplier', 'issue_date',
-            'price', 'taxable_amount', 'tax_amount', 'payment_method'
-        ], null, 'A1');
-
-        // Apply dropdown to B2 (id_customer)
-        $validation = new DataValidation();
-        $validation->setType(DataValidation::TYPE_LIST);
-        $validation->setErrorStyle(DataValidation::STYLE_STOP);
-        $validation->setAllowBlank(false);
-        $validation->setShowInputMessage(true);
-        $validation->setShowErrorMessage(true);
-        $validation->setShowDropDown(true);
-        $validation->setFormula1('=customer_list!$B$2:$B$100');
-
-        $invoiceSheet->setCellValue('B2', '');
-        $invoiceSheet->getCell('B2')->setDataValidation($validation);
-
-        // Sheet: invoice_item
-        $itemSheet = $spreadsheet->createSheet();
-        $itemSheet->setTitle('invoice_item');
-        $itemSheet->fromArray([
-            'invoice_no', 'line_id', 'invoiced_quantity', 'item_description',
-            'price_amount', 'price_discount', 'price_extension_amount'
-        ], null, 'A1');
-
-        // Apply dropdown to invoice_no in itemSheet (A2)
-        $invoiceDropdown = new DataValidation();
-        $invoiceDropdown->setType(DataValidation::TYPE_LIST);
-        $invoiceDropdown->setErrorStyle(DataValidation::STYLE_STOP);
-        $invoiceDropdown->setAllowBlank(false);
-        $invoiceDropdown->setShowDropDown(true);
-        $invoiceDropdown->setFormula1('=invoice!$A$2:$A$100');
-
-        $itemSheet->setCellValue('A2', '');
-        $itemSheet->getCell('A2')->setDataValidation($invoiceDropdown);
-
-        // Set active sheet back to invoice
-        $spreadsheet->setActiveSheetIndexByName('invoice');
-
-        // Output Excel
-        $filename = 'invoice_template.xlsx';
-        $writer = new Xlsx($spreadsheet);
-
-        // Stream download
-        return response()->streamDownload(function () use ($writer) {
-            $writer->save('php://output');
-        }, $filename, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        ]);
-    }
-
-
-
-    public function store(Request $request)
-    {
-    $invoice_no = $request->invoice_no;
-    $id_customer = $request->id_customer;
-
-    // Check if invoice already exists
-    $invoice = DB::table('invoice')
-        ->where('invoice_no', $invoice_no)
-        ->where('id_customer', $id_customer)
-        ->first();
-
-    $invoiceData = [
-        'id_customer' => $id_customer,
-        'id_supplier' => $request->id_supplier,
-        'invoice_status' => $request->invoice_status ?? 'Valid',
-        'invoice_type_code' => '11',
-        'issue_date' => $request->issue_date ?? now(),
-        'price' => $request->price,
-        'taxable_amount' => $request->taxable_amount,
-        'tax_amount' => $request->tax_amount,
-        'tax_category_id' => $request->tax_category_id,
-        'tax_exemption_reason' => $request->tax_exemption_reason,
-        'tax_scheme_id' => $request->tax_scheme_id,
-        'tax_percent' => $request->tax_percent,
-        'payment_note_term' => $request->payment_note_term,
-        'payment_financial_account' => $request->payment_financial_account,
-        'include_signature' => $request->include_signature ?? 0,
-        'uuid' => $request->uuid ?? (string) Str::uuid(),
-        'submission_uuid' => $request->submission_uuid ?? (string) Str::uuid(),
-        'long_id' => $request->long_id ?? 1,
-        'payment_method' => $request->payment_method,
-        'updated_at' => now()
-    ];
-
-    DB::beginTransaction();
-
-    try {
-        if ($invoice) {
-            // Update if exists
-            DB::table('invoice')
-                ->where('id_invoice', $invoice->id_invoice)
-                ->update($invoiceData);
-
-            $invoice_id = $invoice->id_invoice;
-
-            // Delete old items
-            DB::table('invoice_item')
-                ->where('id_invoice', $invoice_id)
-                ->delete();
-        } else {
-            // Add extra fields for insert
-            $invoiceData['invoice_no'] = $invoice_no;
-            $invoiceData['created_at'] = now();
-
-            // Insert and get ID
-            $invoice_id = DB::table('invoice')->insertGetId($invoiceData);
-        }
-
-        // Insert items
-        foreach ($request->items as $item) {
-            DB::table('invoice_item')->insert([
-                'id_invoice' => $invoice_id,
-                'id_customer' => $id_customer,
-                'line_id' => $item['line_id'],
-                'invoiced_quantity' => $item['invoiced_quantity'],
-                'line_extension_amount' => $item['line_extension_amount'],
-                'item_description' => $item['item_description'],
-                'price_amount' => $item['price_amount'],
-                'price_discount' => $item['price_discount'],
-                'price_extension_amount' => $item['price_extension_amount'] ?? null,
-                'item_clasification_type' => $item['item_clasification_type'] ?? null,
-                'item_clasification_value' => $item['item_clasification_value'] ?? null,
-            ]);
-        }
-
-        DB::commit();
-
-        return response()->json(['message' => 'Invoice saved successfully', 'invoice_id' => $invoice_id]);
-
-    } catch (\Exception $e) {
-        DB::rollback();
-        return response()->json(['error' => 'Something went wrong', 'details' => $e->getMessage()], 500);
-    }
-    }
-
-    public function show($id)
-    {
-    
-    $session = session('invoice_unique_id');
-    $id_supplier=session('id_supplier');
-
-    $invoice = new eInvoisModel;
-    $invoice->submit($id);
-    
-
-    $invoice = $record = DB::table('invoice')->where('unique_id', $session)->first();
-    $supplier = DB::table('customer')->where('id_customer', $id_supplier)->first(); // Adjust ID as needed
-    $customer = DB::table('customer')->where('id_customer', $id)->first(); // Adjust ID as needed
-    $items = DB::table('invoice_item')->where('unique_id', $session)->get();
-
-
-    // Generate PDF
-    //$pdf = PDF::loadView('invoices.show', compact('invoice', 'customer', 'items'));
-
-    // Save PDF temporarily
-    $pdfPath = storage_path("app/public/invoice_{$invoice->invoice_no}.pdf");
-   // $pdf->save($pdfPath);
-    
-    // Send Email
-    Mail::to($customer->email)->send((new InvoiceSent($invoice, $customer, $items,$supplier )));
-    
-
-    return view('emails.sent', compact('invoice', 'customer','supplier', 'items'))
-        ->with('success', 'Invoice sent to customer.');
-    }
-
-    public function presubmit($id)
-    {
-        $session = session('invoice_unique_id');
-        $id_supplier = session('id_supplier');
-       
-        // Update invoice record to assign customer
-        DB::table('invoice')
-            ->where('unique_id', $session)
-            ->update(['id_customer' => $id]);
-
-            DB::table('invoice_item')
-            ->where('unique_id', $session)
-            ->update(['id_customer' => $id]);
-
-            
-        // Fetch updated records
-        $invoice = DB::table('invoice')->where('unique_id', $session)->first();
-        $supplier = DB::table('customer')->where('id_customer', $id_supplier)->first();
-        $customer = DB::table('customer')->where('id_customer', $id)->first();
-        $items = DB::table('invoice_item')->where('unique_id', $session)->get();
-
-        return view('invoices.invoice', compact('invoice', 'supplier', 'customer', 'items'))
-            ->with('success', 'Invoice sent to customer.');
-    }
-
-    public function compareDigestValues($json) {
-
-        $data = json_decode($json, true);
-
-        if (!$data) {
-            throw new Exception("Invalid JSON");
-        }
-    
-        $digestResults = [];
-    
-        // Helper: generate digest (SHA256 + base64)
-        $generateDigest = function($content) {
-            return base64_encode(hash('sha256', $content, true));
-        };
-    
-        // 1. id-doc-signed-data → document without UBLExtensions
-        $unsignedData = $data;
-        unset($unsignedData['Invoice'][0]['UBLExtensions']);
-        $unsignedString = json_encode($unsignedData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        $docDigest = $generateDigest($unsignedString);
-    
-        $refList = &$data['Invoice'][0]['UBLExtensions'][0]['UBLExtension'][0]['ExtensionContent'][0]
-            ['UBLDocumentSignatures'][0]['SignatureInformation'][0]['Signature'][0]['SignedInfo'][0]['Reference'];
-    
-        foreach ($refList as &$ref) {
-            if (isset($ref['Id']) && $ref['Id'] == 'id-doc-signed-data') {
-                $original = $ref['DigestValue'][0]['_'];
-                if ($original !== $docDigest) {
-                    $ref['DigestValue'][0]['_'] = $docDigest;
-                    $digestResults['id-doc-signed-data'] = ['old' => $original, 'new' => $docDigest];
-                }
-            }
-            if (isset($ref['URI']) && $ref['URI'] == '#id-xades-signed-props') {
-                $propsContent = $data['Invoice'][0]['UBLExtensions'][0]['UBLExtension'][0]['ExtensionContent'][0]
-                    ['UBLDocumentSignatures'][0]['SignatureInformation'][0]['Signature'][0]['Object'][0]
-                    ['QualifyingProperties'][0]['SignedProperties'][0];
-                $propsString = json_encode($propsContent, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-                $propsDigest = $generateDigest($propsString);
-                $original = $ref['DigestValue'][0]['_'];
-                if ($original !== $propsDigest) {
-                    $ref['DigestValue'][0]['_'] = $propsDigest;
-                    $digestResults['id-xades-signed-props'] = ['old' => $original, 'new' => $propsDigest];
-                }
-            }
-        }
-    
-        // 3. CertDigest (SigningCertificate > Cert > CertDigest)
-        $certDigestRef = &$data['Invoice'][0]['UBLExtensions'][0]['UBLExtension'][0]['ExtensionContent'][0]
-            ['UBLDocumentSignatures'][0]['SignatureInformation'][0]['Signature'][0]['Object'][0]
-            ['QualifyingProperties'][0]['SignedProperties'][0]['SignedSignatureProperties'][0]
-            ['SigningCertificate'][0]['Cert'][0]['CertDigest'][0]['DigestValue'][0]['_'];
-    
-        $certB64 = $data['Invoice'][0]['UBLExtensions'][0]['UBLExtension'][0]['ExtensionContent'][0]
-            ['UBLDocumentSignatures'][0]['SignatureInformation'][0]['Signature'][0]['KeyInfo'][0]
-            ['X509Data'][0]['X509Certificate'][0]['_'];
-    
-        $certBytes = base64_decode($certB64);
-        $certDigestCalc = $generateDigest($certBytes);
-    
-        if ($certDigestRef !== $certDigestCalc) {
-            $digestResults['CertDigest'] = ['old' => $certDigestRef, 'new' => $certDigestCalc];
-            $certDigestRef = $certDigestCalc;
-        }
-    
-      // print_r($digestResults);
-    
-        return json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    
-
-    }
-    
-    public function qr()
-    {
-        
-        $invoice = new eInvoisModel;
-       
-
-        $client = $invoice->getClient();
-        $client->login();
-        $access_token = $client->getAccessToken();
-        $client->setAccessToken($access_token);
-
-        $id = 'QW2J0X82CBTDNVZFBYJ724WJ10';
-        $longId = '6FH36EGF2R20F487BYJ724WJ10';
-        echo $url = $client->generateDocumentQrCodeUrl($id, $longId);
-
     }
 
     public function cancelDocument($uuid)
     {
-     
         $invoice = new eInvoisModel;
         $reason = 'Customer refund';
         return $invoice->cancelDocument($uuid, $reason);
     }
 
-    public function rejectDocument(string $id, string $reason = 'Customer reject')
-    {
-        $invoice = new eInvoisModel;
-       
-
-        $client = $invoice->getClient();
-        $client->login();
-        $access_token = $client->getAccessToken();
-        $client->setAccessToken($access_token);
-   
-
-        return $this->client->rejectDocument($id, $reason);
-    }
-
-    public function getRecentDocuments(
-        int $pageNo = 1,
-        int $pageSize = 20,
-        ?string $submissionDateFrom = null,
-        ?string $submissionDateTo = null,
-        ?string $issueDateFrom = null,
-        ?string $issueDateTo = null,
-        string $direction = 'Sent',
-        string $status = 'Valid',
-        ?string $documentType = '01',
-        ?string $receiverId = null,
-        ?string $receiverIdType = null,
-        ?string $receiverTin = null,
-        ?string $issuerId = null,
-        ?string $issuerIdType = null,
-        ?string $issuerTin = null
-    ) {
-        $invoice = new eInvoisModel;
-       
-
-        $client = $invoice->getClient();
-        $client->login();
-        $access_token = $client->getAccessToken();
-        $client->setAccessToken($access_token);
-
-        return $this->client->getRecentDocuments(
-            $pageNo, $pageSize,
-            $submissionDateFrom, $submissionDateTo,
-            $issueDateFrom, $issueDateTo,
-            $direction, $status, $documentType,
-            $receiverId, $receiverIdType, $receiverTin,
-            $issuerId, $issuerIdType, $issuerTin
-        );
-    }
-
     public function getSubmission(string $id, int $pageNo = 1, int $pageSize = 100)
     {
         $invoice = new eInvoisModel;
-       
-
         $client = $invoice->getClient();
         $client->login();
-        $access_token = $client->getAccessToken();
-        $client->setAccessToken($access_token);
-
-        return $this->client->getSubmission($id, $pageNo, $pageSize);
+        $client->setAccessToken($client->getAccessToken());
+        return $client->getSubmission($id, $pageNo, $pageSize);
     }
 
-    public function getDocument(string $id)
-    {
-        $invoice = new eInvoisModel;
-       
+    /**
+     * Submit Selected to LHDN - Main Logic based on InvoiceSubmissionController
+     */
+public function submitSelectedLHDN(Request $request)
+{
+    // FIX: receive invoices from AJAX
+    $selectedIds = $request->input('invoices', []);
 
-        $client = $invoice->getClient();
-        $client->login();
-        $access_token = $client->getAccessToken();
-        $client->setAccessToken($access_token);
-
-        return $this->client->getDocument($id);
+    if (empty($selectedIds)) {
+        return response()->json([
+            'success' => false,
+            'message' => 'No invoices selected.'
+        ], 400);
     }
 
-    public function getDocumentDetail(string $id)
-    {
-        $invoice = new eInvoisModel;
-       
+    // Validate invoices belong to developer/connection
+    $invoices = DB::table('invoice')
+        ->whereIn('id_invoice', $selectedIds)
+        ->get();
 
-        $client = $invoice->getClient();
-        $client->login();
-        $access_token = $client->getAccessToken();
-        $client->setAccessToken($access_token);
-
-        return $this->client->getDocumentDetail($id);
+    if ($invoices->isEmpty()) {
+        return response()->json([
+            'success' => false,
+            'message' => 'No valid invoices found.'
+        ], 400);
     }
 
-    public function searchDocuments(
-        ?string $id = null,
-        ?\DateTime $submissionDateFrom = null,
-        ?string $submissionDateTo = null,
-        int $pageNo = 1,
-        int $pageSize = 100,
-        ?string $issueDateFrom = null,
-        ?string $issueDateTo = null,
-        string $direction = 'Sent',
-        string $status = 'Valid',
-        ?string $documentType = '01',
-        ?string $searchQuery = null
-    ) {
-        $invoice = new eInvoisModel;
-       
+    $successCount = 0;
+    $failCount = 0;
+    $errors = [];
 
-        $client = $invoice->getClient();
-        $client->login();
-        $access_token = $client->getAccessToken();
-        $client->setAccessToken($access_token);
+    foreach ($invoices as $inv) {
+        try {
+            // ---------------------------------------------------------
+            // 1. REPAIR HEADER DATA (Force "0.00" VARCHAR format)
+            // Fixes: "Missing TaxTotal taxAmount"
+            // ---------------------------------------------------------
+            $taxAmount = (float)($inv->tax_amount ?? 0);
+            $taxableAmount = (float)($inv->taxable_amount ?? 0);
+            $price = (float)($inv->price ?? 0);
 
-        return $this->client->searchDocuments(
-            $id,
-            $submissionDateFrom,
-            $submissionDateTo,
-            $pageNo,
-            $pageSize,
-            $issueDateFrom,
-            $issueDateTo,
-            $direction,
-            $status,
-            $documentType,
-            $searchQuery
-        );
+            DB::table('invoice')->where('id_invoice', $inv->id_invoice)->update([
+                'tax_amount'     => number_format($taxAmount, 2, '.', ''),
+                'taxable_amount' => number_format($taxableAmount, 2, '.', ''),
+                'price'          => number_format($price, 2, '.', ''),
+                'updated_at'     => now()
+            ]);
+
+            // ---------------------------------------------------------
+            // 2. REPAIR ITEM DATA (Required for LHDN TaxTotal validation)
+            // ---------------------------------------------------------
+            DB::table('invoice_item')
+                ->where('id_invoice', $inv->id_invoice)
+                ->get()
+                ->each(function($item) {
+                    DB::table('invoice_item')
+                        ->where('id_invoice_item', $item->id_invoice_item)
+                        ->update([
+                            'tax'                      => number_format((float)($item->tax ?? 0), 2, '.', ''),
+                            'line_extension_amount'    => number_format((float)$item->line_extension_amount, 2, '.', ''),
+                            'price_amount'             => number_format((float)$item->price_amount, 2, '.', ''),
+                            'item_clasification_value' => $item->item_clasification_value ?? '004'
+                        ]);
+                });
+
+            // ---------------------------------------------------------
+            // 3. SESSION SETUP (Based on InvoiceSubmissionController)
+            // ---------------------------------------------------------
+            // Set the dynamic connection for API keys
+            Session::put('connection_integrate', $inv->connection_integrate);
+
+            // Reset status first to prevent bleed from previous loop iteration
+            session(['consolidate_status' => '']);
+
+            // REFERENCE LOGIC: Set to '1' if customer is empty or default consolidate buyer (ID 6)
+            if (empty($inv->id_customer) || $inv->id_customer == 6) {
+                session(['consolidate_status' => '1']);
+            }
+
+            session([
+                'invoice_type_code' => '01',
+                'invoice_unique_id' => $inv->unique_id
+            ]);
+
+            // ---------------------------------------------------------
+            // 4. SUBMIT TO LHDN
+            // ---------------------------------------------------------
+            $model = new \App\Models\eInvoisModel;
+            $model->submit($inv->id_invoice);
+
+            // Update status on success
+            DB::table('invoice')->where('id_invoice', $inv->id_invoice)->update([
+                'submission_status' => 'Submitted',
+                'updated_at'        => now()
+            ]);
+
+            $successCount++;
+        } catch (\Exception $e) {
+            $failCount++;
+            $errors[] = "Inv #{$inv->invoice_no}: " . $e->getMessage();
+
+            DB::table('invoice')->where('id_invoice', $inv->id_invoice)->update([
+                'submission_status' => 'Failed',
+                'updated_at'        => now()
+            ]);
+        }
     }
 
-    public function generateDocumentQrCodeUrl(string $id, string $longId): string
-    {
-        $invoice = new eInvoisModel;
-       
-
-        $client = $invoice->getClient();
-        $client->login();
-        $access_token = $client->getAccessToken();
-        $client->setAccessToken($access_token);
-
-        return $this->client->generateDocumentQrCodeUrl($id, $longId);
-    }
+    return response()->json([
+        'success' => ($failCount === 0),
+        'message' => "Processed " . count($selectedIds) . " invoices. Success: $successCount, Failed: $failCount",
+        'errors'  => $errors,
+        'connection_integrate' => session('connection_integrate')
+    ], 200);
 }
-?>
+}

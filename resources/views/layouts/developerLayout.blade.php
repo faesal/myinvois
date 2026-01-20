@@ -594,90 +594,50 @@
 
     <!-- ===== SIDEBAR ===== -->
 
-    <div class="dev-sidebar" id="mobileSidebar">
+<div class="dev-sidebar" id="mobileSidebar">
 
+    <ul class="dev-menu">
+        <li>
+            <a href="{{ url('/developer/dashboard') }}" class="{{ request()->is('developer/dashboard') ? 'active' : '' }}">
+                <i class="fa-solid fa-gauge"></i> Dashboard
+            </a>
+        </li>
 
+        <li>
+            <a href="{{ url('/developer/consolidate') }}" class="{{ request()->is('developer/consolidate*') ? 'active' : '' }}">
+                <i class="fa-solid fa-file-invoice"></i> Consolidate List
+            </a>
+        </li>
 
-        <ul class="dev-menu">
+        <li>
+            <a href="{{ route('developer.invoices.index') }}" class="{{ request()->is('developer/invoices*') ? 'active' : '' }}">
+                <i class="fa-solid fa-file-export"></i> Invoice Submissions
+            </a>
+        </li>
 
+        <li>
+            <a href="{{ route('developer.companies.index') }}" class="{{ request()->is('developer/companies*') ? 'active' : '' }}">
+                <i class="fa-solid fa-building"></i> LHDN Accounts
+            </a>
+        </li>
+
+        <ul class="submenu">
             <li>
-
-                <a href="{{ url('/developer/dashboard') }}" class="{{ request()->is('developer/dashboard') ? 'active' : '' }}">
-
-                    <i class="fa-solid fa-gauge"></i> Dashboard
-
+                <a href="{{ route('developer.companies.add') }}">
+                    <i class="fa-solid fa-plus"></i> Add New Account
                 </a>
-
             </li>
-
-
-
-            <li>
-
-                <a href="{{ url('/developer/consolidate') }}">
-
-                    <i class="fa-solid fa-file-invoice"></i> Consolidate List
-
-                </a>
-
-            </li>
-
-
-
-           <li>
-
-                <a href="{{ route('developer.invoices.index') }}">
-
-                    <i class="fa-solid fa-file-invoice"></i> Invoice Submissions
-
-                </a>
-
-            </li>
-
-
-
-            <li>
-
-                <a href="{{ route('developer.companies.index') }}">
-
-                    <i class="fa-solid fa-building"></i> LHDN Accounts
-
-                </a>
-
-            </li>
-
-
-
-            <ul class="submenu">
-
-                <li>
-
-                    <a href="{{ route('developer.companies.add') }}">
-
-                        <i class="fa-solid fa-plus"></i> Add New Account
-
-                    </a>
-
-                </li>
-
-
-
-            </ul>
-            <li>
-
-<a href="{{ url('/developer/documentation') }}">
-
-    <i class="fa-solid fa-file-invoice"></i> API Documentation
-
-</a>
-
-</li>
         </ul>
+        
 
-       
+        <li>
+            <a href="{{ url('/developer/documentation') }}">
+                <i class="fa-solid fa-book"></i> API Documentation
+            </a>
+        </li>
+    </ul>
 
-    </div>
-
+</div>
 
 
     <!-- ===== MAIN CONTENT ===== -->

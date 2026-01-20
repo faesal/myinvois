@@ -153,4 +153,9 @@ class DeveloperDashboardController extends Controller
         ]);
 
     }
+    public function settings()
+{
+    // This will load resources/views/developer/settings.blade.php
+    return view('developer.settings');
+}
 }

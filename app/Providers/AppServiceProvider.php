@@ -51,41 +51,9 @@ class AppServiceProvider extends ServiceProvider
 
             View::composer('*', function($view){
 
-                $general_setting = Cache::get('setting');
+               
 
-                $language_list = Language::where('status', 1)->get();
-                $currency_list = Currency::where('status', 'active')->get();
-
-                $footer = Footer::first();
-
-                if (Auth::guard('web')->check()) {
-                    $userId = Auth::guard('web')->id();
-
-                    $wishlistItems = Wishlist::where('user_id', $userId)->get();
-
-                    $wishlist = $wishlistItems->map(function ($item) {
-                        $product = Product::find($item->product_id);
-                        return [
-                            'wishlist_item' => $item,
-                            'product' => $product,
-                            'translated_name' => $product->name,
-                            'item_id' => $product->id,
-                        ];
-                    });
-
-                    $view->with('wishlist', $wishlist);
-                } else {
-                    $view->with('wishlist', collect());
-                }
-
-
-
-
-
-                $view->with('general_setting', $general_setting);
-                $view->with('language_list', $language_list);
-                $view->with('currency_list', $currency_list);
-                $view->with('footer', $footer);
+               
 
             });
 

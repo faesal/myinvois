@@ -127,13 +127,18 @@
     </div>
 
     <div class="validation-strip">
-        <strong>IRBM Unique Identifier Number:</strong> {{ $invoice->uuid }}<br>
+        <strong>LHDN UUID:</strong> {{ $invoice->uuid }}<br>
+        <strong>MYSYNCTAX UUID:</strong> {{ $invoice->unique_id }}<br>
         <strong>Date and Time of Validation:</strong>
         {{ \Carbon\Carbon::parse($invoice->created_at)->format('d-m-Y H:i:s') }}
     </div>
 
+
     <table class="data-table" style="margin-top:8px;">
         <tr>
+            @if ($invoice->invoice_type_code=='01' || $invoice->invoice_type_code=='02' || $invoice->invoice_type_code=='03' || $invoice->invoice_type_code=='04')
+
+            
             <td width="50%">
                 <div class="section-title">Supplier Details</div>
                 Name: {{ $supplier->registration_name }}<br>
@@ -160,6 +165,38 @@
                 {{ $customer->postal_zone }},
                 {{ $customer->country_code }}
             </td>
+            @else
+
+            <td width="50%">
+                <div class="section-title">Supplier Details</div>
+                Name: {{ $customer->registration_name }}<br>
+                TIN: {{ $customer->tin_no }}<br>
+                Identification No.: {{ $customer->identification_no }}<br>
+                Email: {{ $customer->email }}<br>
+                Contact Number: {{ $customer->phone }}<br>
+                Address:
+                {{ $customer->address_line_1 }} {{ $customer->address_line_2 }},
+                {{ $customer->city_name }},
+                {{ $customer->postal_zone }},
+                {{ $customer->country_code }}
+            </td>
+
+
+            <td width="50%">
+                <div class="section-title">Buyer Details</div>
+                Name: {{ $supplier->registration_name }}<br>
+                TIN: {{ $supplier->tin_no }}<br>
+                Identification No.: {{ $supplier->identification_no }}<br>
+                Email: {{ $supplier->email }}<br>
+                Contact Number: {{ $supplier->phone }}<br>
+                Address:
+                {{ $supplier->address_line_1 }} {{ $supplier->address_line_2 }},
+                {{ $supplier->city_name }},
+                {{ $supplier->postal_zone }},
+                {{ $supplier->country_code }}
+            </td>
+            
+            @endif
         </tr>
     </table>
 
@@ -185,17 +222,25 @@
                 <td class="right">{{ $item->invoiced_quantity }}</td>
                 <td class="right">{{ number_format($item->price_amount,2) }}</td>
                 <td class="right">{{ number_format($item->price_discount,2) }}</td>
-                <td class="right">{{ number_format($item->line_extension_amount,2) }}</td>
+                <td class="right">{{ number_format($item->price_extension_amount,2) }}</td>
             </tr>
             @php $total += $item->line_extension_amount; @endphp
             @endforeach
         </tbody>
     </table>
-
+    @php
+        $total=$invoice->taxable_amount+$invoice->tax_amount;
+       
+    @endphp
     <table class="data-table" style="margin-top:6px;">
+    <tr>
+            <td class="right">Total Discount</td>
+
+            <td class="right">MYR {{ number_format($invoice->total_price_discount,2) }}</td>
+        </tr>
         <tr>
             <td class="right">Total Excluding Tax</td>
-            <td class="right" width="20%">MYR {{ number_format($total,2) }}</td>
+            <td class="right" width="20%">MYR {{ number_format($invoice->taxable_amount,2) }}</td>
         </tr>
         <tr>
             <td class="right">Total Tax Amount</td>
@@ -203,7 +248,8 @@
         </tr>
         <tr>
             <td class="right"><strong>Total Payable Amount</strong></td>
-            <td class="right"><strong>MYR {{ number_format($invoice->price,2) }}</strong></td>
+           
+            <td class="right"><strong>MYR {{ number_format($total,2) }}</strong></td>
         </tr>
     </table>
 
@@ -225,7 +271,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <script>
-    const uuid = "{{ $invoice->uuid }}";
+    const uuid = "{{ $invoice->unique_id }}";
 
     fetch(`{{ url('qr_link') }}/${uuid}`)
         .then(res => res.text())

@@ -48,7 +48,13 @@ use App\Http\Controllers\DeveloperProfileController;
 
 use App\Http\Controllers\ConsolidateImportController;
 
+use App\Http\Controllers\ConsolidateListingController;
 
+use App\Http\Controllers\SubscriberController;
+
+use App\Http\Controllers\ManageDeveloperController;
+
+use App\Http\Controllers\ClientSettingController;
 
 
 
@@ -77,7 +83,6 @@ Route::get('/clear-controller-cache', function () {
     return 'Controller (route) cache cleared';
 
 });
-
 
 
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
@@ -185,39 +190,50 @@ Route::middleware('auth')->group(function () {
         Route::any('/show_invoice/{id_supplier}/{id_customer}/{id_invoice}', [InvoiceController::class, 'show_invoice']);
 
         Route::any('select_items', [InvoiceController::class, 'selectItems'])->name('consolidate.select');
-
-
-
-        // ========================================================================
-
-        // CONSOLIDATE BATCH IMPORT - ADD THESE ROUTES HERE
-
-        // ========================================================================
-
+        Route::post('/invoice/submit-selected-lhdn', [InvoiceController::class, 'submitSelectedLHDN'])->name('invoice.submit_selected_lhdn');
         
 
-       // Consolidate Import Routes
-   // PLACE THE BLOCK HERE
-    Route::prefix('consolidate')->name('consolidate.')->group(function () {
-        Route::get('/import', [ConsolidateImportController::class, 'index'])->name('import');
-        Route::get('/template', [ConsolidateImportController::class, 'downloadTemplate'])->name('template');
-        Route::post('/import', [ConsolidateImportController::class, 'importBatch'])->name('import.process');
-        Route::get('/view/{id}', [ConsolidateImportController::class, 'view'])->name('view');
-        Route::get('/export-items/{id}', [ConsolidateImportController::class, 'exportItems'])->name('export.items');
+
+
         
-        // Parent Batch Actions
-        Route::post('/update/{id}', [ConsolidateImportController::class, 'update'])->name('update');
-        Route::get('/delete/{id}', [ConsolidateImportController::class, 'destroy'])->name('delete');
+        
 
-        // Child Item Actions (AJAX) - THESE ARE FOR THE VIEW PAGE
-        Route::post('/item/update/{id}', [ConsolidateImportController::class, 'updateItem'])->name('item.update');
-        Route::post('/item/add/{invoice_id}', [ConsolidateImportController::class, 'addItem'])->name('item.add');
-        Route::post('/item/delete-record/{id}', [ConsolidateImportController::class, 'deleteItem'])->name('item.delete');
-    });
+  // ========================================================================
+// CONSOLIDATE BATCH IMPORT ROUTES
+// ========================================================================
+
+Route::prefix('consolidate')->name('consolidate.')->group(function () {
+
+    // 1. MAIN PAGES
+    Route::get('/import', [ConsolidateImportController::class, 'index'])->name('import');
+    Route::get('/template', [ConsolidateImportController::class, 'downloadTemplate'])->name('template');
+    Route::post('/import', [ConsolidateImportController::class, 'importBatch'])->name('import.process');
+    Route::get('/view/{id}', [ConsolidateImportController::class, 'view'])->name('view');
+    Route::post('/update/{id}', [ConsolidateImportController::class, 'update'])->name('update');
+    Route::get('/delete/{id}', [ConsolidateImportController::class, 'destroy'])->name('delete');
+
+    // 2. EXPORT & LHDN
+    Route::get('/export-csv', [ConsolidateImportController::class, 'exportCSV'])->name('export.csv');
+    Route::get('/export-pdf', [ConsolidateImportController::class, 'exportPDF'])->name('export.pdf');
+    Route::post('/submit-lhdn', [ConsolidateImportController::class, 'consolidateSubmitSelected'])->name('submit_lhdn');
+
+    // 3. CHILD ITEMS
+    Route::post('/item/add/{invoice_id}', [ConsolidateImportController::class, 'addItem'])->name('item.add');
+    Route::post('/item/update/{id}', [ConsolidateImportController::class, 'updateItem'])->name('item.update');
+    Route::post('/item/delete-record/{id}', [ConsolidateImportController::class, 'deleteItem'])->name('item.delete');
+
+    // 4. LISTING & SUBMISSION
+    Route::match(['get', 'post'], '/listing', [ConsolidateListingController::class, 'index'])->name('listing');
+    Route::post('/submit-selected', [ConsolidateListingController::class, 'submitSelected'])->name('submitSelected');
+
+    // 5. SHOW INVOICE (FIXED)
+    // The prefix 'consolidate' is already applied by the group.
+    // The name 'consolidate.' is already applied by the group.
+    Route::get('/show/{id_supplier}/{id_invoice}', [ConsolidateListingController::class, 'showInvoice'])->name('show');
+});
+
         // ========================================================================
-
-        // END CONSOLIDATE BATCH IMPORT ROUTES
-
+        // END CONSOLIDATE ROUTES
         // ========================================================================
 
 
@@ -300,6 +316,8 @@ Route::middleware(['auth'])->group(function () {
 
     Route::any('/developer/consolidate', [InvoiceSubmissionController::class, 'consolidate']);
 
+    Route::get('/developer/settings', [DeveloperDashboardController::class, 'settings'])
+        ->name('developer.settings');
 
 
     Route::get('/developer/dashboard', [DeveloperDashboardController::class, 'index'])
@@ -336,6 +354,18 @@ Route::middleware(['auth'])->group(function () {
 
         ->name('developer.client.update');
 
+// ==========================================
+    // NEW CLIENT SETTING ROUTES (Paste Here)
+    // ==========================================
+Route::post('/client/settings/consolidate/{id}', [ClientController::class, 'saveConsolidation'])
+        ->name('client.settings.consolidate');
+
+    Route::post('/client/settings/ip/{id}', [ClientController::class, 'storeIp'])
+        ->name('client.settings.ip.store');
+
+    Route::delete('/client/settings/ip/{id}', [ClientController::class, 'destroyIp'])
+        ->name('client.settings.ip.delete');
+    // ==========================================
 
 
     Route::get('/developer/profile', [DeveloperProfileController::class, 'edit'])
@@ -347,9 +377,7 @@ Route::middleware(['auth'])->group(function () {
     Route::put('/developer/profile', [DeveloperProfileController::class, 'update'])
 
         ->name('developer.profile.update');
-
-
-
+   
 
 
     // Invoices
@@ -436,67 +464,42 @@ Route::middleware(['auth'])->group(function () {
 
 
 
-    // Consolidate Import Routes
+});
+Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
 
-    Route::prefix('consolidate')->name('consolidate.')->group(function () {
+    // 1. Manage Subscribers
+    // URL becomes: /admin/subscribers
+    // Name becomes: admin.subscribers.index
+    Route::get('/subscribers', [SubscriberController::class, 'index'])
+        ->name('subscribers.index');
 
-        
+    Route::post('/subscribers/update/{id}', [SubscriberController::class, 'update'])
+        ->name('subscribers.update');
 
-        // Main import page
+    Route::get('/subscribers/{id}/impersonate', [SubscriberController::class, 'impersonate'])
+    ->name('subscribers.impersonate');
 
-        Route::get('/import', [ConsolidateImportController::class, 'index'])
+    // 2. Manage Developers
+    // URL becomes: /admin/developers
+    Route::get('/developers', [ManageDeveloperController::class, 'index'])
+        ->name('developers.index');
+    Route::delete('/developers/{id}/delete', [ManageDeveloperController::class, 'destroy'])
+        ->name('developers.delete');
 
-            ->name('import');
+    Route::post('/developers/{id}/resend', [ManageDeveloperController::class, 'resendVerification'])
+        ->name('developers.resend');
 
-        
+    Route::post('/developers/{id}/reset', [ManageDeveloperController::class, 'sendPasswordReset'])
+        ->name('developers.reset');
 
-        // Download Excel template
+    Route::get('/developers/{id}/impersonate', [ManageDeveloperController::class, 'impersonate'])
+        ->name('developers.impersonate');
 
-        Route::get('/template', [ConsolidateImportController::class, 'downloadTemplate'])
+    Route::post('/developers/{id}/update', [ManageDeveloperController::class, 'update'])
+        ->name('developers.update');
 
-            ->name('template');
-
-        
-
-        // Upload and process Excel file
-
-        Route::post('/import', [ConsolidateImportController::class, 'importBatch'])
-
-            ->name('import.process');
-
-        
-
-        // View invoice details
-
-        Route::get('/view/{id}', [ConsolidateImportController::class, 'view'])
-
-            ->name('view');
-
-        
-
-        // Delete invoice
-
-        Route::delete('/delete/{id}', [ConsolidateImportController::class, 'delete'])
-
-            ->name('delete');
-
-        
-
-        // Export items to Excel (optional feature)
-
-        Route::get('/export-items/{id}', [ConsolidateImportController::class, 'exportItems'])
-
-            ->name('export.items');
-            
-            // Edit/Update Route
-    Route::post('/update/{id}', [ConsolidateImportController::class, 'update'])->name('update');
-    
-    // Delete Route
-    Route::get('/delete/{id}', [ConsolidateImportController::class, 'destroy'])->name('delete');
-
-    });
-
-
+    Route::post('/developers/store', [ManageDeveloperController::class, 'store'])
+        ->name('developers.store');
 
 });
 

@@ -11,15 +11,32 @@ Route::post('/myinvois/add_supplier', [IntegrationInvoiceController::class, 'add
 
 Route::post('/myinvois/validate', [IntegrationInvoiceController::class, 'validate']);
 
+
+
+
+//NORMAL INVOICE
 Route::any('/myinvois/invoice', [IntegrationInvoiceController2::class, 'invoice']);
 Route::any('/myinvois/note', [IntegrationInvoiceController2::class, 'note']);
 
 
-Route::any('/myinvois/selfbill/invoice', [SelfBillController::class, 'invoice']);
-Route::any('/myinvois/selfbill/note', [SelfBillController::class, 'note']);
+//Route::any('/myinvois/selfbill/invoice', [SelfBillController::class, 'invoice']);
+Route::any('/myinvois/selfbill/note', [IntegrationInvoiceController2::class, 'selfBillNote']);
+
+//GENERAL INVOICE
+Route::any('/myinvois/invoice_generaltin', [IntegrationInvoiceController2::class, 'invoice_general']);
+Route::any('/myinvois/invoice_generaltin/note', [IntegrationInvoiceController2::class, 'invoice_general_note']);
+
+//Route::any('/myinvois/invoice_generaltin/selfbill', [SelfBillController::class, 'invoice']);
+Route::any('/myinvois/invoice_generaltin/selfbill/note', [IntegrationInvoiceController2::class, 'selfBillNote']);
 
 
+Route::any('/myinvois/selfbill/invoice', [SelfBillController::class, 'invoice']); 
+Route::any('/myinvois/invoice_generaltin/selfbill', function (\Illuminate\Http\Request $request) {
+    return app(SelfBillController::class)->invoice($request, 'general');
+});
 
+
+Route::get('/test', [InvoiceController::class, 'test']);
 
 
 

@@ -489,22 +489,18 @@ master data and require direct submission to LHDN.
 
 <h3>Request Example</h3>
 <div class="code-block"><pre>
-  {
-  "mysynctax_key": "oHwIlgfhsBPP30f7",
-  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+{
+  "mysynctax_key": "XXX",
+  "mysynctax_secret": "XXXX",
   "isAutoToLHDN":1,
-  "invoice_no": "INV-567-45",
-  "sale_id_integrate": 23422,
+  "invoice_no": "INV-322",
+  "sale_id_integrate": 3312,
   "payment_note_term": "CASH",
-  "taxable_amount": 100.00,
-  "tax_amount": 6.00,
-  "tax_percent":6,
-  "total_amount": 106.00,
   "customer": {
-    "tin_no": "IG2xxxxxxx0",
+    "tin_no": "IG25461820000",
     "registration_name": "ABC Trading Sdn Bhd",
-    "identification_no": "202xxxxxxxx7",
-    "identification_type": "BRN",
+    "identification_no": "930105045119",
+    "identification_type": "NRIC",
     "sst_registration": "SST123456",
     "phone": "0123456789",
     "email": "finance@abctrading.com",
@@ -523,9 +519,9 @@ master data and require direct submission to LHDN.
       "item_description": "USB Keyboard",
       "invoiced_quantity": 2,
       "unit_price": 30.00,
-      "price_discount": 0.00,
-      "total": 60.00,
-      "tax": 6
+      "total_before_tax": 60.00,
+      "price_discount":5,
+      "tax_amount": 3.60
     },
     {
       "item_id": 102,
@@ -533,9 +529,10 @@ master data and require direct submission to LHDN.
       "item_description": "USB Mouse",
       "invoiced_quantity": 1,
       "unit_price": 40.00,
-      "price_discount": 0.00,
-      "total": 40.00,
-      "tax": 6
+      "total_before_tax": 40.00,
+       "price_discount":5,
+      "tax_amount": 2.40
+
     }
   ]
 }
@@ -548,7 +545,7 @@ master data and require direct submission to LHDN.
     "invoice_id": 410,
     "mysynctax_uuid": "a461cd55016ece31242098e2bxxxxxx3",
     "customer_status": "updated",
-    "qr_lhdn": "{{url('')}}/qr_link/1DB9HRPxxxxxxVJxxx4PYSRVJDK10",
+    "qr_lhdn": "{{url('')}}/qr_link/a461cd55016ece31242098e2bxxxxxx3",
     "customer_id": 90,
     "result": {
         "headers": {},
@@ -581,8 +578,8 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 
 <h3>Request Example</h3>
 <div class="code-block"><pre>{
-  "mysynctax_key": "oHwIlgfhsBPP30f7",
-  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+  "mysynctax_key": "XXX",
+  "mysynctax_secret": "XXXXX",
   "note_type": "refund",//credit,debit,refund
   "mysynctax_uuid": "bfc2c97e589ceb9fe9cb4b603bb740d011cb3d53",
   "sale_id_integrate": 5643,
@@ -592,7 +589,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
       "qty": 1,
       "price": 50.00,
       "discount": 0.00,
-      "tax": 3.00,
+      "tax": 3.00,//Tax Amount not percent
       "description": "Item rosak / dipulangkan"
     }
   ]
@@ -657,22 +654,19 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 
     <h3>Request Example</h3>
     <div class="code-block"><pre>{
-  "mysynctax_key": "oHwIlgfhsBPP30f7",
-  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+        {
+  "mysynctax_key": "XXXX",
+  "mysynctax_secret": "XXXX",
+  "isAutoToLHDN": 1,
+  "invoice_no": "INV-567-8612",
+  "sale_id_integrate": 8612,
 
-  "invoice_no": "INV-567-456",
-  "sale_id_integrate": 456,
   "payment_note_term": "CASH",
 
-  "taxable_amount": 100.00,
-  "tax_amount": 6.00,
-  "tax_percent": 6,
-  "total_amount": 106.00,
-
   "supplier": {
-    "tin_no": "IG20xx848xxxx",
-    "registration_name": "ABC Trading Sdn Bhd",
-    "identification_no": "2025031xxxx",
+    "tin_no": "IG20868489010",
+    "registration_name": "IMPORT SDN BHD",
+    "identification_no": "202503158017",
     "identification_type": "BRN",
     "sst_registration": "SST123456",
     "phone": "0123456789",
@@ -693,9 +687,9 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
       "item_description": "USB Keyboard",
       "invoiced_quantity": 2,
       "unit_price": 30.00,
-      "price_discount": 0.00,
-      "total": 60.00,
-      "tax": 6
+      "total_before_tax": 60.00,
+      "tax_amount": 3.60,
+      "price_discount":5
     },
     {
       "item_id": 102,
@@ -703,12 +697,15 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
       "item_description": "USB Mouse",
       "invoiced_quantity": 1,
       "unit_price": 40.00,
-      "price_discount": 0.00,
-      "total": 40.00,
-      "tax": 6
+      "total_before_tax": 40.00,
+      "tax_amount": 2.40,
+      "price_discount":5
     }
   ]
-}</pre></div>
+}
+
+}
+</pre></div>
 
     <h3>Response Example</h3>
     <div class="code-block"><pre>
@@ -754,8 +751,8 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     <h3>Request Example</h3>
     <div class="code-block"><pre>
   {
-  "mysynctax_key": "oHwIlgfhsBPP30f7",
-  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+  "mysynctax_key": "XXXX",
+  "mysynctax_secret": "XXXX",
   "note_type": "refund",//credit/debit/refund
   "mysynctax_uuid": "943e75230addb63b7fde84c4b2b9ce8a532ca07a",
   "sale_id_integrate": 456,
@@ -765,7 +762,7 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
       "qty": 1,
       "price": 50.00,
       "discount": 0.00,
-      "tax": 3.00,
+      "tax": 3.00,//Tax Amount not percent
       "description": "Item rosak / dipulangkan"
     }
   ]
@@ -815,8 +812,8 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 
     <h3>Request Example</h3>
     <div class="code-block"><pre>{
-  "mysynctax_key": "oHwIlgfhsBPP30f7",
-  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+  "mysynctax_key": "XXXX",
+  "mysynctax_secret": "XXXXX",
   "customers": [
     {
       "tin_no": "EI00000000010",
@@ -906,8 +903,8 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 
     <h3>Request Example</h3>
     <div class="code-block"><pre>{
-  "mysynctax_key": "oHwIlgfhsBPP30f7",
-  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+  "mysynctax_key": "XXXX",
+  "mysynctax_secret": "XXXX",
   "supplier": [
     {
       "tin_no": "EI00000000010",

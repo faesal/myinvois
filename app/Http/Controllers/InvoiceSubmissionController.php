@@ -117,11 +117,14 @@ class InvoiceSubmissionController extends Controller
                  ->where('it.id_developer', '=', $developerId);
         })
         ->select(
+            'i.unique_id',
             'i.id_invoice',
             'i.invoice_no',
             'i.issue_date',
             'i.submission_status',
             'i.price',
+            'i.taxable_amount',
+            'i.tax_amount',
             'i.invoice_type_code',
             'itype.description AS invoice_type_name',
             'c.registration_name',

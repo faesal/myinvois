@@ -108,6 +108,7 @@
 <tr>
     <th><input type="checkbox" id="select-all"></th>
     <th>Invoice ID</th>
+    
     <th>Sale ID</th>
     <th>Invoice Type</th>
     <th>Customer</th>
@@ -135,7 +136,10 @@
 
 
     <td>{{ $inv->registration_name }}</td>
-    <td>{{ number_format($inv->price ?? 0,2) }}</td>
+    @php
+     $total=$inv->taxable_amount + $inv->tax_amount;
+    @endphp
+    <td>{{ number_format($total ?? 0,2) }}</td>
     <td>{{ \Carbon\Carbon::parse($inv->issue_date)->format('d-m-Y H:i:s') }}</td>
 
     <td class="text-center">
@@ -231,7 +235,7 @@ $(document).ready(function() {
             let row = $(this).closest("tr");
 
             let id = $(this).val();
-            let amount = parseFloat(row.find("td:nth-child(5)").text().replace(/,/g, ''));
+            let amount = parseFloat(row.find("td:nth-child(6)").text().replace(/,/g, ''));
             let supplierId = row.find(".supplier-id").val();
 
             if (supplierCheck === null) {
