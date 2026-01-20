@@ -27,7 +27,7 @@ Route::any('/myinvois/invoice_generaltin', [IntegrationInvoiceController2::class
 Route::any('/myinvois/invoice_generaltin/note', [IntegrationInvoiceController2::class, 'invoice_general_note']);
 
 //Route::any('/myinvois/invoice_generaltin/selfbill', [SelfBillController::class, 'invoice']);
-Route::any('/myinvois/invoice_generaltin/selfbill/note', [IntegrationInvoiceController2::class, 'selfBillNote']);
+Route::any('/myinvois/invoice_generaltin/selfbill/note', [IntegrationInvoiceController2::class, 'generalselfBillNote']);
 
 
 Route::any('/myinvois/selfbill/invoice', [SelfBillController::class, 'invoice']); 

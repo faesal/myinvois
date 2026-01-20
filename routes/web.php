@@ -187,10 +187,13 @@ Route::middleware('auth')->group(function () {
 
         Route::any('submit_items', [InvoiceController::class, 'submitSelected'])->name('consolidate.submit');
 
-        Route::any('/show_invoice/{id_supplier}/{id_customer}/{id_invoice}', [InvoiceController::class, 'show_invoice']);
+        Route::get('/show_invoice/{unique_id}', [InvoiceController::class, 'show_invoice'])->name('invoice.show');
 
         Route::any('select_items', [InvoiceController::class, 'selectItems'])->name('consolidate.select');
+
         Route::post('/invoice/submit-selected-lhdn', [InvoiceController::class, 'submitSelectedLHDN'])->name('invoice.submit_selected_lhdn');
+
+        Route::get('/delete_invoice/{id}', [InvoiceController::class, 'deleteInvoice'])->name('invoice.delete');
         
 
 
@@ -394,16 +397,15 @@ Route::post('/client/settings/consolidate/{id}', [ClientController::class, 'save
 
 
 
-    Route::get('/invoice/{id_customer}/{id_invoice}', [InvoiceSubmissionController::class, 'showInvoice'])
-
-        ->name('developer.invoice.show');
-
-
 
     Route::post('/developer/invoices/submit-selected', [InvoiceSubmissionController::class, 'submitSelectedInvoices'])
 
         ->name('developer.invoices.submitSelected');
 
+
+    Route::get('/developer/invoice/delete/{id}', [App\Http\Controllers\InvoiceSubmissionController::class, 'deleteInvoice'])
+    
+        ->name('developer.invoices.delete');
 
 
 
@@ -478,6 +480,17 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
 
     Route::get('/subscribers/{id}/impersonate', [SubscriberController::class, 'impersonate'])
     ->name('subscribers.impersonate');
+    
+    Route::post('/subscribers/check-expired', [SubscriberController::class, 'manualCheckExpired'])
+        ->name('subscribers.check_expired');
+
+    // 2. Show the activation form (When link in email is clicked)
+    Route::get('/subscribers/{id}/activate', [SubscriberController::class, 'activationForm'])
+        ->name('subscribers.activation_form');
+
+    // 3. Process the form submission (Save new dates)
+    Route::post('/subscribers/{id}/activate', [SubscriberController::class, 'activateSubscriber'])
+        ->name('subscribers.activate_submit');
 
     // 2. Manage Developers
     // URL becomes: /admin/developers
@@ -529,4 +542,7 @@ Route::any('/qr', [InvoiceController::class, 'qr']);
 
 Route::any('/getsubmission', [InvoiceController::class, 'getsubmission']);
 
+// ✅ ADD THIS LINE (Outside of Auth/Developer groups)
+Route::get('/invoice/view/{unique_id}', [App\Http\Controllers\InvoiceSubmissionController::class, 'showInvoice'])
+    ->name('invoice.view.public');
 
