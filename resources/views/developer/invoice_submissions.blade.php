@@ -22,9 +22,6 @@
 
 <h3 class="mb-4">Invoice Submissions</h3>
 
-<!-- =======================
-     FILTER BAR
-======================= -->
 <div class="card mb-4">
     <div class="card-body">
 
@@ -89,16 +86,10 @@
     </div>
 </div>
 
-<!-- =======================
-     SUBMIT SELECTED
-======================= -->
 <div class="mb-3">
     <button class="btn btn-success" id="submitSelectedBtn">Submit Selected</button>
 </div>
 
-<!-- =======================
-     TABLE
-======================= -->
 <div class="card">
 <div class="card-body">
 <div class="table-responsive">
@@ -121,45 +112,59 @@
 
 <tbody>
 @if(request()->filled('connection_integrate') && $invoices->isNotEmpty())
-@foreach($invoices as $inv)
-<tr>
-    <td class="text-center">
-        <input type="checkbox" class="select-item" value="{{ $inv->id_invoice }}">
-    </td>
+    @foreach($invoices as $inv)
+    <tr>
+        <td class="text-center">
+            <input type="checkbox" class="select-item" value="{{ $inv->id_invoice }}">
+            {{-- Hidden input for supplier checking in JS --}}
+            <input type="hidden" class="supplier-id" value="{{ $inv->id_supplier }}">
+        </td>
 
-    <td>{{ $inv->invoice_no }}</td>
-    <td>{{ $inv->sale_id }}</td>
+        <td>{{ $inv->invoice_no }}</td>
+        <td>{{ $inv->sale_id }}</td>
 
-    <td>
-    {{ $inv->invoice_type_name ?? '-' }}
-    </td>
+        <td>
+        {{ $inv->invoice_type_name ?? '-' }}
+        </td>
 
 
-    <td>{{ $inv->registration_name }}</td>
-    @php
-     $total=$inv->taxable_amount + $inv->tax_amount;
-    @endphp
-    <td>{{ number_format($total ?? 0,2) }}</td>
-    <td>{{ \Carbon\Carbon::parse($inv->issue_date)->format('d-m-Y H:i:s') }}</td>
-
-    <td class="text-center">
+        <td>{{ $inv->registration_name }}</td>
         @php
-            $status = strtoupper(trim($inv->submission_status ?: 'PENDING'));
-            $map = ['SUBMITTED'=>'primary','FAILED'=>'danger','PENDING'=>'warning'];
+         $total=$inv->taxable_amount + $inv->tax_amount;
         @endphp
-        <span class="badge rounded-pill bg-{{ $map[$status] ?? 'secondary' }}">
-            {{ $status }}
-        </span>
-    </td>
+        <td>{{ number_format($total ?? 0,2) }}</td>
+        <td>{{ \Carbon\Carbon::parse($inv->issue_date)->format('d-m-Y H:i:s') }}</td>
 
-    <td class="text-center">
-        @php
-            $invoice = ($inv->id_customer ?: 6).'/'.$inv->id_invoice;
-        @endphp
-        <a href="{{ url('/invoice/'.$invoice) }}" target="_blank" class="btn btn-sm btn-info">View</a>
-    </td>
-</tr>
-@endforeach
+        <td class="text-center">
+            @php
+                $status = strtoupper(trim($inv->submission_status ?: 'PENDING'));
+                $map = ['SUBMITTED'=>'primary','FAILED'=>'danger','PENDING'=>'warning'];
+            @endphp
+            <span class="badge rounded-pill bg-{{ $map[$status] ?? 'secondary' }}">
+                {{ $status }}
+            </span>
+        </td>
+
+        <td class="text-center">
+            
+            <div class="btn-group" role="group">
+                {{-- View Button (UPDATED to use Public Route with Unique ID) --}}
+                <a href="{{ route('invoice.view.public', $inv->unique_id) }}" target="_blank" class="btn btn-sm btn-info text-white">
+                    View
+                </a>
+                
+                {{-- Delete Button: Show ONLY if NOT Submitted --}}
+                @if($status !== 'SUBMITTED')
+                    <button type="button" 
+                            class="btn btn-sm btn-danger" 
+                            onclick="confirmDelete('{{ $inv->id_invoice }}')">
+                        Delete
+                    </button>
+                @endif
+            </div>
+        </td>
+    </tr>
+    @endforeach
 @endif
 </tbody>
 </table>
@@ -186,15 +191,35 @@
 
 @section('scripts')
 
-<!-- DATATABLES -->
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
-<!-- SWEETALERT -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
+// ============================================
+//  GLOBAL FUNCTIONS (MUST BE OUTSIDE .ready)
+// ============================================
+
+// 1. Delete Confirmation
+window.confirmDelete = function(id) {
+    Swal.fire({
+        title: 'Are you sure?',
+        text: "This will remove the invoice record", // <-- Updated Text
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Yes, delete it'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Use route helper generated URL for deleting
+            window.location.href = "{{ route('developer.invoices.delete', '') }}/" + id;
+        }
+    });
+};
+
 $(document).ready(function() {
 
     // DATATABLE INIT — load only after customer is selected
@@ -235,12 +260,16 @@ $(document).ready(function() {
             let row = $(this).closest("tr");
 
             let id = $(this).val();
-            let amount = parseFloat(row.find("td:nth-child(6)").text().replace(/,/g, ''));
+            // Parsing currency safely (remove commas)
+            let amountText = row.find("td:nth-child(6)").text().trim(); 
+            let amount = parseFloat(amountText.replace(/,/g, '')) || 0;
+            
+            // Note: Ensure hidden input .supplier-id exists in the row if you use this check
             let supplierId = row.find(".supplier-id").val();
 
             if (supplierCheck === null) {
                 supplierCheck = supplierId;
-            } else if (supplierCheck !== supplierId) {
+            } else if (supplierId && supplierCheck !== supplierId) {
                 supplierMismatch = true;
             }
 
@@ -324,6 +353,25 @@ $(document).ready(function() {
         });
 
     });
+
+    // Flash Message Handling (For Delete Success/Error)
+    @if(session('success'))
+        Swal.fire({
+            icon: 'success',
+            title: 'Success',
+            text: "{{ session('success') }}",
+            timer: 3000,
+            showConfirmButton: false
+        });
+    @endif
+
+    @if(session('error'))
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: "{{ session('error') }}"
+        });
+    @endif
 
 });
 </script>

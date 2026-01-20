@@ -80,22 +80,28 @@
                             <td>RM {{ number_format($invoice->price, 2) }}</td>
                             <td>{{ \Carbon\Carbon::parse($invoice->issue_date)->format('d-m-Y H:i') }}</td>
                             <td>
-                                @php $status = strtolower($invoice->submission_status); @endphp
+                                @php $status = strtolower($invoice->submission_status ?? 'pending'); @endphp
                                 @if ($status == 'submitted')
                                     <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">SUBMITTED</span>
                                 @elseif ($status == 'failed')
                                     <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25">FAILED</span>
-                                    @else
+                                @else
                                     <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25">PENDING</span>
                                 @endif
                             </td>
                             <td>
-                                <div class="btn-group">
-                                    <a target="_blank" href="{{url('/show_invoice/'.$invoice->id_supplier.'/'.($invoice->id_customer ?: '6').'/'.$invoice->id_invoice)}}" class="btn btn-sm btn-outline-primary">View</a>
-                                    @if ($invoice->uuid)
-                                        <a href="{{ url('/cancelDocument/'.$invoice->uuid) }}" class="cancel-link btn btn-sm btn-outline-danger ms-1">Cancel</a>
-                                    @endif
-                                </div>
+                               {{-- Inside the foreach loop in submission.blade.php --}}
+                                        <div class="btn-group">
+                                            {{-- View Button: Now passes Supplier ID, Customer ID, and the Unique ID string --}}
+                                          <a target="_blank" href="{{ url('/show_invoice/' . $invoice->unique_id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                                            @if ($invoice->uuid)
+                                                <a href="{{ url('/cancelDocument/'.$invoice->uuid) }}" class="cancel-link btn btn-sm btn-outline-danger ms-1">Cancel</a>
+                                            @endif
+
+                                            @if (in_array($status, ['pending', 'failed', '']))
+                                                <button onclick="confirmDelete('{{ $invoice->id_invoice }}')" class="btn btn-sm btn-outline-danger ms-1">Delete</button>
+                                            @endif
+                                        </div>
                             </td>
                         </tr>
                         @endforeach
@@ -127,6 +133,7 @@ $(document).ready(function () {
     // 2. Bulk Submit AJAX with Detailed Error Popups
     $('#submitSelectedBtn').on('click', function() {
         let selected = [];
+        // Important: use table.$ to select items across all pages if pagination is active
         table.$('input.select-item:checked').each(function() {
             selected.push($(this).val());
         });
@@ -161,7 +168,6 @@ $(document).ready(function () {
                         });
                     },
                     success: function(response) {
-                        // Check if there are error details returned from the catch block
                         if (response.errors && response.errors.length > 0) {
                             let errorHtml = '<div style="text-align: left; max-height: 300px; overflow-y: auto;">';
                             errorHtml += '<b>Results:</b> ' + response.message + '<br><br>';
@@ -195,7 +201,7 @@ $(document).ready(function () {
         });
     });
 
-    // 3. Cancel Document Alert
+    // 3. Cancel Document Alert (Using Event Delegation)
     $(document).on('click', '.cancel-link', function (e) {
         e.preventDefault();
         const href = this.href;
@@ -210,6 +216,24 @@ $(document).ready(function () {
             if (result.isConfirmed) window.location.href = href;
         });
     });
+
+    // 4. FIX: Define confirmDelete globally for onclick attribute
+    window.confirmDelete = function(id) {
+        Swal.fire({
+            title: 'Delete Invoice?',
+            text: "This will remove the record.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6e7881',
+            confirmButtonText: 'Yes, delete it'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Ensure this route exists in your web.php
+                window.location.href = "{{ url('/delete_invoice') }}/" + id;
+            }
+        });
+    };
 });
 </script>
 

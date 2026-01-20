@@ -66,11 +66,12 @@
                     </thead>
                     <tbody id="invoice-items-body">
                         @foreach($items as $item)
-                        @php
-                            $calculatedRate = 0;
-                            if($item->price_extension_amount > 0 && $item->tax > 0) {
-                                $calculatedRate = ($item->tax / $item->price_extension_amount) * 100;
-                            }
+                       @php
+                        $calculatedRate = 0;
+                        // We round the reverse calculation to 2 decimals to keep it clean (e.g. 6.00)
+                        if($item->line_extension_amount > 0 && $item->tax > 0) {
+                            $calculatedRate = round(($item->tax / $item->line_extension_amount) * 100, 2);
+                        }
                         @endphp
                         <tr id="row-{{ $item->id_invoice_item }}" class="item-row">
                             <td><input type="text" class="form-control" value="{{ $item->item_description }}" id="desc-{{ $item->id_invoice_item }}" oninput="triggerAutoSave({{ $item->id_invoice_item }})"></td>
@@ -248,14 +249,16 @@ function calculateRow(id) {
     const disc = parseFloat(document.getElementById('disc-' + id).value) || 0;
     const taxRate = parseFloat(document.getElementById('tax-rate-' + id).value) || 0;
 
-    let taxable = (qty * price) - disc;
+    let gross = qty * price;
+    let taxable = gross - disc;
     if(taxable < 0) taxable = 0;
 
-    const taxRM = taxable * (taxRate / 100);
-    const lineTotal = taxable + taxRM;
+    // USE MATH.ROUND TO FORCE 2 DECIMALS
+    const taxRM = Math.round((taxable * (taxRate / 100)) * 100) / 100;
+    const lineTotal = Math.round((taxable + taxRM) * 100) / 100;
 
-    document.getElementById('tax-rm-' + id).innerText = taxRM.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    document.getElementById('line-total-' + id).innerText = lineTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('tax-rm-' + id).innerText = taxRM.toFixed(2);
+    document.getElementById('line-total-' + id).innerText = lineTotal.toFixed(2);
 
     recalculateGrandTotals();
     triggerAutoSave(id);
@@ -272,18 +275,25 @@ function recalculateGrandTotals() {
     let subtotal = 0, totalTax = 0;
     document.querySelectorAll('.item-row').forEach(row => {
         const id = row.id.replace('row-', '');
+        
         const qty = parseFloat(document.getElementById('qty-' + id).value) || 0;
         const price = parseFloat(document.getElementById('price-' + id).value) || 0;
         const disc = parseFloat(document.getElementById('disc-' + id).value) || 0;
         const taxRate = parseFloat(document.getElementById('tax-rate-' + id).value) || 0;
+        
         let taxable = (qty * price) - disc;
         if(taxable < 0) taxable = 0;
+        
+        // Round each row tax individually before summing
+        let rowTax = Math.round((taxable * (taxRate / 100)) * 100) / 100;
+        
         subtotal += taxable;
-        totalTax += taxable * (taxRate / 100);
+        totalTax += rowTax;
     });
-    document.getElementById('display-subtotal').innerText = subtotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    document.getElementById('display-tax').innerText = totalTax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    document.getElementById('display-total').innerText = (subtotal + totalTax).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    document.getElementById('display-subtotal').innerText = subtotal.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('display-tax').innerText = totalTax.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('display-total').innerText = (subtotal + totalTax).toLocaleString('en-US', {minimumFractionDigits: 2});
 }
 
 function saveRow(id) {

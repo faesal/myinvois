@@ -389,30 +389,66 @@ $(document).ready(function() {
     // 1. Setup Variables
     const clientId = "{{ $client->id_customer }}";
 
-    // 2. INITIAL UI STATE
-    // Grey out sections on load if toggles are off
-    if (!$('#toggleConsolidation').is(':checked')) {
-        $('#consolidationWrapper').css('opacity', '0.4').find('input').prop('disabled', true);
-    }
-    if (!$('#toggleIpWhitelist').is(':checked')) {
-        $('#ipWhitelistWrapper').css('opacity', '0.4').find('input, button').prop('disabled', true);
+    // ---------------------------------------------------------
+    // HELPER FUNCTION: Handle Visual & Logic Toggle
+    // ---------------------------------------------------------
+    function updateToggleState(triggerSelector, wrapperSelector, isInit = false) {
+        const $trigger = $(triggerSelector);
+        const $wrapper = $(wrapperSelector);
+        const isChecked = $trigger.is(':checked');
+        const $inputs = $wrapper.find('input, select, button'); // Find all interactive elements
+
+        if (isChecked) {
+            // IF CHECKED: Show wrapper, enable inputs
+            if(isInit) {
+                $wrapper.show(); // No animation on page load
+            } else {
+                $wrapper.slideDown(); // Animate
+            }
+            $inputs.prop('disabled', false);
+        } else {
+            // IF UNCHECKED: Hide wrapper, disable inputs
+            if(isInit) {
+                $wrapper.hide(); // No animation on page load
+            } else {
+                $wrapper.slideUp(); // Animate
+            }
+            $inputs.prop('disabled', true);
+        }
     }
 
-    // 3. MASTER UPDATE BUTTON LOGIC
-    // This button triggers the Consolidation AJAX save FIRST, then submits the main form.
+    // 2. INITIAL UI STATE (Run on Page Load)
+    updateToggleState('#toggleConsolidation', '#consolidationWrapper', true);
+    updateToggleState('#toggleIpWhitelist', '#ipWhitelistWrapper', true);
+
+
+    // 3. UI TOGGLES (Event Listeners)
+    $('#toggleConsolidation').on('change', function() {
+        updateToggleState(this, '#consolidationWrapper');
+    });
+
+    $('#toggleIpWhitelist').on('change', function() {
+        updateToggleState(this, '#ipWhitelistWrapper');
+    });
+
+
+    // ---------------------------------------------------------
+    // DATA LOGIC (Remains Unchanged)
+    // ---------------------------------------------------------
+
+    // 4. MASTER UPDATE BUTTON LOGIC
     $('#masterUpdateBtn').click(function(e) {
         e.preventDefault();
         const $btn = $(this);
         
-        // Visual Feedback
         $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-2"></i> Saving...');
 
         // Gather Consolidation Data
-        let freq = $('input[name="freq"]:checked').val();
+        // Note: Even if inputs are disabled/hidden, we can still grab the values manually if needed, 
+        // but typically user sets them before hiding.
+        let freq = $('input[name="freq"]:checked').val(); 
         let specificDate = $('#specific_date_input').val();
         let emailNotif = $('#email_notif').is(':checked') ? 1 : 0;
-        
-        // FIX: Capture Consolidation Toggle State to send to server
         let isConsolidateEnabled = $('#toggleConsolidation').is(':checked') ? 1 : 0;
 
         // Step A: Save Consolidation Settings via AJAX
@@ -424,26 +460,23 @@ $(document).ready(function() {
                 freq: freq,
                 specific_date: specificDate,
                 email_notif: emailNotif,
-                is_enabled: isConsolidateEnabled // Sending this status to DB
+                is_enabled: isConsolidateEnabled
             },
             success: function(response) {
-                // Step B: Submit the Main Form (triggers page reload and saves basic info + IP toggle)
+                // Step B: Submit the Main Form
                 $('#mainClientForm').submit();
             },
             error: function(xhr) {
                 console.error("Consolidate Error:", xhr.responseText);
                 $btn.prop('disabled', false).text('Update Account');
                 
-                let msg = 'Failed to save consolidation settings.';
-                if(xhr.responseJSON && xhr.responseJSON.message) {
-                    msg = xhr.responseJSON.message;
-                }
+                let msg = xhr.responseJSON?.message || 'Failed to save consolidation settings.';
                 Swal.fire('Error', msg, 'error');
             }
         });
     });
 
-    // 4. IP WHITELIST - ADD IP LOGIC
+    // 5. IP WHITELIST - ADD IP LOGIC
     $('#addIpBtn').click(function() {
         let ip = $('#newIpAddress').val();
         let desc = $('#newIpDesc').val();
@@ -465,9 +498,8 @@ $(document).ready(function() {
                 desc: desc
             },
             success: function(response) {
-                $('#noIpRow').remove(); // Remove "No IPs" message if it exists
+                $('#noIpRow').remove();
                 
-                // Append new row dynamically
                 $('#ipTableBody').append(`
                     <tr class="border-bottom" data-id="${response.id}">
                         <td class="ps-3 py-3"><i class="fa-regular fa-square-check text-dark me-2"></i> ${ip}</td>
@@ -481,12 +513,10 @@ $(document).ready(function() {
                     </tr>
                 `);
                 
-                // Reset inputs
                 $('#newIpAddress').val('');
                 $('#newIpDesc').val('');
                 $btn.prop('disabled', false);
 
-                // Small Toast Notification
                 const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
                 Toast.fire({ icon: 'success', title: 'IP Added Successfully' });
             },
@@ -498,7 +528,7 @@ $(document).ready(function() {
         });
     });
 
-    // 5. IP WHITELIST - DELETE IP LOGIC
+    // 6. IP WHITELIST - DELETE IP LOGIC
     $(document).on('click', '.delete-ip', function() {
         let id = $(this).data('id');
         let $row = $(this).closest('tr');
@@ -514,13 +544,11 @@ $(document).ready(function() {
         }).then((result) => {
             if (result.isConfirmed) {
                 $.ajax({
-                    // Note: ensure this route matches web.php name 'client.settings.ip.delete'
                     url: "{{ route('client.settings.ip.delete', '') }}/" + id,
                     method: "DELETE",
                     data: { _token: "{{ csrf_token() }}" },
                     success: function(response) {
                         $row.fadeOut(300, function() { $(this).remove(); });
-                        
                         const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
                         Toast.fire({ icon: 'success', title: 'IP Removed' });
                     },
@@ -530,15 +558,6 @@ $(document).ready(function() {
                 });
             }
         });
-    });
-
-    // 6. UI Toggles (Visual only - Logic handled by save)
-    $('#toggleConsolidation').on('change', function() {
-        $('#consolidationWrapper').css('opacity', this.checked ? '1' : '0.4').find('input').prop('disabled', !this.checked);
-    });
-
-    $('#toggleIpWhitelist').on('change', function() {
-        $('#ipWhitelistWrapper').css('opacity', this.checked ? '1' : '0.4').find('input, button').prop('disabled', !this.checked);
     });
 });
 </script>

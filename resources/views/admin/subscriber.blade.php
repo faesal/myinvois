@@ -5,15 +5,25 @@
 @section('content')
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h3 class="fw-bold mb-0">MySynctax Subscribers</h3>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-0">
-                    <li class="breadcrumb-item active text-uppercase small fw-bold text-muted">Admin Area Manage Subscriber</li>
-                </ol>
-            </nav>
-        </div>
+    <div>
+        <h3 class="fw-bold mb-0">MySynctax Subscribers</h3>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item active text-uppercase small fw-bold text-muted">Admin Area Manage Subscriber</li>
+            </ol>
+        </nav>
     </div>
+    
+    {{-- NEW: Check Expired Button --}}
+    <div>
+        <form action="{{ route('admin.subscribers.check_expired') }}" method="POST">
+            @csrf
+            <button type="submit" class="btn btn-danger text-white shadow-sm">
+                <i class="fa-solid fa-envelope me-2"></i> Check Expired & Email Me
+            </button>
+        </form>
+    </div>
+</div>
 
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body">

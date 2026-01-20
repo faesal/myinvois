@@ -307,13 +307,13 @@ class InvoiceController extends Controller
         return redirect()->route('invoice.create')->with('success', 'Invoice created successfully!');
     }
 
-    public function qr_link($uuid)
-    {
-        $record = DB::table('invoice')->where('unique_id', $uuid)->first();
-        $invoice = new eInvoisModel();
-        echo $response = $invoice->qr_link_lhdn($uuid);
-        exit();
-    }
+public function qr_link($unique_id)
+{
+    // The eInvoisModel already expects the unique_id (UUID) to fetch the LHDN link
+    $invoice = new eInvoisModel();
+    echo $invoice->qr_link_lhdn($unique_id);
+    exit();
+}
 
     public function resubmit($id_invoice)
     {
@@ -463,37 +463,59 @@ public function submitSelected(Request $request)
         'message' => 'Items consolidated successfully. Please submit them from the Listing page.'
     ]);
 
-}    public function show_invoice($id_supplier, $id_customer, $id_invoice)
-    {
-        $invoice = DB::table('invoice')->where('id_invoice', $id_invoice)->first();
-        $supplier = DB::table('customer')->where('id_customer', $id_supplier)->first();
-        $customer = DB::table('customer')->where('id_customer', $id_customer)->first();
-        $items = DB::table('invoice_item')->where('id_invoice', $id_invoice)->get();
+}  
 
-        return view('invoices.show', compact('invoice', 'customer', 'supplier', 'items'))
-            ->with('success', 'Invoice sent to customer.');
+public function show_invoice($unique_id)
+{
+    // 1. Fetch invoice by unique_id (UUID string)
+    $invoice = DB::table('invoice')
+        ->where('unique_id', $unique_id)
+        ->first();
+
+    if (!$invoice) {
+        abort(404, 'Invoice not found.');
     }
 
+    // 2. Fetch Supplier and Customer details using IDs from the invoice record
+    // We use the IDs stored in the database instead of the URL parameters
+    $supplier = DB::table('customer')->where('id_customer', $invoice->id_supplier)->first();
+    
+    // For customer, we use the stored ID, fallback to 6 (default) if empty
+    $customer = DB::table('customer')->where('id_customer', $invoice->id_customer ?: 6)->first();
+    
+    // 3. Fetch items using the unique_id link
+    $items = DB::table('invoice_item')->where('unique_id', $unique_id)->get();
+
+    // 4. Fallback: If unique_id didn't yield items, try the primary key (id_invoice)
+    if ($items->isEmpty()) {
+        $items = DB::table('invoice_item')->where('id_invoice', $invoice->id_invoice)->get();
+    }
+
+    return view('invoices.show', compact('invoice', 'customer', 'supplier', 'items'));
+}
+
     /**
-     * Updated Listing Submission to handle 'Pending' status logic
+     * Listing Submission with 'unique_id' and 'uuid' selection
      */
     public function listing_submission(Request $request)
     {
         $query = DB::table('invoice AS i')
             ->leftJoin('customer AS c', 'i.id_customer', '=', 'c.id_customer')
             ->select(
-                'i.uuid',
-                'i.submission_status',
-                'i.invoice_no',
-                'i.id_supplier',
-                'i.id_customer',
                 'i.id_invoice',
+                'i.unique_id',         // Required for the View Link
+                'i.uuid',              // Required for the LHDN Cancel Link
+                'i.invoice_no',
                 'i.issue_date',
                 'i.price',
+                'i.submission_status',
                 'i.invoice_status',
+                'i.id_supplier',
+                'i.id_customer',
                 'c.registration_name as customer_name'
             );
 
+        // --- Date Filtering ---
         if ($request->filled('start_date')) {
             $query->whereDate('i.issue_date', '>=', $request->start_date);
         }
@@ -501,6 +523,7 @@ public function submitSelected(Request $request)
             $query->whereDate('i.issue_date', '<=', $request->end_date);
         }
 
+        // --- Status Filtering ---
         if ($request->filled('status')) {
             if ($request->status == 'pending') {
                 $query->where(function ($q) {
@@ -513,14 +536,15 @@ public function submitSelected(Request $request)
             }
         }
 
+        // --- Role-based Filtering ---
         if (auth()->user()->role !== 'admin') {
             $query->where('i.connection_integrate', session('connection_integrate'));
         }
 
-        $invoices = $query->orderBy('i.id_invoice', 'asc')->get();
+        $invoices = $query->orderBy('i.id_invoice', 'desc')->get();
+        
         return view('invoices.submission', compact('invoices'));
     }
-
     public function syncFromPOS(Request $request)
     {
         $pos = $request->query('pos');
@@ -761,5 +785,45 @@ public function submitSelectedLHDN(Request $request)
         'errors'  => $errors,
         'connection_integrate' => session('connection_integrate')
     ], 200);
+}
+public function deleteInvoice($id)
+{
+    $invoice = DB::table('invoice')
+        ->where('id_invoice', $id)
+        ->first();
+
+    // Safety Check: Only allow delete if not already successfully submitted to LHDN
+    if (!$invoice || strtolower($invoice->submission_status) === 'submitted') {
+        return redirect()->back()->with('error', 'Cannot delete a successfully submitted invoice.');
+    }
+
+    DB::beginTransaction();
+    try {
+        // 1. If it was a consolidated invoice, reset the original items
+        // so they show up again in the "Consolidate" list
+        DB::table('consolidate_invoice_item')
+            ->where('submition_status', 'submitted')
+            ->whereExists(function ($query) use ($id) {
+                $query->select(DB::raw(1) )
+                      ->from('invoice_item')
+                      ->whereRaw('invoice_item.id_consolidate_invoice = consolidate_invoice_item.id_consolidate_invoice')
+                      ->where('invoice_item.id_invoice', $id);
+            })
+            ->update([
+                'submition_status' => null,
+                'is_invoice' => null,
+                'updated_at' => now()
+            ]);
+
+        // 2. Delete the items and the header
+        DB::table('invoice_item')->where('id_invoice', $id)->delete();
+        DB::table('invoice')->where('id_invoice', $id)->delete();
+
+        DB::commit();
+        return redirect()->back()->with('success', 'Invoice removed. Items are now available for re-consolidation.');
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+    }
 }
 }
