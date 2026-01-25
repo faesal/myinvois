@@ -93,7 +93,7 @@
                                {{-- Inside the foreach loop in submission.blade.php --}}
                                         <div class="btn-group">
                                             {{-- View Button: Now passes Supplier ID, Customer ID, and the Unique ID string --}}
-                                          <a target="_blank" href="{{ url('/show_invoice/' . $invoice->unique_id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                                          <a target="_blank" href="{{ route('invoice.view.public', ['unique_id' => $invoice->unique_id]) }}" class="btn btn-sm btn-outline-primary">View</a>
                                             @if ($invoice->uuid)
                                                 <a href="{{ url('/cancelDocument/'.$invoice->uuid) }}" class="cancel-link btn btn-sm btn-outline-danger ms-1">Cancel</a>
                                             @endif

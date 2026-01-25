@@ -95,7 +95,11 @@
                                 <span class="badge bg-secondary">Draft</span>
                             @endif
                         </td>
-                        <td><a href="#" class="text-primary">View</a></td>
+                        <td>
+    <a target="_blank" href="{{ route('invoice.view.public', ['unique_id' => $note->unique_id]) }}" class="text-primary fw-bold">
+        View
+    </a>
+</td>
                     </tr>
                     @endforeach
                 </tbody>

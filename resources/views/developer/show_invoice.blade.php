@@ -175,7 +175,7 @@
                         </td>
                         <td width="40%" align="right">
                             <div class="header-right-container">
-                                <img src="https://www.mysynctax.com/dev/assets/images/LHDN_logo.png" class="lhdn-logo" alt="LHDN Logo" crossorigin="anonymous">
+                            <img src="{{url('/assets/images/')}}/LHDN_logo.png" class="lhdn-logo" alt="LHDN Logo" crossorigin="anonymous">
                                 <canvas id="invoiceQR"></canvas>
                             </div>
                         </td>

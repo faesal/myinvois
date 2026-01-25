@@ -131,7 +131,7 @@
         </div> 
 
         <div class="text-center mt-4">
-            <canvas id="canvas"></canvas>
+           <!-- <canvas id="canvas"></canvas>-->
         </div>
     </div>
 

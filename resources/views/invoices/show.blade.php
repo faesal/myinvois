@@ -2,151 +2,352 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>MySyncTax e-Invoice #{{ $invoice->invoice_no }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice #{{ $invoice->invoice_no }}</title>
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    
     <style>
-        body {
-            background-color: #f8f9fa;
+        body { background:#f4f6f9; }
+
+        .invoice-container {
+            background:#fff;
+            padding:20px;
+            border-radius:6px;
+            box-shadow:0 4px 10px rgba(0,0,0,.08);
+            max-width: 900px;
+            margin: 0 auto;
         }
-        .header {
-            background-color: #0056b3; /* Corporate color */
-            color: white;
-            padding: 20px;
-            border-radius: 5px;
+
+        /* ===== HEADER ===== */
+        .invoice-header table {
+            width:100%;
+            border:1px solid #000;
+            border-collapse:collapse;
         }
-        .table th {
-            background-color: #0056b3; /* Corporate color */
-            color: white;
+
+        .invoice-header td {
+            padding:6px;
+            vertical-align:top;
         }
-        .table-bordered {
-            border: 2px solid #dee2e6;
+
+        .invoice-title {
+            font-size:14px;
+            font-weight:bold;
+            margin:0;
         }
-        .container {
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+
+        .invoice-sub {
+            font-size:10px;
+            margin:2px 0;
         }
-        .qr-logo-container {
+
+        /* LOGO & QR ALIGNMENT (Desktop) */
+        .header-right-container {
             display: flex;
             align-items: center;
             justify-content: flex-end;
             gap: 10px;
         }
-        .qr-logo-container img {
-            width: 200px;
+
+        .lhdn-logo {
+            width: 160px;
             height: auto;
+        }
+
+        /* VALIDATION STRIP */
+        .validation-strip {
+            border:1px solid #000;
+            margin-top:4px;
+            font-size:9px;
+            padding:4px;
+            word-break: break-all;
+        }
+
+        /* SECTION */
+        .section-title {
+            font-size:10px;
+            font-weight:bold;
+            margin:8px 0 4px;
+        }
+
+        /* TABLE */
+        table.data-table {
+            width:100%;
+            border-collapse:collapse;
+        }
+
+        table.data-table th,
+        table.data-table td {
+            border:1px solid #000;
+            padding:3px;
+            font-size:9px;
+        }
+
+        table.data-table th {
+            background:#eee;
+            font-weight:bold;
+        }
+
+        .right { text-align:right; }
+
+        /* PDF MODE */
+        .pdf-mode {
+            font-size:9px;
+        }
+
+        .pdf-mode canvas {
+            width:75px !important;
+            height:auto !important;
+            border:1px solid #000;
+            padding:2px;
+        }
+
+        .pdf-mode .lhdn-logo {
+            width: 80px !important;
+        }
+
+        /* ==========================================
+           MOBILE OPTIMIZATIONS
+           ========================================== */
+        @media(max-width:768px){
+            .invoice-container { padding:12px; margin: 10px; }
+            .invoice-header td { padding: 4px; }
+            .header-right-container {
+                display: flex !important;
+                flex-direction: row !important;
+                justify-content: flex-end !important;
+                align-items: center !important;
+                gap: 8px !important;
+            }
+            .lhdn-logo { width: 80px !important; }
+            #invoiceQR { width: 70px !important; height: 70px !important; }
+            .table-responsive-custom {
+                display: block;
+                width: 100%;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .data-table { min-width: 450px; }
+            .data-table tr td[width="50%"] { display: table-cell; width: 50% !important; }
         }
     </style>
 </head>
+<body>
 
-<body class="p-4">
-    <div class="container border p-4">
-        <div class="header text-center mb-4">
-            <h4>MySyncTax e-Invoice</h4>
-        </div>
-        
-        <div class="qr-logo-container mb-3">
-            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <img height="150px" width="150px" src="https://upload.wikimedia.org/wikipedia/commons/4/4e/LHDN_logo.png" alt="LHDN Logo">
-                <canvas id="canvas" style="display: inline-block;"></canvas>
+    <div class="container mt-3 mb-5">
+
+        <div id="invoicePDF" class="invoice-container">
+
+            <div class="invoice-header">
+                <table>
+                    <tr>
+                        <td width="60%">
+                            <div class="invoice-title">e-Invoice</div>
+                            <div class="invoice-sub">Invoice No.: {{ $invoice->invoice_no }}</div>
+                        </td>
+                        <td width="40%" align="right">
+                            <div class="header-right-container">
+                                <img src="{{url('/assets/images/')}}/LHDN_logo.png" class="lhdn-logo" alt="LHDN Logo" crossorigin="anonymous">
+                                <canvas id="invoiceQR"></canvas>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
             </div>
-        </div>
 
-        <div class="mb-3">
-            <strong>E-Invoice No.:</strong> {{ $invoice->invoice_no }}<br>
-            <strong>Date:</strong> {{ \Carbon\Carbon::parse($invoice->issue_date)->format('d-m-Y H:i:s') }}<br>
-            <strong>Validation ID:</strong> {{ $invoice->submission_uuid ?? 'N/A' }}
-        </div>
-
-        <hr>
-
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <h4>Supplier</h4>
-                <p>
-                    <strong>Name:</strong> {{ $supplier->registration_name }}<br>
-                    <strong>TIN:</strong> {{ $supplier->tin_no }}<br>
-                    <strong>ID No.:</strong> {{ $supplier->identification_no }}<br>
-                    <strong>Email:</strong> {{ $supplier->email }}<br>
-                    <strong>Phone:</strong> {{ $supplier->phone }}<br>
-                    <strong>Address:</strong> {{ $supplier->address_line_1 }} {{ $supplier->address_line_2 }},
-                    {{ $supplier->city_name }}, {{ $supplier->postal_zone }}, {{ $supplier->country_code }}
-                </p>
+            <div class="validation-strip">
+                <strong>LHDN UUID:</strong> {{ $invoice->uuid ?? 'Pending' }}<br>
+                <strong>MYSYNCTAX UUID:</strong> {{ $invoice->unique_id }}<br>
+                <strong>Date and Time of Validation:</strong>
+                {{ isset($invoice->created_at) ? \Carbon\Carbon::parse($invoice->created_at)->format('d-m-Y H:i:s') : 'N/A' }}
             </div>
-            <div class="col-md-6">
-                <h4>Buyer</h4>
-                <p>
-                    <strong>Name:</strong> {{ $customer->registration_name }}<br>
-                    <strong>TIN:</strong> {{ $customer->tin_no }}<br>
-                    <strong>ID No.:</strong> {{ $customer->identification_no }}<br>
-                    <strong>Email:</strong> {{ $customer->email }}<br>
-                    <strong>Phone:</strong> {{ $customer->phone }}<br>
-                    <strong>Address:</strong> {{ $customer->address_line_1 }} {{ $customer->address_line_2 }},
-                    {{ $customer->city_name }}, {{ $customer->postal_zone }}, {{ $customer->country_code }}
-                </p>
+
+            <div class="table-responsive-custom">
+                <table class="data-table" style="margin-top:8px;">
+                    <tr>
+                        @if (isset($invoice->invoice_type_code) && in_array($invoice->invoice_type_code, ['01','02','03','04']))
+                        
+                        <td width="50%">
+                            <div class="section-title">Supplier Details</div>
+                            Name: {{ $supplier->registration_name }}<br>
+                            TIN: {{ $supplier->tin_no }}<br>
+                            Identification No.: {{ $supplier->identification_no }}<br>
+                            Email: {{ $supplier->email }}<br>
+                            Contact Number: {{ $supplier->phone }}<br>
+                            Address: {{ $supplier->address_line_1 }} {{ $supplier->address_line_2 }},
+                            {{ $supplier->city_name }}, {{ $supplier->postal_zone }}, {{ $supplier->country_code }}
+                        </td>
+                        <td width="50%">
+                            <div class="section-title">Buyer Details</div>
+                            Name: {{ $customer->registration_name }}<br>
+                            TIN: {{ $customer->tin_no }}<br>
+                            Identification No.: {{ $customer->identification_no }}<br>
+                            Email: {{ $customer->email }}<br>
+                            Contact Number: {{ $customer->phone }}<br>
+                            Address: {{ $customer->address_line_1 }} {{ $customer->address_line_2 }},
+                            {{ $customer->city_name }}, {{ $customer->postal_zone }}, {{ $customer->country_code }}
+                        </td>
+
+                        @else
+
+                        <td width="50%">
+                            <div class="section-title">Supplier Details</div>
+                            Name: {{ $customer->registration_name }}<br>
+                            TIN: {{ $customer->tin_no }}<br>
+                            Identification No.: {{ $customer->identification_no }}<br>
+                            Email: {{ $customer->email }}<br>
+                            Contact Number: {{ $customer->phone }}<br>
+                            Address: {{ $customer->address_line_1 }} {{ $customer->address_line_2 }},
+                            {{ $customer->city_name }}, {{ $customer->postal_zone }}, {{ $customer->country_code }}
+                        </td>
+
+                        <td width="50%">
+                            <div class="section-title">Buyer Details</div>
+                            Name: {{ $supplier->registration_name }}<br>
+                            TIN: {{ $supplier->tin_no }}<br>
+                            Identification No.: {{ $supplier->identification_no }}<br>
+                            Email: {{ $supplier->email }}<br>
+                            Contact Number: {{ $supplier->phone }}<br>
+                            Address: {{ $supplier->address_line_1 }} {{ $supplier->address_line_2 }},
+                            {{ $supplier->city_name }}, {{ $supplier->postal_zone }}, {{ $supplier->country_code }}
+                        </td>
+                        
+                        @endif
+                    </tr>
+                </table>
             </div>
+
+            <div class="section-title">Invoice Items</div>
+
+            <div class="table-responsive-custom">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>Description</th>
+                            <th class="right">Qty</th>
+                            <th class="right">Unit Price</th>
+                            <th class="right">Discount</th>
+                            <th class="right">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @php 
+                            $i = 1; 
+                            $sumTaxable = 0; 
+                            $sumDiscount = 0;
+                        @endphp
+                        @foreach($items as $item)
+                        <tr>
+                            <td>{{ $i++ }}</td>
+                            <td>{{ $item->item_description }}</td>
+                            <td class="right">{{ $item->invoiced_quantity }}</td>
+                            <td class="right">{{ number_format($item->price_amount, 2) }}</td>
+                            <td class="right">{{ number_format($item->price_discount, 2) }}</td>
+                            <td class="right">{{ number_format($item->line_extension_amount, 2) }}</td>
+                        </tr>
+                        @php 
+                            // Accumulate Totals
+                            $sumTaxable += $item->line_extension_amount; 
+                            $sumDiscount += ($item->price_discount ?? 0);
+                        @endphp
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+            @php
+                // Calculation Logic:
+                // 1. Discount: Use sum from items. If 0, try invoice header.
+                $finalDiscount = $sumDiscount > 0 ? $sumDiscount : ($invoice->total_price_discount ?? 0);
+
+                // 2. Taxable: Use sum from items. If 0, try invoice header.
+                $finalTaxable = $sumTaxable > 0 ? $sumTaxable : ($invoice->taxable_amount ?? 0);
+
+                // 3. Tax: Always use header as it is usually the source of truth for calculations
+                $finalTax = $invoice->tax_amount ?? 0;
+
+                // 4. Grand Total
+                $finalPayable = $finalTaxable + $finalTax;
+            @endphp
+
+            <div class="table-responsive-custom">
+                <table class="data-table" style="margin-top:6px;">
+                    <tr>
+                        <td class="right">Total Discount</td>
+                        <td class="right">MYR {{ number_format($finalDiscount, 2) }}</td>
+                    </tr>
+                    <tr>
+                        <td class="right">Total Excluding Tax</td>
+                        <td class="right" width="20%">MYR {{ number_format($finalTaxable, 2) }}</td>
+                    </tr>
+                    <tr>
+                        <td class="right">Total Tax Amount</td>
+                        <td class="right">MYR {{ number_format($finalTax, 2) }}</td>
+                    </tr>
+                    <tr>
+                        <td class="right"><strong>Total Payable Amount</strong></td>
+                        <td class="right"><strong>MYR {{ number_format($finalPayable, 2) }}</strong></td>
+                    </tr>
+                </table>
+            </div>
+
         </div>
 
-        <h5>Invoice Items</h5>
-        <table class="table table-bordered" width="100%">
-            <thead>
-                <tr>
-                    <th>No</th>
-                    <th>Description</th>
-                    <th>Qty</th>
-                    <th>Unit Price</th>
-                    <th>Discount</th>
-                    <th>Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                @php $i = 1; $totalItems = 0; @endphp
-                @foreach ($items as $item)
-                <tr>
-                    <td>{{ $i++ }}</td>
-                    <td>{{ $item->item_description }}</td>
-                    <td>{{ $item->invoiced_quantity }}</td>
-                    <td>{{ number_format($item->price_amount, 2) }}</td>
-                    <td>{{ number_format($item->price_discount, 2) }}</td>
-                    <td>{{ number_format($item->line_extension_amount, 2) }}</td>
-                </tr>
-                @php $totalItems += $item->line_extension_amount; @endphp
-                @endforeach
-            </tbody>
-        </table>
-
-        <div class="text-end">
-            <p><strong>Total Amount:</strong> MYR {{ number_format($invoice->price, 2) }}</p>
-            <p><strong>Taxable Amount:</strong> MYR {{ number_format($invoice->taxable_amount, 2) }}</p>
-            <p><strong>Tax Amount:</strong> MYR {{ number_format($invoice->tax_amount, 2) }}</p>
+        <div class="mt-4 text-center">
+            <button id="btnGeneratePDF" class="btn btn-primary btn-lg w-100 mb-3" style="max-width: 300px;">
+                📄 Download PDF
+            </button>
         </div>
+
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            // Using unique_id as defined in your Controller
-            const uniqueId = '{{ $invoice->unique_id }}';
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-            if (uniqueId) {
-                fetch(`{{ url('qr_link') }}/${uniqueId}`)
-                    .then(response => response.text())
-                    .then(generatedLink => {
-                        const canvas = document.getElementById('canvas');
-                        if (generatedLink.trim() !== "") {
-                            QRCode.toCanvas(canvas, generatedLink.trim(), {
-                                width: 200,
+    <script>
+        // Using Unique ID for QR Link
+        const uniqueId = "{{ $invoice->unique_id }}";
+
+        if(uniqueId) {
+            fetch(`{{ url('qr_link') }}/${uniqueId}`)
+                .then(res => res.text())
+                .then(link => {
+                    if (link && link.trim() !== "") {
+                        QRCode.toCanvas(
+                            document.getElementById('invoiceQR'),
+                            link.trim(),
+                            {
+                                width: 150,
                                 errorCorrectionLevel: 'H'
-                            }, function (error) {
-                                if (error) console.error('QR Error:', error);
-                                else console.log('✅ QR code generated successfully.');
-                            });
-                        }
-                    })
-                    .catch(error => {
-                        console.error('❌ Failed to fetch QR link:', error);
-                    });
-            }
+                            }
+                        );
+                    }
+                })
+                .catch(err => console.error("QR Fetch Error:", err));
+        }
+
+        // JS PDF Generation
+        $('#btnGeneratePDF').on('click', function () {
+
+            const el = document.getElementById('invoicePDF');
+            el.classList.add('pdf-mode');
+
+            html2pdf().set({
+                margin: [5,5,5,5],
+                filename: 'Invoice-{{ $invoice->invoice_no }}.pdf',
+                image: { type:'jpeg', quality:0.98 },
+                html2canvas: { 
+                    scale:2, 
+                    scrollY:0,
+                    useCORS: true 
+                },
+                jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
+            }).from(el).save().then(() => {
+                el.classList.remove('pdf-mode');
+            });
         });
     </script>
 </body>

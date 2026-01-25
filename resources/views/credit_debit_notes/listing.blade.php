@@ -107,7 +107,8 @@
                                 </td>
 
                                 
-                                <td> <a target="_blank" href="{{url('/show_invoice')}}/{{$note->id_supplier}}/{{$note->id_customer}}/{{$note->id_invoice}}" class="text-primary">View</a>
+                                <td> 
+                                 <a target="_blank" href="{{ route('invoice.view.public', ['unique_id' => $note->unique_id]) }}" class="text-primary fw-bold"> View </a>
 
                                <!-- <a target="_blank" href="{{url('/invoice/resubmit')}}/{{$note->id_invoice}}" class="text-primary">Resubmit</a>-->
                                 @if ($note->uuid != '')

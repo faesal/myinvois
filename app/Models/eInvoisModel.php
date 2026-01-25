@@ -1623,6 +1623,11 @@ DB::table('invoice')
                 'debit'  => ['code' => '03', 'sign' =>  1, 'label' => 'Debit'],
                 'refund' => ['code' => '04', 'sign' => -1, 'label' => 'Refund'],
             ],
+            'selfbill_general' => [
+                'credit' => ['code' => '12', 'sign' => -1, 'label' => 'Credit'],
+                'debit'  => ['code' => '13', 'sign' =>  1, 'label' => 'Debit'],
+                'refund' => ['code' => '14', 'sign' => -1, 'label' => 'Refund'],
+            ]
         ];
 
         if (!isset($typeMap[$mode][$noteType])) {

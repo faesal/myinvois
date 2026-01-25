@@ -655,239 +655,230 @@ class IntegrationInvoiceController extends Controller
 
     public function storeFromIntegration(Request $request)
     {
-        // Decode JSON
+        // =========================================================
+        // 1. DECODE JSON
+        // =========================================================
         $payload = json_decode($request->getContent(), true);
-
+    
         if (!is_array($payload)) {
             return response()->json([
                 'status'  => 'error',
                 'message' => 'Invalid JSON received'
             ], 400);
         }
-
-        // === AUTHENTICATION ===
+    
+        // =========================================================
+        // 2. AUTH
+        // =========================================================
         $apiKey    = data_get($payload, 'mysynctax_key');
         $apiSecret = data_get($payload, 'mysynctax_secret');
-
+    
         if (!$apiKey || !$apiSecret) {
             return response()->json([
                 'status'  => 'unauthorized',
                 'message' => 'mysynctax_key and mysynctax_secret are required'
             ], 401);
         }
-
+    
         $client = DB::table('connection_integrate')
             ->where('mysynctax_key', $apiKey)
             ->where('mysynctax_secret', $apiSecret)
             ->first();
-
+    
         if (!$client) {
             return response()->json([
                 'status'  => 'unauthorized',
                 'message' => 'Invalid mysynctax_key or mysynctax_secret'
             ], 401);
         }
-
+    
         $connCode = $client->code;
-
-
-        // === Extract invoice fields ===
-        $uniqueId     = sha1($request->getContent());
-        $invoiceNo    = data_get($payload, 'invoice_no');
-        $issueDate    = date('Y-m-d H:i:s');
-        $saleId       = (int) data_get($payload, 'sale_id_integrate', 0);
-
-        $items = data_get($payload, 'items', []);
-
-        // NEW: consolidate_total_item = sum of quantity
-        $consolidateTotalItem = collect($items)->sum(function ($row) {
-            return (int) data_get($row, 'invoiced_quantity', 0);
-        });
-
-        // rename consolidate_total_amount_before → total_amount
-        $amountBefore = (float) data_get($payload, 'total_amount', 0);
-
-        // list_sale_item_id must be integers
-        $listSaleItemId = array_map('intval', data_get($payload, 'list_sale_item_id', []));
-
-        if (!$uniqueId || !$invoiceNo) {
+    
+        // =========================================================
+        // 3. BASIC DATA
+        // =========================================================
+        $invoiceNo = data_get($payload, 'invoice_no');
+        $saleId    = (int) data_get($payload, 'sale_id_integrate');
+        $items     = data_get($payload, 'items', []);
+    
+        if (!$invoiceNo || !$saleId || empty($items)) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'unique_id and invoice_no are required'
+                'message' => 'invoice_no, sale_id_integrate & items are required'
             ], 400);
         }
-
-        // === Prevent duplicates ===
+    
+        // ✅ STABLE UNIQUE ID
+        $uniqueId  = sha1($connCode . '|' . $invoiceNo . '|' . $saleId);
+        $issueDate = now();
+    
+        // =========================================================
+        // 4. PREVENT DUPLICATE
+        // =========================================================
         $existing = DB::table('consolidate_invoice')
             ->where('connection_integrate', $connCode)
             ->where('unique_id', $uniqueId)
             ->first();
-
+    
         if ($existing) {
             return response()->json([
-                'status' => 'duplicate_ignored',
+                'status'         => 'duplicate_ignored',
                 'mysynctax_uuid' => $existing->unique_id,
             ], 409);
         }
-
-        $listItemId = [];
-
-        foreach ($items as $it) {
-            $listItemId[] = data_get($it, 'item_id');
-        }
-        
-        
-        
+    
         // =========================================================
-        // 2. INSERT HEADER + ITEMS INSIDE TRANSACTION
+        // 5. SERVER-SIDE CALCULATION (WAJIB)
+        // =========================================================
+        $taxableAmount = 0;
+        $taxAmount     = 0;
+        $totalQty      = 0;
+        $rows          = [];
+        $listItemId    = [];
+        $priceBefore   =0;
+        foreach ($items as $index => $it) {
+    
+            $qty        = (float) data_get($it, 'invoiced_quantity', 0);
+            $unitPrice = (float) data_get($it, 'unit_price', 0);
+            $discount  = (float) data_get($it, 'price_discount', 0);
+            $itemTax   = (float) data_get($it, 'tax_amount', 0);
+    
+            $lineExtension  = $qty * $unitPrice;                 // BEFORE DISCOUNT
+            $priceBefore    += $lineExtension;
+            $priceAfter     = $lineExtension - $discount;         // TAXABLE
+    
+            $taxableAmount += $priceAfter;
+            $taxAmount     += $itemTax;
+            $totalQty      += $qty;
+    
+            $listItemId[] = data_get($it, 'item_id');
+    
+            $rows[] = [
+                'unique_id'                => $uniqueId,
+                'connection_integrate'     => $connCode,
+                'sale_id_integrate'        => $saleId,
+                'id_developer'             => $client->id_developer,
+    
+                'item_id_integrate'        => data_get($it, 'item_id'),
+                'issue_date'               => $issueDate,
+                'line_id'                  => data_get($it, 'sorting_id', $index + 1),
+                'invoiced_quantity'        => $qty,
+    
+                // ✅ CORRECT FINANCIAL LOGIC
+                'line_extension_amount'    => $lineExtension,
+                'price_discount'           => $discount,
+                'price_extension_amount'   => $priceAfter,
+                'tax'                      => $itemTax,
+    
+                'item_description'         => data_get($it, 'item_description'),
+                'price_amount'             => $unitPrice,
+    
+                'item_clasification_type'  => '',
+                'item_clasification_value' => '004',
+    
+                'created_at'               => now(),
+                'updated_at'               => now(),
+            ];
+        }
+    
+        $taxPercent = $taxableAmount > 0
+            ? round(($taxAmount / $taxableAmount) * 100, 2)
+            : 0;
+    
+        // =========================================================
+        // 6. TRANSACTION INSERT
         // =========================================================
         $idCon = DB::transaction(function () use (
-            $payload, $uniqueId, $invoiceNo, $issueDate,
-            $saleId, $consolidateTotalItem, $amountBefore, $listSaleItemId,
-            $items, $connCode,$client, $request
+            $request,
+            $uniqueId,
+            $invoiceNo,
+            $issueDate,
+            $saleId,
+            $connCode,
+            $client,
+            $rows,
+            $taxableAmount,
+            $taxAmount,
+            $taxPercent,
+            $totalQty,
+            $priceBefore
         ) {
-        
-            $taxableAmount = (float) data_get($payload, 'taxable_amount', 0);
-            $taxAmount     = (float) data_get($payload, 'tax_amount', 0);
-            $taxPercent    = data_get($payload, 'tax_percent',0);
-            $taxCategoryId = '01';
-            $taxSchemeId   = 'OTH';
-            // Insert HEADER into consolidate_invoice
+    
             $idCon = DB::table('consolidate_invoice')->insertGetId([
                 'unique_id'                       => $uniqueId,
                 'json_receive'                    => $request->getContent(),
-                'consolidate_date'                => date('Y-m-d H:i:s'),
+                'consolidate_date'                => now(),
+    
                 'id_developer'                    => $client->id_developer,
-            
-                'consolidate_total_item'          => $consolidateTotalItem,
-                'consolidate_total_amount_before' => $amountBefore,
-                'sale_id_integrate'               => $saleId,
                 'connection_integrate'            => $connCode,
+                'sale_id_integrate'               => $saleId,
                 'invoice_no'                      => $invoiceNo,
                 'issue_date'                      => $issueDate,
-                'payment_note_term'               => data_get($payload, 'payment_note_term', 'CASH'),
-            
-                // ✅ TAX HEADER
+    
+                // ✅ HEADER CALC
+                'consolidate_total_item'          => $totalQty,
+                'consolidate_total_amount_before' => $taxableAmount,
+                'price'                           => $priceBefore,        
                 'taxable_amount'                  => $taxableAmount,
                 'tax_amount'                      => $taxAmount,
                 'tax_percent'                     => $taxPercent,
-                'tax_category_id'                 => $taxCategoryId,
-                'tax_scheme_id'                   => $taxSchemeId,
-            
+                'tax_category_id'                 => '01',
+                'tax_scheme_id'                   => 'OTH',
+    
                 'created_at'                      => now(),
                 'updated_at'                      => now(),
             ]);
-            
-        
-        
-            // Insert ITEMS into consolidate_invoice_item
-            $rows = [];
-        
-            foreach ($items as $it) {
-        
-                $price_extension_amount = 
-                    data_get($it, 'invoiced_quantity') * data_get($it, 'unit_price');
-        
-                    $rows[] = [
-                        'id_consolidate_invoice' => $idCon,
-                        'unique_id'              => $uniqueId,
-                        'connection_integrate'   => $connCode,
-                        'sale_id_integrate'      => $saleId,
-                        'id_developer'           => $client->id_developer,
-                    
-                        'item_id_integrate'      => data_get($it, 'item_id'),
-                        'issue_date'             => $issueDate,
-                        'line_id'                => data_get($it, 'sorting_id'),
-                        'invoiced_quantity'      => data_get($it, 'invoiced_quantity'),
-                        'line_extension_amount'  => data_get($it, 'total'),
-                    
-                        'item_description'       => data_get($it, 'item_description'),
-                        'price_amount'           => data_get($it, 'unit_price'),
-                        'price_discount'         => data_get($it, 'price_discount'),
-                        'price_extension_amount' => $price_extension_amount,
-                    
-                        // ✅ ITEM TAX
-                        'item_clasification_type'  => '',
-                        'item_clasification_value' => '004',
-                        'tax'               => data_get($it, 'tax',0),
-                    
-                        'created_at'               => now(),
-                        'updated_at'               => now(),
-                    ];
-                    
-            }
-        
+    
             foreach (array_chunk($rows, 500) as $chunk) {
+                foreach ($chunk as &$r) {
+                    $r['id_consolidate_invoice'] = $idCon;
+                }
                 DB::table('consolidate_invoice_item')->insert($chunk);
             }
-        
+    
             return $idCon;
         });
-        
-        
-        
+    
         // =========================================================
-        // 3. FINAL UPDATE AFTER TRANSACTION (SAFE)
+        // 7. FINAL VERIFY
         // =========================================================
-        
-        // Count total inserted items
-        $completeTotal = DB::table('consolidate_invoice_item')
-            ->where('unique_id', $uniqueId)
-            ->count();
-        
-        // Sum final price amounts
         $amountAfter = DB::table('consolidate_invoice_item')
             ->where('unique_id', $uniqueId)
             ->sum('price_extension_amount');
-        
-        // Determine status
-        $completeStatus = ((float)$amountBefore === (float)$amountAfter)
+    
+        $completeStatus = bccomp($taxableAmount, $amountAfter, 2) === 0
             ? 'completed'
             : 'unmatched';
-        
-        // Update consolidate_invoice
+    
         DB::table('consolidate_invoice')
             ->where('id_invoice', $idCon)
             ->update([
                 'consolidate_list_sale_item_id' => implode(',', $listItemId),
-                'consolidate_complete_total'     => $completeTotal,
-                'consolidate_total_amount_after' => $amountAfter,
-                'consolidate_complete_status'    => $completeStatus,
-                'updated_at'                     => now(),
+                'consolidate_total_amount_after'=> $amountAfter,
+                'consolidate_complete_status'   => $completeStatus,
+                'updated_at'                    => now(),
             ]);
-        
-
+    
         // =========================================================
-        // 4. GENERATE CORRECT SHORT URL USING LINKCONTROLLER
+        // 8. SHORT URL
         // =========================================================
-
-        // Get base URL from .env (APP_URL)
-        $appUrl = rtrim(env('APP_URL'), '/');  // Ensure no trailing slash
-
-        // 1) Build long URL dynamically
-        $longUrl = "{$appUrl}/myinvois/{$uniqueId}";
-
-        // 2) Generate short code
+        $appUrl    = rtrim(env('APP_URL'), '/');
+        $longUrl   = "{$appUrl}/myinvois/{$uniqueId}";
         $shortCode = Str::random(7);
-
-        // 3) Store short link in shorten_url table
+    
         DB::table('shorten_url')->insert([
             'short_code'   => $shortCode,
             'original_url' => $longUrl,
             'clicks'       => 0,
             'created_at'   => now()
         ]);
-
-        // 4) Build final short link dynamically
-        $shortUrl = "{$appUrl}/redirect/{$shortCode}";
-
-
-        // 5) Return response
+    
         return response()->json([
-            'status'          => 'ok',
-            'mysynctax_uuid'  => $uniqueId,
-            'qr_url'    => $shortUrl
+            'status'         => 'ok',
+            'mysynctax_uuid' => $uniqueId,
+            'qr_url'         => "{$appUrl}/redirect/{$shortCode}"
         ], 201);
     }
+    
 
 }
