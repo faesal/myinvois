@@ -383,11 +383,21 @@
 @endsection
 
 @section('scripts')
+@section('scripts')
 <script>
 $(document).ready(function() {
 
     // 1. Setup Variables
     const clientId = "{{ $client->id_customer }}";
+
+    // Common SweetAlert Toast Configuration
+    const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 1500,
+        timerProgressBar: true
+    });
 
     // ---------------------------------------------------------
     // HELPER FUNCTION: Handle Visual & Logic Toggle
@@ -396,62 +406,109 @@ $(document).ready(function() {
         const $trigger = $(triggerSelector);
         const $wrapper = $(wrapperSelector);
         const isChecked = $trigger.is(':checked');
-        const $inputs = $wrapper.find('input, select, button'); // Find all interactive elements
+        const $inputs = $wrapper.find('input, select, button');
 
         if (isChecked) {
-            // IF CHECKED: Show wrapper, enable inputs
             if(isInit) {
-                $wrapper.show(); // No animation on page load
+                $wrapper.show();
             } else {
-                $wrapper.slideDown(); // Animate
+                $wrapper.slideDown();
             }
             $inputs.prop('disabled', false);
         } else {
-            // IF UNCHECKED: Hide wrapper, disable inputs
             if(isInit) {
-                $wrapper.hide(); // No animation on page load
+                $wrapper.hide();
             } else {
-                $wrapper.slideUp(); // Animate
+                $wrapper.slideUp();
             }
             $inputs.prop('disabled', true);
         }
     }
 
-    // 2. INITIAL UI STATE (Run on Page Load)
+    // 2. INITIAL UI STATE
     updateToggleState('#toggleConsolidation', '#consolidationWrapper', true);
     updateToggleState('#toggleIpWhitelist', '#ipWhitelistWrapper', true);
 
 
-    // 3. UI TOGGLES (Event Listeners)
+    // ---------------------------------------------------------
+    // AUTO-SAVE LOGIC: Toggles
+    // ---------------------------------------------------------
+
+    // 3. Consolidation Toggle Auto-Save
     $('#toggleConsolidation').on('change', function() {
         updateToggleState(this, '#consolidationWrapper');
+        
+        let isEnabled = $(this).is(':checked') ? 1 : 0;
+        let freq = $('input[name="freq"]:checked').val() || 'daily';
+        let specificDate = $('#specific_date_input').val();
+        let emailNotif = $('#email_notif').is(':checked') ? 1 : 0;
+
+        $.ajax({
+            url: "{{ route('client.settings.consolidate', '') }}/" + clientId,
+            method: "POST",
+            data: {
+                _token: "{{ csrf_token() }}",
+                is_enabled: isEnabled,
+                freq: freq,
+                specific_date: specificDate,
+                email_notif: emailNotif
+            },
+            success: function(response) {
+                Toast.fire({ 
+                    icon: 'success', 
+                    title: 'Consolidation Status Updated' 
+                }).then(() => {
+                    location.reload(); // Refresh to ensure backend sync
+                });
+            },
+            error: function(xhr) {
+                Swal.fire('Error', 'Failed to auto-save consolidation status', 'error');
+            }
+        });
     });
 
+    // 4. IP Whitelist Toggle Auto-Save
     $('#toggleIpWhitelist').on('change', function() {
         updateToggleState(this, '#ipWhitelistWrapper');
+        
+        let isEnabled = $(this).is(':checked') ? 1 : 0;
+
+        $.ajax({
+            url: "{{ route('client.settings.ip_toggle', '') }}/" + clientId,
+            method: "POST",
+            data: {
+                _token: "{{ csrf_token() }}",
+                is_enabled: isEnabled
+            },
+            success: function(response) {
+                Toast.fire({ 
+                    icon: 'success', 
+                    title: 'IP Whitelist Status Updated' 
+                }).then(() => {
+                    location.reload(); // Refresh to sync UI state
+                });
+            },
+            error: function(xhr) {
+                Swal.fire('Error', 'Failed to auto-save IP Whitelist status', 'error');
+            }
+        });
     });
 
 
     // ---------------------------------------------------------
-    // DATA LOGIC (Remains Unchanged)
+    // MASTER UPDATE BUTTON (Account Info & Keys)
     // ---------------------------------------------------------
-
-    // 4. MASTER UPDATE BUTTON LOGIC
     $('#masterUpdateBtn').click(function(e) {
         e.preventDefault();
         const $btn = $(this);
-        
         $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-2"></i> Saving...');
 
-        // Gather Consolidation Data
-        // Note: Even if inputs are disabled/hidden, we can still grab the values manually if needed, 
-        // but typically user sets them before hiding.
+        // Final sync of consolidation before main submit (Original Logic)
         let freq = $('input[name="freq"]:checked').val(); 
         let specificDate = $('#specific_date_input').val();
         let emailNotif = $('#email_notif').is(':checked') ? 1 : 0;
         let isConsolidateEnabled = $('#toggleConsolidation').is(':checked') ? 1 : 0;
 
-        // Step A: Save Consolidation Settings via AJAX
         $.ajax({
             url: "{{ route('client.settings.consolidate', '') }}/" + clientId,
             method: "POST",
@@ -463,20 +520,20 @@ $(document).ready(function() {
                 is_enabled: isConsolidateEnabled
             },
             success: function(response) {
-                // Step B: Submit the Main Form
                 $('#mainClientForm').submit();
             },
             error: function(xhr) {
-                console.error("Consolidate Error:", xhr.responseText);
                 $btn.prop('disabled', false).text('Update Account');
-                
-                let msg = xhr.responseJSON?.message || 'Failed to save consolidation settings.';
-                Swal.fire('Error', msg, 'error');
+                Swal.fire('Error', 'Failed to save settings.', 'error');
             }
         });
     });
 
-    // 5. IP WHITELIST - ADD IP LOGIC
+    // ---------------------------------------------------------
+    // IP WHITELIST MANAGEMENT (AJAX)
+    // ---------------------------------------------------------
+
+    // 5. Add IP Logic
     $('#addIpBtn').click(function() {
         let ip = $('#newIpAddress').val();
         let desc = $('#newIpDesc').val();
@@ -499,7 +556,6 @@ $(document).ready(function() {
             },
             success: function(response) {
                 $('#noIpRow').remove();
-                
                 $('#ipTableBody').append(`
                     <tr class="border-bottom" data-id="${response.id}">
                         <td class="ps-3 py-3"><i class="fa-regular fa-square-check text-dark me-2"></i> ${ip}</td>
@@ -512,12 +568,9 @@ $(document).ready(function() {
                         </td>
                     </tr>
                 `);
-                
                 $('#newIpAddress').val('');
                 $('#newIpDesc').val('');
                 $btn.prop('disabled', false);
-
-                const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
                 Toast.fire({ icon: 'success', title: 'IP Added Successfully' });
             },
             error: function(xhr) {
@@ -528,7 +581,7 @@ $(document).ready(function() {
         });
     });
 
-    // 6. IP WHITELIST - DELETE IP LOGIC
+    // 6. Delete IP Logic
     $(document).on('click', '.delete-ip', function() {
         let id = $(this).data('id');
         let $row = $(this).closest('tr');
@@ -549,7 +602,6 @@ $(document).ready(function() {
                     data: { _token: "{{ csrf_token() }}" },
                     success: function(response) {
                         $row.fadeOut(300, function() { $(this).remove(); });
-                        const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
                         Toast.fire({ icon: 'success', title: 'IP Removed' });
                     },
                     error: function(xhr) {
@@ -561,4 +613,5 @@ $(document).ready(function() {
     });
 });
 </script>
+@endsection
 @endsection

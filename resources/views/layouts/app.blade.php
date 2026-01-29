@@ -1,531 +1,233 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
-	<meta charset="utf-8">
-	<meta http-equiv="X-UA-Compatible" content="IE=edge">
-	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-	<title>MySyncTax</title>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>MySyncTax</title>
 
-	<!-- Global stylesheets -->
-	<!-- Replace with your actual paths if different in your Laravel project -->
-	<link href="{{ asset('assets/icons/phosphor/styles.min.css') }}" rel="stylesheet" type="text/css">
-	<link href="{{ asset('assets/css/ltr/all.min.css') }}" id="stylesheet" rel="stylesheet" type="text/css">
-	<!-- /global stylesheets -->
-
-	<!-- Core JS files -->
-	<script src="{{ asset('assets/demo/demo_configurator.js') }}"></script>
-	<script src="{{ asset('assets/js/bootstrap/bootstrap.bundle.min.js') }}"></script>
-	<!-- /core JS files -->
-
-
-
-	<!-- /theme JS files -->
     <link href="{{ asset('assets/icons/phosphor/styles.min.css') }}" rel="stylesheet" type="text/css">
+    <link href="{{ asset('assets/css/ltr/all.min.css') }}" id="stylesheet" rel="stylesheet" type="text/css">
 
-<!-- DataTables CSS -->
+    <script src="{{ asset('assets/demo/demo_configurator.js') }}"></script>
+    <script src="{{ asset('assets/js/bootstrap/bootstrap.bundle.min.js') }}"></script>
 
+    <script src="{{ asset('assets/js/jquery/jquery.min.js') }}"></script>
+    <script src="{{ asset('assets/js/vendor/tables/datatables/datatables.min.js')}}"></script>
+    
+    <script src="{{ asset('assets/js/app.js') }}"></script>
 
-<!-- DataTables JS -->
-
-<script src="{{ asset('assets/js/jquery/jquery.min.js') }}"></script>
-
-<script src="{{ asset('assets/js/vendor/tables/datatables/datatables.min.js')}}"></script>
-
-
-
-
-
-
+    <style>
+        .sidebar .collapse { visibility: visible !important; }
+        .nav-item-submenu.nav-item-open > .nav-group-sub { display: block !important; }
+        @media (max-width: 991.98px) {
+            .sidebar { z-index: 9999 !important; }
+            .navbar-toggler { cursor: pointer; position: relative; z-index: 10000; }
+        }
+        .table-responsive { display: block; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    </style>
 </head>
 
 <body>
-
-	<!-- Main navbar -->
-	<div class="navbar navbar-dark navbar-expand-lg navbar-static">
-		<div class="container-fluid">
-			<div class="d-flex d-lg-none me-2">
-				<button type="button" class="navbar-toggler sidebar-mobile-main-toggle rounded-pill">
-					<i class="ph-list"></i>
-				</button>
-			</div>
-
-			<div class="navbar-brand flex-1 flex-lg-0">
-				<a href="index.html" class="d-inline-flex align-items-center">
-					<img src="../../../assets/images/logo_icon.svg" alt="">
-					<img src="../../../assets/images/logo_text_light.svg" class="d-none d-sm-inline-block h-16px ms-3" alt="">
-				</a>
-			</div>
-
-			<ul class="nav flex-row">
-				<li class="nav-item d-lg-none">
-					
-				</li>
-
-		
-
-				
-			</ul>
-
-		
-
-			<ul class="nav flex-row justify-content-end order-1 order-lg-2">
-				<!--<li class="nav-item ms-lg-2">
-					<a href="#" class="navbar-nav-link navbar-nav-link-icon rounded-pill" data-bs-toggle="offcanvas" data-bs-target="#notifications">
-						<i class="ph-bell"></i>
-						<span class="badge bg-yellow text-black position-absolute top-0 end-0 translate-middle-top zindex-1 rounded-pill mt-1 me-1">2</span>
-					</a>
-				</li>-->
-
-				<li class="nav-item nav-item-dropdown-lg dropdown ms-lg-2">
-					<a href="#" class="navbar-nav-link align-items-center rounded-pill p-1" data-bs-toggle="dropdown">
-						<div class="status-indicator-container">
-							<img src="../../../assets/images/demo/users/face11.jpg" class="w-32px h-32px rounded-pill" alt="">
-							<span class="status-indicator bg-success"></span>
-						</div>
-						<span class="d-none d-lg-inline-block mx-lg-2">Victoria</span>
-					</a>
-
-					<div class="dropdown-menu dropdown-menu-end">
-						<a href="{{url('/user/profile')}}" class="dropdown-item">
-							<i class="ph-user-circle me-2"></i>
-							My profile
-						</a>
-						<!--<a href="#" class="dropdown-item">
-							<i class="ph-currency-circle-dollar me-2"></i>
-							My subscription
-						</a>
-						<a href="#" class="dropdown-item">
-							<i class="ph-shopping-cart me-2"></i>
-							My orders
-						</a>
-						<a href="#" class="dropdown-item">
-							<i class="ph-envelope-open me-2"></i>
-							My inbox
-							<span class="badge bg-primary rounded-pill ms-auto">26</span>
-						</a>
-						<div class="dropdown-divider"></div>
-						<a href="#" class="dropdown-item">
-							<i class="ph-gear me-2"></i>
-							Account settings
-						</a>-->
-						<a href="{{url('/logout')}}" class="dropdown-item">
-							<i class="ph-sign-out me-2"></i>
-							Logout
-						</a>
-					</div>
-				</li>
-			</ul>
-		</div>
-	</div>
-	<!-- /main navbar -->
-
-
-	<!-- Breadcrumbs -->
-	<div class="page-header page-header-light shadow">
-		<div class="page-header-content d-lg-flex">
-			<div class="d-flex">
-				<div class="breadcrumb py-2">
-					<a href="index.html" class="breadcrumb-item"><i class="ph-house"></i></a>
-					<a href="#" class="breadcrumb-item">MySyncTax</a>
-					
-				</div>
-
-				<a href="#breadcrumb_elements" class="btn btn-light align-self-center collapsed d-lg-none border-transparent rounded-pill p-0 ms-auto" data-bs-toggle="collapse">
-					<i class="ph-caret-down collapsible-indicator ph-sm m-1"></i>
-				</a>
-			</div>
-
-			<!--<div class="collapse d-lg-block ms-lg-auto" id="breadcrumb_elements">
-				<div class="d-lg-flex mb-2 mb-lg-0">
-					<a href="#" class="d-flex align-items-center text-body py-2">
-						<i class="ph-lifebuoy me-2"></i>
-						Support
-					</a>
-
-					<div class="dropdown ms-lg-3">
-						<a href="#" class="d-flex align-items-center text-body dropdown-toggle py-2" data-bs-toggle="dropdown">
-							<i class="ph-gear me-2"></i>
-							<span class="flex-1">Settings</span>
-						</a>
-
-						<div class="dropdown-menu dropdown-menu-end w-100 w-lg-auto">
-							<a href="#" class="dropdown-item">
-								<i class="ph-shield-warning me-2"></i>
-								Account security
-							</a>
-							<a href="#" class="dropdown-item">
-								<i class="ph-chart-bar me-2"></i>
-								Analytics
-							</a>
-							<a href="#" class="dropdown-item">
-								<i class="ph-lock-key me-2"></i>
-								Privacy
-							</a>
-							<div class="dropdown-divider"></div>
-							<a href="#" class="dropdown-item">
-								<i class="ph-gear me-2"></i>
-								All settings
-							</a>
-						</div>
-					</div>
-				</div>
-			</div>-->
-		</div>
-	</div>
-	<!-- /breadcrumbs -->
-
-
-	<!-- Page header -->
-	<div class="page-header">
-		<div class="page-header-content d-lg-flex">
-			<div class="d-flex">
-				<h4 class="page-title mb-0">
-					MySyncTax
-				</h4>
-
-				<a href="#page_header" class="btn btn-light align-self-center collapsed d-lg-none border-transparent rounded-pill p-0 ms-auto" data-bs-toggle="collapse">
-					<i class="ph-caret-down collapsible-indicator ph-sm m-1"></i>
-				</a>
-			</div>
-
-		</div>
-	</div>
-	<!-- /page header -->
-
-
-	<!-- Page content -->
-	<div class="page-content pt-0">
-
-		<!-- Main sidebar -->
-		<div class="sidebar sidebar-main sidebar-expand-lg align-self-start">
-
-			<!-- Sidebar content -->
-			<div class="sidebar-content">
-
-				<!-- Sidebar header -->
-				<div class="sidebar-section">
-					<div class="sidebar-section-body d-flex justify-content-center">
-						<h5 class="sidebar-resize-hide flex-grow-1 my-auto">Navigation</h5>
-
-						<div>
-							<button type="button" class="btn btn-light btn-icon btn-sm rounded-pill border-transparent sidebar-control sidebar-main-resize d-none d-lg-inline-flex">
-								<i class="ph-arrows-left-right"></i>
-							</button>
-
-							<button type="button" class="btn btn-light btn-icon btn-sm rounded-pill border-transparent sidebar-mobile-main-toggle d-lg-none">
-								<i class="ph-x"></i>
-							</button>
-						</div>
-					</div>
-				</div>
-				<!-- /sidebar header -->
-
-
-				<!-- Main navigation -->
-				<!-- Main navigation -->
-<div class="sidebar-section">
-    <ul class="nav nav-sidebar" data-nav-type="accordion">
-
-        <!-- Main -->
-        <li class="nav-item-header pt-0">
-            <div class="text-uppercase fs-sm lh-sm opacity-50 sidebar-resize-hide">Main</div>
-            <i class="ph-dots-three sidebar-resize-show"></i>
-        </li>
-
-        <li class="nav-item">
-            <a href="{{url('main')}}" class="nav-link">
-                <i class="ph-gauge"></i>
-                <span>
-                    Dashboard
-                    <span class="d-block fw-normal text-body opacity-50">Analytic Report</span>
-                </span>
-            </a>
-        </li>
-
-        <li class="nav-item">
-            <a href="{{url('/customer/listing_customer')}}" class="nav-link">
-                <i class="ph-users"></i>
-                <span>
-                    Customer Listing
-                </span>
-            </a>
-        </li>
-
-        <li class="nav-item">
-            <a href="{{url('/invoice/create')}}" class="nav-link">
-                <i class="ph-file-text"></i>
-                <span>
-                    Create New Invoice
-                </span>
-            </a>
-        </li>
-
-        <li class="nav-item">
-    <a href="{{ route('consolidate.import') }}" class="nav-link {{ request()->routeIs('consolidate.import') ? 'active' : '' }}">
-        <i class="ph-upload-simple"></i>
-        <span>
-            Consolidate Import
-            <span class="d-block fw-normal text-body opacity-50">Batch Excel Import</span>
-        </span>
-    </a>
-</li>
-
-<li class="nav-item">
-    <a href="{{ route('consolidate.listing') }}" 
-       class="nav-link {{ request()->routeIs('consolidate.listing') ? 'active' : '' }}">
-        <i class="ph-list-bullets"></i>
-        <span>
-            Consolidate Listing
-            <span class="d-block fw-normal text-body opacity-50">View all invoices</span>
-        </span>
-    </a>
-</li>
-
-        <li class="nav-item">
-            <a href="{{url('listing_submission')}}" class="nav-link">
-                <i class="ph-upload-simple"></i>
-                <span>
-                    Listing Submission
-                    <span class="d-block fw-normal text-body opacity-50">All submission to LHDN</span>
-                </span>
-            </a>
-        </li>
-
-        <li class="nav-item">
-            <a href="{{url('credit_note/listing')}}" class="nav-link">
-                <i class="ph-note-pencil"></i>
-                <span>
-                    Listing Credit Note
-                </span>
-            </a>
-        </li>
-
-        <li class="nav-item">
-            <a href="{{url('debit_note/listing')}}" class="nav-link">
-                <i class="ph-note"></i>
-                <span>
-                    Listing Debit Note
-                </span>
-            </a>
-        </li>
-
-        <li class="nav-item">
-            <a href="{{url('refund_note/listing')}}" class="nav-link">
-                <i class="ph-arrow-counter-clockwise"></i>
-                <span>
-                    Listing Refund
-                </span>
-            </a>
-        </li>
-
-        <li class="nav-item">
-            <a href="{{url('select_items')}}" class="nav-link">
-                <i class="ph-list-dashes"></i>
-                <span>
-                    Consolidate List
-                </span>
-            </a>
-        </li>
-
-        <li class="nav-item">
-            <a href="{{url('compare')}}" class="nav-link">
-                <i class="ph-git-compare"></i>
-                <span>
-                    Compare List
-                </span>
-            </a>
-        </li>
-
-		<!-- NEW: Developer Documentation -->
-		<li class="nav-item">
-			<a href="{{url('developer/documentation')}}" class="nav-link">
-				<i class="ph-code"></i>
-				<span>
-					Developer Documentation
-					<span class="d-block fw-normal text-body opacity-50">API Reference</span>
-				</span>
-			</a>
-		</li>
-		
-    </ul>
-</div>
-<!-- /main navigation -->
-
-				<!-- /main navigation -->
-
-			</div>
-			<!-- /sidebar content -->
-			
-		</div>
-		<!-- /main sidebar -->
-
-
-		<!-- Main content -->
-		<div class="content-wrapper">
-
-			<!-- Content area -->
-			<div class="content">
-
-				<!-- Info alert -->
-				
-			    <!-- /info alert -->
-
-
-				<!-- Navigation types -->
-				<div class="card">
-					<div class="card-header">
-						<h5 class="mb-0">Invoice Submission</h5>
-					</div>
-
-					<div class="card-body">
-						@yield('content')
-					</div>
-				</div>
-				<!-- /navigation types -->
-
-
-
-			
-				<!-- /navigation markup -->
-
-			</div>
-			<!-- /content area -->
-
-		</div>
-		<!-- /main content -->
-
-	</div>
-	<!-- /page content -->
-
-
-	<!-- Footer -->
-    <center>
-	<div class="navbar navbar-sm navbar-footer border-top">
-           
-			<span>&copy; {{date('Y')}} <a href="">MySyncTax</a></span>
-       
-		
-
-	</div>
-    </center>
-	<!-- /footer -->
-
-
-	<!-- Notifications -->
-	<div class="offcanvas offcanvas-end" tabindex="-1" id="notifications">
-		<div class="offcanvas-header py-0">
-			<h5 class="offcanvas-title py-3">Activity</h5>
-			<button type="button" class="btn btn-light btn-sm btn-icon border-transparent rounded-pill" data-bs-dismiss="offcanvas">
-				<i class="ph-x"></i>
-			</button>
-		</div>
-
-	</div>
-	<!-- /notifications -->
-
-
-
-	<!-- /demo config -->
-
-<!-- SweetAlert2 -->
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.5/dist/sweetalert2.all.min.js"></script>
-
-<script>
-    // ============================================================
-    // UNIVERSAL SWEETALERT2 FUNCTIONS (AJAX & GLOBAL USE)
-    // ============================================================
-    function popupSuccess(message) {
-        Swal.fire({
-            icon: 'success',
-            title: 'Success!',
-            text: message,
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#22c55e',
-            timer: 3000,
-            timerProgressBar: true,
-        });
-    }
-
-    function popupError(message) {
-        Swal.fire({
-            icon: 'error',
-            title: 'Error!',
-            text: message,
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#ef4444',
-        });
-    }
-
-    function popupWarning(message) {
-    Swal.fire({
-        icon: 'warning',   // required for spacing
-        title: 'Warning!',
-        text: message,
-        confirmButtonText: 'OK',
-        confirmButtonColor: '#f59e0b',
-
-        // Use custom HTML icon
-        iconHtml: `
-            <div class="custom-warning-circle">
-                <span class="custom-warning-mark">!</span>
+    <div class="navbar navbar-dark navbar-expand-lg navbar-static">
+        <div class="container-fluid">
+            <div class="d-flex d-lg-none me-2">
+                <button type="button" class="navbar-toggler sidebar-mobile-main-toggle rounded-pill">
+                    <i class="ph-list"></i>
+                </button>
             </div>
-        `,
-        customClass: {
-            icon: 'custom-warning-wrapper'
-        }
-    });
-}
+            <div class="navbar-brand flex-1 flex-lg-0">
+                <a href="{{ url('main') }}" class="d-inline-flex align-items-center text-white fw-bold fs-4 text-decoration-none">
+                    MySynctax
+                </a>
+            </div>
+            <ul class="nav flex-row justify-content-end order-1 order-lg-2">
+                <li class="nav-item nav-item-dropdown-lg dropdown ms-lg-2">
+                    <a href="#" class="navbar-nav-link align-items-center rounded-pill p-1" data-bs-toggle="dropdown">
+                        <div class="status-indicator-container">
+                            <img src="https://ui-avatars.com/api/?name=Victoria&background=0D8ABC&color=fff" class="w-32px h-32px rounded-pill" alt="Profile Icon">
+                            <span class="status-indicator bg-success"></span>
+                        </div>
+                        <span class="d-none d-lg-inline-block mx-lg-2">Victoria</span>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end">
+                        <a href="{{url('/user/profile')}}" class="dropdown-item"><i class="ph-user-circle me-2"></i> My profile</a>
+                        <a href="{{url('/logout')}}" class="dropdown-item"><i class="ph-sign-out me-2"></i> Logout</a>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
 
+    <div class="page-header page-header-light shadow-sm">
+        <div class="page-header-content d-lg-flex">
+            <div class="d-flex">
+                <div class="breadcrumb py-2">
+                    <a href="{{ url('main') }}" class="breadcrumb-item"><i class="ph-house"></i></a>
+                    <a href="#" class="breadcrumb-item">MySyncTax</a>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    function popupInfo(message) {
-        Swal.fire({
-            icon: 'info',
-            title: 'Information',
-            text: message,
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#3b82f6',
-        });
-    }
+    <div class="page-content pt-0">
+        <div class="sidebar sidebar-main sidebar-expand-lg align-self-start">
+            <div class="sidebar-content">
+                <div class="sidebar-section">
+                    <div class="sidebar-section-body d-flex justify-content-center">
+                        <h5 class="sidebar-resize-hide flex-grow-1 my-auto">Navigation</h5>
+                        <div>
+                            <button type="button" class="btn btn-light btn-icon btn-sm rounded-pill border-transparent sidebar-control sidebar-main-resize d-none d-lg-inline-flex">
+                                <i class="ph-arrows-left-right"></i>
+                            </button>
+                            <button type="button" class="btn btn-light btn-icon btn-sm rounded-pill border-transparent sidebar-mobile-main-toggle d-lg-none">
+                                <i class="ph-x"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
-    // ============================================================
-    // FLASH MESSAGE POPUPS (FROM CONTROLLERS)
-    // ============================================================
-    @if(session('success'))
-        popupSuccess("{{ session('success') }}");
-    @endif
+                <div class="sidebar-section">
+                    <ul class="nav nav-sidebar" data-nav-type="accordion">
+                        <li class="nav-item-header pt-0">
+                            <div class="text-uppercase fs-sm lh-sm opacity-50 sidebar-resize-hide">Main</div>
+                            <i class="ph-dots-three sidebar-resize-show"></i>
+                        </li>
 
-    @if(session('error'))
-        popupError("{{ session('error') }}");
-    @endif
+                        <li class="nav-item">
+                            <a href="{{url('main')}}" class="nav-link {{ request()->is('main') ? 'active' : '' }}">
+                                <i class="ph-gauge"></i>
+                                <span>Dashboard<span class="d-block fw-normal text-body opacity-50">Analytic Report</span></span>
+                            </a>
+                        </li>
 
-    @if(session('warning'))
-        popupWarning("{{ session('warning') }}");
-    @endif
+                        <li class="nav-item">
+                            <a href="{{url('/customer/listing_customer')}}" class="nav-link">
+                                <i class="ph-users"></i>
+                                <span>Customer Listing</span>
+                            </a>
+                        </li>
 
-    @if(session('info'))
-        popupInfo("{{ session('info') }}");
-    @endif
-</script>
+                        <li class="nav-item">
+                            <a href="{{ route('manage_customer.index') }}" class="nav-link {{ request()->routeIs('manage_customer*') ? 'active' : '' }}">
+                                <i class="ph-address-book"></i>
+                                <span>Manage Customer<span class="d-block fw-normal text-body opacity-50">View & Edit Customers</span></span>
+                            </a>
+                        </li>
 
+                        {{-- ✅ REPAIRED: SELF BILL INVOICE SUBMENU --}}
+                        <li class="nav-item nav-item-submenu {{ 
+                            request()->is('self_bill/*') || (request()->is('invoice/create') && request()->query('type') == 'self_bill')
+                            ? 'nav-item-open' : '' 
+                        }}">
+                            <a href="#" class="nav-link">
+                                <i class="ph-file-text"></i>
+                                <span>Self Bill Invoice</span>
+                            </a>
 
-<!-- Optional: Perfect rounded popup styling -->
-<style>
-    .swal-popup-rounded {
-        border-radius: 14px !important;
-        padding: 25px !important;
-    }
-    .swal-title-bold {
-        font-weight: 700 !important;
-        font-size: 24px !important;
-    }
-    .swal2-icon.swal2-warning {
-        transform: scale(0.45) !important;
-        margin-top: 0 !important;
-        margin-bottom: -5px !important;
-    }
-</style>
+                            <ul class="nav-group-sub collapse {{ 
+                                request()->is('self_bill/*') || (request()->is('invoice/create') && request()->query('type') == 'self_bill')
+                                ? 'show' : '' 
+                            }}">
+                                <li class="nav-item">
+                                    <a href="{{ url('invoice/create?type=self_bill') }}" class="nav-link {{ (request()->is('invoice/create') && request()->query('type') == 'self_bill') ? 'active' : '' }}">
+                                        Create New Self Bill Invoice
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="{{ url('self_bill/listing') }}" class="nav-link {{ request()->is('self_bill/listing') ? 'active' : '' }}">Listing Submission</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="{{ route('self_bill_note.listing', ['note_type' => 'credit_note']) }}" class="nav-link {{ request()->is('*/credit_note/*') ? 'active' : '' }}">Listing Credit Note</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="{{ route('self_bill_note.listing', ['note_type' => 'debit_note']) }}" class="nav-link {{ request()->is('*/debit_note/*') ? 'active' : '' }}">Listing Debit Note</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="{{ route('self_bill_note.listing', ['note_type' => 'refund_note']) }}" class="nav-link {{ request()->is('*/refund_note/*') ? 'active' : '' }}">Listing Refund</a>
+                                </li>
+                            </ul>
+                        </li>
 
+                                {{-- ✅ REPAIRED: NORMAL INVOICE SUBMENU --}}
+                                {{-- We wrap ALL "Normal" route checks in a group and ensure type IS NOT self_bill --}}
+                                <li class="nav-item nav-item-submenu {{ 
+                                    (
+                                        request()->is('invoice/create') || 
+                                        request()->is('listing_submission') || 
+                                        request()->is('credit_note/listing') || 
+                                        request()->is('debit_note/listing') || 
+                                        request()->is('refund_note/listing') || 
+                                        request()->is('select_items') || 
+                                        request()->is('compare')
+                                    ) && request()->query('type') != 'self_bill' 
+                                    ? 'nav-item-open' : '' 
+                                }}">
+                            <a href="#" class="nav-link">
+                                <i class="ph-receipt"></i>
+                                <span>Normal Invoice</span>
+                            </a>
 
+                            <ul class="nav-group-sub collapse {{ 
+                                (request()->is('invoice/create') && request()->query('type') != 'self_bill') || 
+                                request()->is('listing_submission') || 
+                                request()->is('credit_note/listing') || 
+                                request()->is('debit_note/listing') || 
+                                request()->is('refund_note/listing') || 
+                                request()->is('select_items') || 
+                                request()->is('compare') 
+                                ? 'show' : '' 
+                            }}">
+                                <li class="nav-item">
+                                    <a href="{{url('/invoice/create')}}" class="nav-link {{ (request()->is('invoice/create') && request()->query('type') != 'self_bill') ? 'active' : '' }}">Create New Invoice</a>
+                                </li>
+                                <li class="nav-item"><a href="{{url('listing_submission')}}" class="nav-link {{ request()->is('listing_submission') ? 'active' : '' }}">Listing Submission</a></li>
+                                <li class="nav-item"><a href="{{url('credit_note/listing')}}" class="nav-link {{ request()->is('credit_note/listing') ? 'active' : '' }}">Listing Credit Note</a></li>
+                                <li class="nav-item"><a href="{{url('debit_note/listing')}}" class="nav-link {{ request()->is('debit_note/listing') ? 'active' : '' }}">Listing Debit Note</a></li>
+                                <li class="nav-item"><a href="{{url('refund_note/listing')}}" class="nav-link {{ request()->is('refund_note/listing') ? 'active' : '' }}">Listing Refund</a></li>
+                                <li class="nav-item"><a href="{{url('select_items')}}" class="nav-link {{ request()->is('select_items') ? 'active' : '' }}">Consolidate List</a></li>
+                                <li class="nav-item"><a href="{{url('compare')}}" class="nav-link {{ request()->is('compare') ? 'active' : '' }}">Compare List</a></li>
+                            </ul>
+                        </li>
+
+                        <li class="nav-item">
+                            <a href="{{ route('consolidate.import') }}" class="nav-link {{ request()->routeIs('consolidate.import') ? 'active' : '' }}">
+                                <i class="ph-upload-simple"></i>
+                                <span>Consolidate Import</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-wrapper">
+            <div class="content">
+                <div class="card">
+                    <div class="card-header bg-white border-bottom">
+                        {{-- ✅ DYNAMIC HEADER --}}
+                        <h5 class="mb-0">
+                            {{ (request()->query('type') == 'self_bill' || request()->is('self_bill/*')) ? 'Self-Bill Management' : 'Invoice Submission' }}
+                        </h5>
+                    </div>
+                    <div class="card-body table-responsive">
+                        @yield('content')
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <center>
+        <div class="navbar navbar-sm navbar-footer border-top">
+            <span>&copy; {{date('Y')}} <a href="">MySyncTax</a></span>
+        </div>
+    </center>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.5/dist/sweetalert2.all.min.js"></script>
+    <script>
+        @if(session('success')) Swal.fire({ icon: 'success', title: 'Success!', text: "{{ session('success') }}", timer: 3000 }); @endif
+        @if(session('error')) Swal.fire({ icon: 'error', title: 'Error!', text: "{{ session('error') }}" }); @endif
+    </script>
 </body>
 </html>
-

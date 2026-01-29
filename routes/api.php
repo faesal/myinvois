@@ -36,8 +36,9 @@ Route::any('/myinvois/invoice_generaltin/selfbill', function (\Illuminate\Http\R
 });
 
 
-Route::get('/test', [InvoiceController::class, 'test']);
+//Route::get('/test', [InvoiceController::class, 'test']);
 
+Route::get('/test/{id}/json', [InvoiceController::class, 'test']);
 
 
 

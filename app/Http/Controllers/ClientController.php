@@ -69,11 +69,6 @@ class ClientController extends Controller
                 'address_line_3' => 'nullable|string',
             ]);
 
-            /*
-            |--------------------------------------------------------------------------
-            | 2. CREATE USER
-            |--------------------------------------------------------------------------
-            */
             $email = $request->email;
             if (DB::table('users')->where('email', $email)->exists()) {
                 throw new \Exception('Email already exists in users table.');
@@ -92,11 +87,6 @@ class ClientController extends Controller
                 'updated_at' => now()
             ]);
 
-            /*
-            |--------------------------------------------------------------------------
-            | 3. CREATE CONNECTION_INTEGRATE
-            |--------------------------------------------------------------------------
-            */
             do {
                 $generatedCode = 'CUST-' . str_pad(rand(0, 9999999999), 10, '0', STR_PAD_LEFT);
             } while (DB::table('connection_integrate')->where('code', $generatedCode)->exists());
@@ -119,11 +109,6 @@ class ClientController extends Controller
                 'updated_at' => now()
             ]);
 
-            /*
-            |--------------------------------------------------------------------------
-            | 1. INSERT INTO CUSTOMER
-            |--------------------------------------------------------------------------
-            */
             DB::table('customer')->insert([
                 'id_developer' => $developerId,
                 'user_id' => $userId,
@@ -231,7 +216,6 @@ class ClientController extends Controller
     {
         $user = Auth::user();
 
-        // Requirement 1: Admin can access all data, Developer only their own
         $query = DB::table('customer')->where('id_customer', $id_customer);
         
         if ($user->role !== 'admin') {
@@ -255,7 +239,6 @@ class ClientController extends Controller
             ];
         }
 
-        // --- Fetch Settings for View ---
         $connectionKey = $this->getConnectionKey($id_customer);
         
         $consolidation = DB::table('consolidate_setting')
@@ -291,13 +274,10 @@ class ClientController extends Controller
 
         $query = DB::table('customer')->where('id_customer', $id_customer);
 
-        // Security check
         if ($user->role !== 'admin') {
             $query->where('id_developer', $user->id);
         }
 
-        // [FIX] Capture IP Whitelist Toggle State
-        // If checkbox is unchecked, it won't be in request, so default to 0.
         $isIpWhitelistEnabled = $request->has('is_ip_whitelist_enabled') ? 1 : 0;
 
         $query->update([
@@ -316,14 +296,10 @@ class ClientController extends Controller
             'secret_key1'        => $request->secret_key1,
             'secret_key2'        => $request->secret_key2,
             'secret_key3'        => $request->secret_key3,
-            
-            // [FIX] Save the toggle state to DB
             'is_ip_whitelist_enabled' => $isIpWhitelistEnabled,
-            
             'updated_at'         => now(),
         ]);
 
-        // Redirect based on role
         $route = ($user->role === 'admin') ? 'admin.subscribers.index' : 'developer.dashboard';
 
         return redirect()
@@ -337,22 +313,18 @@ class ClientController extends Controller
     public function saveConsolidation(Request $request, $id)
     {
         try {
-            // 1. Get correct key
             $connectionKey = $this->getConnectionKey($id);
             if (!$connectionKey) {
                 return response()->json(['success' => false, 'message' => 'Customer link not found.'], 404);
             }
 
-            // 2. Prepare Data
             $freq = $request->freq;
             $sendEmail = ($request->email_notif === 'true' || $request->email_notif === '1' || $request->email_notif === 1) ? 1 : 0;
-            
-            // [FIX] Capture Consolidation Toggle State (from AJAX)
             $isEnabled = ($request->is_enabled === 'true' || $request->is_enabled === '1' || $request->is_enabled === 1) ? 1 : 0;
 
             $data = [
                 'connection_integrate' => $connectionKey,
-                'is_enabled' => $isEnabled, // [FIX] Save to DB
+                'is_enabled' => $isEnabled,
                 'is_daily' => ($freq === 'daily') ? 1 : 0,
                 'is_weekly' => ($freq === 'weekly') ? 1 : 0,
                 'is_monthly' => ($freq === 'monthly') ? 1 : 0,
@@ -364,7 +336,6 @@ class ClientController extends Controller
                 'created_date' => now()
             ];
 
-            // 3. Update or Insert
             $exists = DB::table('consolidate_setting')
                 ->where('connection_integrate', $connectionKey)
                 ->exists();
@@ -430,6 +401,27 @@ class ClientController extends Controller
         try {
             DB::table('ip_management')->where('id_ip_managment', $id)->delete();
             return response()->json(['success' => true, 'message' => 'IP Removed']);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    // -------------------------------------------
+    // AJAX: UPDATE IP WHITELIST TOGGLE
+    // -------------------------------------------
+    public function updateIpWhitelistToggle(Request $request, $id)
+    {
+        try {
+            $isEnabled = $request->is_enabled ? 1 : 0;
+            
+            DB::table('customer')
+                ->where('id_customer', $id)
+                ->update([
+                    'is_ip_whitelist_enabled' => $isEnabled,
+                    'updated_at' => now()
+                ]);
+
+            return response()->json(['success' => true, 'message' => 'IP Whitelist status updated!']);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }

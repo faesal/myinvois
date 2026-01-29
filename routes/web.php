@@ -56,6 +56,12 @@ use App\Http\Controllers\ManageDeveloperController;
 
 use App\Http\Controllers\ClientSettingController;
 
+use App\Http\Controllers\ManageCustomerController;
+
+use App\Http\Controllers\SelfBillNoteController;
+
+use App\Http\Controllers\SelfInvoiceController;
+
 
 
 Route::get('/admin/mysynctax/send-credential/{id}', [
@@ -125,9 +131,6 @@ Route::get('/myinvois/{mysynctax_uuid}', [MyInvoisRedirectController::class,'pro
 
 Route::middleware('auth')->group(function () {
 
-   
-
-
 
     Route::get('/', function () {
 
@@ -137,26 +140,45 @@ Route::middleware('auth')->group(function () {
 
     
 
+// 1. STANDARD NOTES (Credit/Debit/Refund)
+    // URL: /credit_note/listing
     Route::prefix('{note_type}')
-
         ->whereIn('note_type', ['credit_note', 'debit_note', 'refund_note'])
-
         ->group(function () {
-
             Route::get('/listing', [NoteController::class, 'listing'])->name('note.listing');
-
             Route::get('/create', [NoteController::class, 'create'])->name('note.create');
-
+            
             Route::get('/fetchInvoiceItems/{id_invoice}', [NoteController::class, 'fetchInvoiceItems'])
-
                 ->where('id_invoice', '[0-9]+')
-
                 ->name('note.fetchItems');
 
             Route::post('/store', [NoteController::class, 'store'])->name('note.store');
-
         });
 
+    // 2. SELF BILL NOTES (Credit/Debit/Refund)
+    // URL: /self_bill/credit_note/listing
+    // ✅ FIXED: Converted to Fluent Syntax to allow ->whereIn()
+    Route::middleware('auth')
+        ->prefix('self_bill/{note_type}')
+        ->whereIn('note_type', ['credit_note', 'debit_note', 'refund_note'])
+        ->group(function () {
+            
+            Route::get('/listing', [App\Http\Controllers\SelfBillNoteController::class, 'listing'])
+                ->name('self_bill_note.listing');
+
+            Route::get('/create', [App\Http\Controllers\SelfBillNoteController::class, 'create'])
+                ->name('self_bill_note.create');
+
+            Route::post('/store', [App\Http\Controllers\SelfBillNoteController::class, 'store'])
+                ->name('self_bill_note.store');
+
+            // Fetch items helper
+            Route::get('/fetchInvoiceItems/{id_invoice}', [App\Http\Controllers\SelfBillNoteController::class, 'fetchInvoiceItems'])
+                ->name('self_bill_note.fetchItems');
+            
+                Route::delete('/destroy/{id}', [App\Http\Controllers\SelfBillNoteController::class, 'destroy'])
+            ->name('self_bill_note.destroy');
+        });
 
 
         //CUSTOMER
@@ -180,16 +202,20 @@ Route::middleware('auth')->group(function () {
         Route::any('/listing_submission', [InvoiceController::class, 'listing_submission']);
 
         Route::get('/invoice/create', [InvoiceController::class, 'create'])->name('invoice.create');
+        
+        Route::post('/invoice/store_create', [InvoiceController::class, 'store_create'])->name('invoice.store_create');
 
-        Route::any('/invoice/resubmit/{id_invoice}', [InvoiceController::class, 'cancelDocument']);
+       // Route::any('/invoice/resubmit/{id_invoice}', [InvoiceController::class, 'cancelDocument']);
 
-        Route::any('/invoice/cancelDocument/{uuid}', [InvoiceController::class, 'cancelDocument']);
+      //  Route::any('/invoice/cancelDocument/{uuid}', [InvoiceController::class, 'cancelDocument']);
 
         Route::any('submit_items', [InvoiceController::class, 'submitSelected'])->name('consolidate.submit');
 
         Route::get('/show_invoice/{unique_id}', [InvoiceController::class, 'show_invoice'])->name('invoice.show');
 
         Route::any('select_items', [InvoiceController::class, 'selectItems'])->name('consolidate.select');
+
+        Route::delete('/consolidate/item/delete/{id}', [InvoiceController::class, 'deleteConsolidateItem'])->name('consolidate.item.delete');
 
         Route::post('/invoice/submit-selected-lhdn', [InvoiceController::class, 'submitSelectedLHDN'])->name('invoice.submit_selected_lhdn');
 
@@ -319,6 +345,8 @@ Route::middleware(['auth'])->group(function () {
 
     Route::any('/developer/consolidate', [InvoiceSubmissionController::class, 'consolidate']);
 
+    Route::delete('/developer/consolidate/delete/{id}', [InvoiceSubmissionController::class, 'destroyConsolidateItem']);
+
     Route::get('/developer/settings', [DeveloperDashboardController::class, 'settings'])
         ->name('developer.settings');
 
@@ -356,6 +384,13 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/developer/client/update/{id_customer}', [ClientController::class, 'update'])
 
         ->name('developer.client.update');
+    
+    Route::post('/client/settings/ip-whitelist-toggle/{id}', [ClientController::class, 'updateIpWhitelistToggle'])
+    ->name('client.settings.ip_toggle');
+
+    // 1. Consolidation Settings (Frequency & Toggle)
+    Route::post('/client/settings/consolidate/{id}', [ClientController::class, 'saveConsolidation'])
+        ->name('client.settings.consolidate');
 
 // ==========================================
     // NEW CLIENT SETTING ROUTES (Paste Here)
@@ -470,27 +505,18 @@ Route::post('/client/settings/consolidate/{id}', [ClientController::class, 'save
 Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
 
     // 1. Manage Subscribers
-    // URL becomes: /admin/subscribers
-    // Name becomes: admin.subscribers.index
-    Route::get('/subscribers', [SubscriberController::class, 'index'])
-        ->name('subscribers.index');
+    Route::get('/subscribers', [SubscriberController::class, 'index'])->name('subscribers.index');
+    Route::post('/subscribers/update/{id}', [SubscriberController::class, 'update'])->name('subscribers.update');
+    Route::get('/subscribers/{id}/impersonate', [SubscriberController::class, 'impersonate'])->name('subscribers.impersonate');
+    Route::post('/subscribers/check-expired', [SubscriberController::class, 'manualCheckExpired'])->name('subscribers.check_expired');
 
-    Route::post('/subscribers/update/{id}', [SubscriberController::class, 'update'])
-        ->name('subscribers.update');
+    // 2. Activation Logic
+    Route::get('/subscribers/{id}/activate', [SubscriberController::class, 'activationForm'])->name('subscribers.activation_form');
+    Route::post('/subscribers/{id}/activate', [SubscriberController::class, 'activateSubscriber'])->name('subscribers.activate_submit');
 
-    Route::get('/subscribers/{id}/impersonate', [SubscriberController::class, 'impersonate'])
-    ->name('subscribers.impersonate');
-    
-    Route::post('/subscribers/check-expired', [SubscriberController::class, 'manualCheckExpired'])
-        ->name('subscribers.check_expired');
+    // 3. NEW: Soft Delete Route
+    Route::delete('/subscribers/{id}', [SubscriberController::class, 'destroy'])->name('subscribers.destroy');
 
-    // 2. Show the activation form (When link in email is clicked)
-    Route::get('/subscribers/{id}/activate', [SubscriberController::class, 'activationForm'])
-        ->name('subscribers.activation_form');
-
-    // 3. Process the form submission (Save new dates)
-    Route::post('/subscribers/{id}/activate', [SubscriberController::class, 'activateSubscriber'])
-        ->name('subscribers.activate_submit');
 
     // 2. Manage Developers
     // URL becomes: /admin/developers
@@ -546,3 +572,61 @@ Route::any('/getsubmission', [InvoiceController::class, 'getsubmission']);
 Route::get('/invoice/view/{unique_id}', [App\Http\Controllers\InvoiceSubmissionController::class, 'showInvoice'])
     ->name('invoice.view.public');
 
+// Grouping them under a prefix is usually cleaner
+// Grouping them under a prefix is usually cleaner
+Route::prefix('manage-customer')->name('manage_customer.')->group(function () {
+    
+    // --- 1. Custom Actions (Must be defined first to avoid conflict with {id}) ---
+    Route::post('/import', [ManageCustomerController::class, 'import'])->name('import');
+    Route::get('/export', [ManageCustomerController::class, 'export'])->name('export');
+    
+    // FIX: Simplified here because the group already adds "manage-customer" prefix and "manage_customer." name
+    Route::get('/download-template', [ManageCustomerController::class, 'downloadTemplate'])->name('download_template');
+
+    // --- 2. Standard CRUD Actions ---
+    
+    // List Page (manage_customer.index)
+    Route::get('/', [ManageCustomerController::class, 'index'])->name('index');
+
+    // Create Page (manage_customer.create)
+    Route::get('/create', [ManageCustomerController::class, 'create'])->name('create');
+
+    // Store Action (manage_customer.store)
+    Route::post('/', [ManageCustomerController::class, 'store'])->name('store');
+
+    // Edit Page (manage_customer.edit)
+    Route::get('/{id}/edit', [ManageCustomerController::class, 'edit'])->name('edit');
+
+    // Update Action (manage_customer.update)
+    Route::put('/{id}', [ManageCustomerController::class, 'update'])->name('update');
+
+    // Delete Action (manage_customer.destroy)
+    Route::delete('/{id}', [ManageCustomerController::class, 'destroy'])->name('destroy');
+});
+Route::group(['prefix' => 'self_bill', 'as' => 'self_invoice.', 'middleware' => ['auth']], function () {
+    
+    // 1. Listing & Management
+    Route::get('/listing', [SelfInvoiceController::class, 'index'])->name('index');
+    Route::put('/update/{id}', [SelfInvoiceController::class, 'update'])->name('update');
+    Route::delete('/delete/{id}', [SelfInvoiceController::class, 'destroy'])->name('destroy');
+    
+    // 2. Creation Process (Standard Invoice Type 11)
+    Route::get('/create', [SelfInvoiceController::class, 'create'])->name('create');
+    Route::post('/store', [SelfInvoiceController::class, 'store'])->name('store');
+
+    // 3. Note Creation (Credit/Debit/Refund)
+    // IMPORTANT: You must add the 'createNote' method to SelfInvoiceController (code below)
+    Route::get('/create-note/{note_type}', [SelfInvoiceController::class, 'createNote'])->name('create_note');
+    
+    // 4. Import / Export / Template
+    Route::get('/download-template', [SelfInvoiceController::class, 'downloadTemplate'])->name('download_template');
+    Route::get('/export', [SelfInvoiceController::class, 'export'])->name('export');
+    Route::post('/import', [SelfInvoiceController::class, 'import'])->name('import');
+
+    // 5. AJAX Helpers
+    // Only needed if you have dynamic item loading; otherwise safe to keep or remove
+    Route::get('/fetch-items/{id}', [SelfInvoiceController::class, 'fetchItems'])->name('fetch_items');
+});
+
+// URL: https://www.mysynctax.com/dev/cron/check-expired/synctax-secure-2026
+Route::get('/cron/check-expired/{secret}', [App\Http\Controllers\SubscriberController::class, 'autoCheckExpired']);

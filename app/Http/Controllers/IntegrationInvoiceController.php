@@ -814,7 +814,8 @@ class IntegrationInvoiceController extends Controller
                 'sale_id_integrate'               => $saleId,
                 'invoice_no'                      => $invoiceNo,
                 'issue_date'                      => $issueDate,
-    
+                'invoice_status'                  => 'consolidated',   
+                'invoice_type_code'               => '01',    
                 // ✅ HEADER CALC
                 'consolidate_total_item'          => $totalQty,
                 'consolidate_total_amount_before' => $taxableAmount,

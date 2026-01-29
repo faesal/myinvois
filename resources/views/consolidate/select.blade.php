@@ -1,9 +1,10 @@
 @extends('layouts.app')
 
 @section('content')
-<!-- ✅ DataTables & Buttons CSS/JS -->
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
@@ -12,81 +13,40 @@
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
-<!-- ✅ Custom Style -->
 <style>
-.dt-buttons {
-    margin-bottom: 10px;
-}
-.dt-button.buttons-excel {
-
-    border: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-    margin-right: 5px;
-}
-.dt-button.buttons-csv {
-
-    border: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-    margin-right: 5px;
-}
-.dt-button.buttons-print {
-   
-    border: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-}
-
-/* Pagination style */
+.dt-buttons { margin-bottom: 10px; }
+.dt-button { border: none; padding: 6px 12px; border-radius: 4px; margin-right: 5px; }
 .dataTables_wrapper .dataTables_paginate .paginate_button {
-    padding: 6px 12px;
-    margin-left: 2px;
-    border: 1px solid #dee2e6;
-    background-color: white;
-    color: #0d6efd !important;
-    border-radius: 0.25rem;
-    font-weight: 500;
+    padding: 6px 12px; margin-left: 2px; border: 1px solid #dee2e6; background-color: white;
+    color: #0d6efd !important; border-radius: 0.25rem; font-weight: 500;
 }
 .dataTables_wrapper .dataTables_paginate .paginate_button.current {
-    background-color: #0d6efd !important;
-    color: white !important;
+    background-color: #0d6efd !important; color: white !important;
 }
 .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
-    background-color: #e2e6ea;
-    color: #0d6efd !important;
+    background-color: #e2e6ea; color: #0d6efd !important;
 }
+.dataTables_filter { float: right !important; margin-bottom: 10px; }
 
-/* Right-align search */
-.dataTables_filter {
-    float: right !important;
-    margin-bottom: 10px;
+/* 🔥 FIX: Make SweetAlert Icon Smaller */
+.swal2-icon {
+    transform: scale(0.6) !important; /* Scale down to 60% */
+    margin-top: 15px !important;      /* Adjust top margin */
+    margin-bottom: 0px !important;    /* Adjust bottom margin */
 }
 </style>
 
-<!-- ✅ DataTable Init -->
 <script>
 $(document).ready(function () {
-    $('#datatable-items').DataTable({
+    // ⚡ PERFORMANCE FIX 1: Add 'deferRender' to speed up initial loading
+    var table = $('#datatable-items').DataTable({
         dom: '<"d-flex justify-content-between mb-2"<"dt-buttons"B><"dataTables_filter"f>>rt<"d-flex justify-content-between mt-3"<"dataTables_info"i><"dataTables_paginate"p>>',
+        deferRender: true, // ⚡ Key fix for large lists
+        processing: true,  // Show 'Processing...' indicator
         buttons: [
-            {
-                extend: 'excelHtml5',
-                text: 'Export Excel',
-                className: 'buttons-excel',
-                title: 'Consolidated_Items'
-            },
-            {
-                extend: 'csvHtml5',
-                text: 'Export CSV',
-                className: 'buttons-csv',
-                title: 'Consolidated_Items'
-            },
-            {
-                extend: 'print',
-                text: 'Print',
-                className: 'buttons-print'
-            }
+            { extend: 'excelHtml5', text: 'Export Excel', className: 'buttons-excel', title: 'Consolidated_Items' },
+            { extend: 'csvHtml5', text: 'Export CSV', className: 'buttons-csv', title: 'Consolidated_Items' },
+            { extend: 'print', text: 'Print', className: 'buttons-print' }
         ],
         paging: true,
         searching: true,
@@ -94,103 +54,124 @@ $(document).ready(function () {
         pageLength: 30
     });
 
+    // 2. Check All Logic
     $('#checkAll').on('click', function () {
+        // Use DataTables API to select inputs across all pages if needed, 
+        // or just visible ones. Standard jQuery here works for visible rows.
         $('input[name="selected_items[]"]').prop('checked', this.checked);
     });
 
-    let modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    // 3. Bulk Submit Logic
+    $('#openConfirmModal').on('click', function () {
+        let selected = $('input[name="selected_items[]"]:checked');
 
-$('#openConfirmModal').on('click', function () {
-    let selected = $('input[name="selected_items[]"]:checked');
+        if (selected.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Warning!',
+                text: 'Please select at least one item.',
+                confirmButtonColor: '#f59e0b',
+            });
+            return;
+        }
 
-    if (selected.length === 0) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Warning!',
-            text: 'Please select at least one item.',
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#f59e0b',
+        let totalAmount = 0;
+        selected.each(function () {
+            let amount = parseFloat($(this).closest('tr').find('td').eq(4).text().replace(/,/g, '')) || 0;
+            totalAmount += amount;
         });
-        return;
+
+        Swal.fire({
+            icon: 'question',
+            title: 'Confirm Submission',
+            html: `You are about to submit <strong>${selected.length}</strong> items.<br>Total: <strong>RM ${totalAmount.toFixed(2)}</strong>`,
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Submit',
+            confirmButtonColor: '#22c55e',
+            cancelButtonColor: '#6b7280',
+        }).then((result) => {
+            if (result.isConfirmed) {
+                submitConsolidatedItems();
+            }
+        });
+    });
+
+    function submitConsolidatedItems() {
+        let selected = $('input[name="selected_items[]"]:checked');
+        let ids = selected.map(function () { return $(this).val(); }).get();
+
+        Swal.fire({ title: 'Submitting...', didOpen: () => Swal.showLoading() });
+
+        $.ajax({
+            url: "{{ route('consolidate.submit') }}",
+            method: "POST",
+            data: {
+                _token: '{{ csrf_token() }}',
+                selected_items: ids,
+                connection: $('#selected_connection').val()
+            },
+            success: function (response) {
+                Swal.fire('Success!', response.message ?? 'Submitted.', 'success').then(() => location.reload());
+            },
+            error: function () {
+                Swal.fire('Error!', 'Failed to submit.', 'error');
+            }
+        });
     }
 
-    let totalAmount = 0;
-    selected.each(function () {
-        let amount = parseFloat($(this).closest('tr').find('td').eq(4).text().replace(/,/g, '')) || 0;
-        totalAmount += amount;
-    });
+    // ⚡ PERFORMANCE FIX 2: Specific Event Delegation
+    // Bind to tbody instead of document to limit scope. This makes clicks instant.
+    $('#datatable-items tbody').on('click', '.delete-item', function (e) {
+        e.preventDefault();
+        
+        // ⚡ PERFORMANCE FIX 3: Immediate visual feedback
+        let btn = $(this);
+        let originalText = btn.html();
+        btn.prop('disabled', true).html('⏳'); // Disable button immediately
 
-    Swal.fire({
-        icon: 'warning',
-        title: 'Confirm Submission',
-        html: `
-            You are about to submit <strong>${selected.length}</strong> items.<br><br>
-            Total amount: <strong>RM ${totalAmount.toFixed(2)}</strong><br><br>
-            Are you sure you want to proceed?
-        `,
-        showCancelButton: true,
-        confirmButtonText: 'Yes, Submit',
-        cancelButtonText: 'Cancel',
-        confirmButtonColor: '#22c55e',
-        cancelButtonColor: '#6b7280',
-    }).then((result) => {
-        if (result.isConfirmed) {
-            submitConsolidatedItems();
-        }
-    });
-});
+        let id = btn.data('id');
+        let row = btn.closest('tr');
 
-// 🔥 The function that performs the AJAX submit
-function submitConsolidatedItems() {
-    let selected = $('input[name="selected_items[]"]:checked');
-    let ids = selected.map(function () {
-        return $(this).val();
-    }).get();
-
-    Swal.fire({
-        title: 'Submitting...',
-        text: 'Please wait',
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading()
+        Swal.fire({
+            title: 'Delete Item?',
+            text: "This cannot be undone!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'Yes, delete!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $.ajax({
+                    url: "{{ url('/consolidate/item/delete') }}/" + id,
+                    type: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        _method: 'DELETE'
+                    },
+                    success: function (response) {
+                        Swal.fire('Deleted!', 'Item removed.', 'success');
+                        // Remove row via DataTables API so pagination updates correctly
+                        table.row(row).remove().draw(false);
+                    },
+                    error: function (xhr) {
+                        // Re-enable button if error occurs
+                        btn.prop('disabled', false).html(originalText);
+                        
+                        let msg = xhr.responseJSON?.message || 'Something went wrong.';
+                        Swal.fire('Error!', msg, 'error');
+                    }
+                });
+            } else {
+                // Re-enable button if cancelled
+                btn.prop('disabled', false).html(originalText);
+            }
+        });
     });
-
-    $.ajax({
-        url: "{{ route('consolidate.submit') }}",
-        method: "POST",
-        data: {
-            _token: '{{ csrf_token() }}',
-            selected_items: ids,
-            connection: $('#selected_connection').val()
-        },
-        success: function (response) {
-            Swal.fire({
-                icon: 'success',
-                title: 'Success!',
-                text: response.message ?? 'Successfully submitted.',
-                confirmButtonText: 'OK',
-                confirmButtonColor: '#22c55e',
-                timer: 3000,
-                timerProgressBar: true,
-            }).then(() => {
-                location.reload();
-            });
-        },
-        error: function () {
-            Swal.fire({
-                icon: 'error',
-                title: 'Error!',
-                text: 'Failed to submit.',
-                confirmButtonText: 'OK',
-                confirmButtonColor: '#ef4444',
-            });
-        }
-    });
-}
 
 });
 </script>
 
-<!-- ✅ Content -->
 <div class="container-fluid py-4">
     <h2>✅ Select Consolidated Items to Convert into Invoice</h2>
 
@@ -238,6 +219,7 @@ function submitConsolidatedItems() {
                                 <th>Total (RM)</th>
                                 <th>Connection</th>
                                 <th>Date</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -250,6 +232,11 @@ function submitConsolidatedItems() {
                                     <td>{{ number_format($item->line_extension_amount, 2) }}</td>
                                     <td>{{ $item->connection_integrate }}</td>
                                     <td>{{ \Carbon\Carbon::parse($item->issue_date)->format('d/m/Y') }}</td>
+                                    <td>
+                                        <button type="button" class="btn btn-danger btn-sm delete-item" data-id="{{ $item->id_invoice_item }}" title="Delete">
+                                            🗑️
+                                        </button>
+                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -261,23 +248,11 @@ function submitConsolidatedItems() {
     </div>
 </div>
 
-<!-- ✅ Confirmation Modal -->
-<div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Confirm Submission</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <p>You are about to submit <strong><span id="selectedCount">0</span></strong> items.</p>
-        <p>Total amount: <strong>RM <span id="totalAmount">0.00</span></strong></p>
-        <p>Are you sure you want to proceed?</p>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">❌ Cancel</button>
-        <button type="button" class="btn btn-success" id="confirmSubmit">✅ Yes, Submit</button>
-      </div>
+      <div class="modal-header"><h5 class="modal-title">Confirm Submission</h5></div>
+      <div class="modal-body"><p>Processing...</p></div>
     </div>
   </div>
 </div>

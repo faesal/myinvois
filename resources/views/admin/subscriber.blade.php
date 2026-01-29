@@ -14,7 +14,7 @@
         </nav>
     </div>
     
-    {{-- NEW: Check Expired Button --}}
+    {{-- Check Expired Button --}}
     <div>
         <form action="{{ route('admin.subscribers.check_expired') }}" method="POST">
             @csrf
@@ -34,7 +34,7 @@
                         <div class="input-group">
                             <span class="input-group-text bg-white border-end-0 text-muted"><i class="fa-solid fa-magnifying-glass"></i></span>
                             <input type="text" name="search" class="form-control border-start-0" 
-                                   placeholder="Search by name or email..." value="{{ request('search') }}">
+                                   placeholder="Search by name, email or ID..." value="{{ request('search') }}">
                         </div>
                     </div>
                     <div class="col-md-4">
@@ -76,7 +76,8 @@
                     </thead>
                     <tbody>
                         @forelse($subscribers as $sub)
-                        <tr>
+                        {{-- Added ID to TR for removal animation --}}
+                        <tr id="row-{{ $sub->id }}">
                             <td class="ps-4">
                                 <div class="d-flex align-items-center">
                                     <div class="avatar me-2" style="background: #eef2ff; color: #4338ca; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">
@@ -88,6 +89,7 @@
                             <td>
                                 <div class="fw-bold text-dark">{{ $sub->lhdn_account_name }}</div>
                                 <div class="small text-muted">{{ $sub->email }}</div>
+                                <div class="badge bg-light text-secondary border mt-1" style="font-size: 0.7rem;">ID: {{ $sub->unique_id }}</div>
                             </td>
                             <td>
                                 <div class="small text-nowrap"><strong>Key:</strong> <span class="text-muted">{{ $sub->mysynctax_key }}</span></div>
@@ -129,13 +131,17 @@
                                     
                                     <button class="btn btn-sm btn-outline-dark px-3 rounded-pill border-light-subtle shadow-sm" style="font-size: 0.75rem;">Resend</button>
                                     
-                                    <button class="btn btn-sm btn-light text-danger border-0 rounded-circle"><i class="fa-solid fa-trash"></i></button>
+                                    {{-- UPDATED: DELETE BUTTON --}}
+                                    {{-- Added class 'delete-btn' and 'data-id' attribute --}}
+                                    <button type="button" class="btn btn-sm btn-light text-danger border-0 rounded-circle delete-btn" data-id="{{ $sub->id }}" title="Delete">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
 
-                                    {{-- NEW: Login / Impersonate Button --}}
+                                    {{-- Login / Impersonate Button --}}
                                     <a href="{{ route('admin.subscribers.impersonate', $sub->id) }}" 
                                        class="btn btn-sm btn-link text-decoration-none text-primary fw-bold p-0 ms-2"
                                        title="Login as Subscriber">
-                                        Login <i class="fa-solid fa-arrow-right-to-bracket ms-1"></i>
+                                       Login <i class="fa-solid fa-arrow-right-to-bracket ms-1"></i>
                                     </a>
                                 </div>
                             </td>
@@ -143,7 +149,7 @@
                         @empty
                         <tr>
                             <td colspan="8" class="text-center py-5 text-muted italic">
-                                No subscribers found matching your criteria.
+                                No active subscribers found matching your criteria.
                             </td>
                         </tr>
                         @endforelse
@@ -220,6 +226,61 @@ $(document).ready(function() {
             }
         });
     }
+
+    // --- NEW: DELETE FUNCTION (SOFT DELETE) ---
+    $(document).on('click', '.delete-btn', function() {
+        let id = $(this).data('id');
+        let $row = $('#row-' + id);
+
+        Swal.fire({
+            title: 'Are you sure?',
+            text: "This will move the subscriber to the trash (Soft Delete).",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, delete it!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $.ajax({
+                    // Route to the destroy method defined in web.php
+                    url: "{{ url('/admin/subscribers') }}/" + id,
+                    type: "POST",
+                    data: {
+                        _method: 'DELETE', // Laravel expects this for DELETE requests
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            // Fade out and remove the row from the DOM
+                            $row.fadeOut(300, function() { $(this).remove(); });
+                            
+                            Swal.fire(
+                                'Deleted!',
+                                response.message,
+                                'success'
+                            );
+                        } else {
+                            Swal.fire(
+                                'Error!',
+                                response.message,
+                                'error'
+                            );
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error("Delete error:", xhr.responseText);
+                        Swal.fire(
+                            'Error!',
+                            'Something went wrong. Please try again.',
+                            'error'
+                        );
+                    }
+                });
+            }
+        });
+    });
+
 });
 </script>
 @endsection

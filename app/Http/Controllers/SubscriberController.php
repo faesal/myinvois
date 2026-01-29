@@ -6,36 +6,44 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str; // Required for Unique ID generation
+use Illuminate\Support\Str; 
 use App\Models\User;
 use App\Mail\SubscriberExpiredMail;
 
 class SubscriberController extends Controller
 {
     /**
-     * Display the list of subscribers with filtering and pagination.
-     * Filtered to show ONLY Suppliers (Primary LHDN Accounts).
+     * Display the list of subscribers.
+     * Updated to exclude records where is_deleted = 1
      */
     public function index(Request $request)
     {
-        // 1. Fetch Developers for the Filter Dropdown
+        // 1. Fetch Developers
         $developers = User::where('role', 'developer')->select('id', 'name')->get();
 
-        // 2. Build the Query
+        // 2. Build Query
         $query = DB::table('customer')
             ->leftJoin('users as subscriber_user', 'customer.user_id', '=', 'subscriber_user.id')
             ->leftJoin('users as dev_user', 'customer.id_developer', '=', 'dev_user.id')
             ->leftJoin('connection_integrate', 'customer.user_id', '=', 'connection_integrate.user_id')
             
-            // --- CRITICAL FILTER: Only show LHDN Accounts (Suppliers) ---
+            // --- FILTER: Only Suppliers ---
             ->where('customer.customer_type', '=', 'SUPPLIER')
             
+            // --- FILTER: Role Check ---
             ->where(function($q) {
                 $q->where('subscriber_user.role', '=', 'subscriber')
                   ->orWhereNull('subscriber_user.id'); 
             })
             
-            ->whereNull('customer.deleted')
+            // --- NEW FILTER: Soft Delete Check ---
+            // Exclude if is_deleted is 1
+            ->where(function($q) {
+                $q->where('customer.is_deleted', 0)
+                  ->orWhereNull('customer.is_deleted');
+            })
+            ->whereNull('customer.deleted') // Keep original check for backward compatibility
+            
             ->select(
                 'customer.id_customer',
                 'customer.registration_name as lhdn_account_name',
@@ -71,7 +79,7 @@ class SubscriberController extends Controller
         // 3. Paginate
         $subscribers = $query->orderBy('customer.id_customer', 'desc')->paginate(10);
 
-        // 4. Transform for the view
+        // 4. Transform
         $subscribers->getCollection()->transform(function ($item) {
             return (object) [
                 'id' => $item->id_customer,
@@ -142,6 +150,43 @@ class SubscriberController extends Controller
     }
 
     /**
+     * NEW: Soft Delete Subscriber
+     * Requirement: If is_deleted = 1, then is_activation MUST be 0.
+     */
+    public function destroy($id)
+    {
+        try {
+            DB::transaction(function () use ($id) {
+                // 1. Soft Delete Customer
+                DB::table('customer')
+                    ->where('id_customer', $id)
+                    ->update([
+                        'is_deleted'    => 1,           // Mark as deleted
+                        'is_activation' => '0',         // FORCE DEACTIVATION
+                        'deleted'       => now(),       // Timestamps for legacy column
+                        'updated_at'    => now()
+                    ]);
+
+                // 2. Soft Delete User (if linked)
+                $userId = DB::table('customer')->where('id_customer', $id)->value('user_id');
+                if ($userId) {
+                    DB::table('users')->where('id', $userId)
+                        ->update([
+                            'is_deleted' => 1,
+                            'is_active'  => 0, // Also deactivate the user login
+                            'updated_at' => now()
+                        ]);
+                }
+            });
+
+            return response()->json(['success' => true, 'message' => 'Subscriber moved to trash (Soft Deleted) and Deactivated.']);
+
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Delete failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Impersonate Subscriber
      */
     public function impersonate($id)
@@ -150,6 +195,11 @@ class SubscriberController extends Controller
 
         if (!$customer) {
             return back()->with('error', 'Subscriber record not found.');
+        }
+
+        // Additional check: prevent impersonating soft-deleted customers
+        if (isset($customer->is_deleted) && $customer->is_deleted == 1) {
+             return back()->with('error', 'Cannot impersonate a deleted subscriber.');
         }
 
         $user = DB::table('users')->where('id', $customer->user_id)->first();
@@ -178,7 +228,14 @@ class SubscriberController extends Controller
         $expiredSubscribers = DB::table('customer')
             ->whereDate('end_subscribe', '<', $today)
             ->where('is_activation', '1') 
+            
+            // Filter out soft deleted records so we don't email about them
+            ->where(function($q) {
+                $q->where('is_deleted', 0)
+                  ->orWhereNull('is_deleted');
+            })
             ->whereNull('deleted')
+            
             ->get();
 
         if ($expiredSubscribers->isEmpty()) {
@@ -225,7 +282,6 @@ class SubscriberController extends Controller
 
     /**
      * Process Activation Form Submission
-     * NEW: Generates 12-char Unique ID if not already set.
      */
     public function activateSubscriber(Request $request, $id)
     {
@@ -256,6 +312,9 @@ class SubscriberController extends Controller
                         'start_subscribe' => $request->start_date,
                         'end_subscribe'   => $request->end_date,
                         'is_activation'   => '1', 
+                        // Ensure we remove deletion flags if we are activating
+                        'is_deleted'      => 0, 
+                        'deleted'         => null,
                         'updated_at'      => now(),
                     ]);
 
@@ -264,6 +323,7 @@ class SubscriberController extends Controller
                     DB::table('users')->where('id', $customer->user_id)
                         ->update([
                             'is_active' => 1, 
+                            'is_deleted' => 0, // Restore user if they were deleted
                             'updated_at' => now()
                         ]);
                 }
@@ -276,4 +336,42 @@ class SubscriberController extends Controller
             return back()->with('error', 'Error: ' . $e->getMessage());
         }
     }
+/**
+ * Cron Job Trigger: Send Expired Report
+ * Primary: faesal09@gmail.com | CC: fjusrin@gmail.com
+ */
+public function autoCheckExpired($secret)
+{
+    // 1. Security check
+    if ($secret !== 'synctax-secure-2026') {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
+    $today = now()->toDateString();
+
+    // 2. Find customers who are Suppliers, Active, Not Deleted, and Expired
+    $expiredSubscribers = DB::table('customer')
+        ->whereDate('end_subscribe', '<', $today)
+        ->where('is_activation', '1') 
+        ->where('customer_type', 'SUPPLIER')
+        ->where(function($q) {
+            $q->where('is_deleted', 0)->orWhereNull('is_deleted');
+        })
+        ->get();
+
+    // 3. Send the email with CC
+    if ($expiredSubscribers->isNotEmpty()) {
+        try {
+            Mail::to('faesal09@gmail.com')
+                ->cc('fjusrin@gmail.com')
+                ->send(new \App\Mail\SubscriberExpiredMail($expiredSubscribers));
+                
+            return response()->json(['status' => 'success', 'message' => 'Report sent to faesal09 and CC to fjusrin.']);
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    return response()->json(['status' => 'empty', 'message' => 'No expired subscribers found today.']);
+}
 }

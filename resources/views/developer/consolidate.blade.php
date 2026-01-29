@@ -5,6 +5,7 @@
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
 
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
@@ -71,31 +72,42 @@
                         <thead class="table-light">
                             <tr>
                                 <th><input type="checkbox" id="checkAll"> ✔</th>
-                                <th>Invoice No.</th> <th>Sale ID</th>
+                                <th>Invoice No.</th> 
+                                <th>Sale ID</th>
                                 <th>Item Name</th>
                                 <th>Quantity</th>
                                 <th>Total (RM)</th>
                                 <th>Connection</th>
                                 <th>Date</th>
-                            </tr>
+                                <th class="text-center">Action</th> </tr>
                         </thead>
                         @if($selectedConnection)
                         <tbody>
                             @if($items->isNotEmpty())
                                 @foreach($items as $item)
-                                    <tr>
+                                    <tr id="row-{{ $item->id_invoice_item }}">
                                         <td><input type="checkbox" class="item-checkbox" name="selected_items[]" value="{{ $item->id_invoice_item }}"></td>
-                                        <td>{{ $item->invoice_no ?? '-' }}</td> <td>{{ $item->sale_id_integrate }}</td>
+                                        <td>{{ $item->invoice_no ?? '-' }}</td> 
+                                        <td>{{ $item->sale_id_integrate }}</td>
                                         <td>{{ $item->item_description }}</td>
                                         <td>{{ $item->invoiced_quantity }}</td>
                                         <td>{{ number_format($item->line_extension_amount, 2) }}</td>
                                         <td>{{ $item->connection_integrate }}</td>
                                         <td>{{ \Carbon\Carbon::parse($item->issue_date)->format('d-m-Y H:i:s') }}</td>
+                                        
+                                        <td class="text-center">
+                                            <button type="button" 
+                                                    class="btn btn-danger btn-sm delete-item" 
+                                                    data-id="{{ $item->id_invoice_item }}"
+                                                    title="Delete Item">
+                                                🗑️ Delete
+                                            </button>
+                                        </td>
                                     </tr>
                                 @endforeach
                             @else
                                 <tr>
-                                    <td colspan="8" class="text-center text-muted">
+                                    <td colspan="9" class="text-center text-muted">
                                         No items found for selected connection and date range.
                                     </td>
                                 </tr>
@@ -155,22 +167,6 @@
 
 <script>
 
-/*if ($('#datatable-items tbody tr').length > 0 && $('#datatable-items tbody tr').first().find('td').length > 1) {
-        $('#datatable-items').DataTable({
-            dom: '<"d-flex justify-content-between mb-2"<"dt-buttons"B><"dataTables_filter"f>>rt<"d-flex justify-content-between mt-3"<"dataTables_info"i><"dataTables_paginate"p>>',
-            buttons: [
-                { extend: 'excelHtml5', text: 'Export Excel', className: 'buttons-excel', title: 'Consolidated_Items' },
-                { extend: 'csvHtml5', text: 'Export CSV', className: 'buttons-csv', title: 'Consolidated_Items' },
-                { extend: 'print', text: 'Print', className: 'buttons-print' }
-            ],
-            paging: true,
-            searching: true,
-            ordering: true,
-            pageLength: 30
-        });
-    }
-*/
-
 $(document).ready(function () {
 
     // CHECK ALL
@@ -196,7 +192,8 @@ $(document).ready(function () {
 
         let total = 0;
         selected.forEach(function (cb) {
-            // ✅ Updated index to eq(5) because we added "Invoice No" column at index 1
+            // Updated index to eq(5) because we added "Invoice No" column at index 1
+            // Columns: Checkbox(0), InvNo(1), SaleID(2), Item(3), Qty(4), Total(5)
             let amount = parseFloat($(cb).closest('tr').find('td').eq(5).text().replace(/,/g, '')) || 0;
             total += amount;
         });
@@ -231,9 +228,8 @@ $(document).ready(function () {
                 connection: $('#selected_connection').val()
             },
 
-            // ⭐ SUCCESS HANDLER
+            // SUCCESS HANDLER
             success: function (response) {
-
                 $('#confirmModal').modal('hide'); // Close modal
 
                 Swal.fire({
@@ -249,11 +245,9 @@ $(document).ready(function () {
                 });
             },
 
-            // ⭐ ERROR HANDLER — treat as success (your requirement)
+            // ERROR HANDLER — treat as success (your requirement)
             error: function (xhr) {
-
                 console.log("AJAX ERROR (but backend updated DB):", xhr.responseText);
-
                 $('#confirmModal').modal('hide'); // Close modal anyway
 
                 Swal.fire({
@@ -266,6 +260,52 @@ $(document).ready(function () {
                     timerProgressBar: true,
                 }).then(() => {
                     location.reload();
+                });
+            }
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // DELETE ITEM FUNCTIONALITY
+    // ------------------------------------------------------------------
+    $(document).on('click', '.delete-item', function () {
+        let id = $(this).data('id');
+        let row = $('#row-' + id);
+
+        Swal.fire({
+            title: 'Are you sure?',
+            text: "You won't be able to revert this!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, delete it!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                
+                $.ajax({
+                    // Ensure you have created this route in web.php
+                    url: "{{ url('/developer/consolidate/delete') }}/" + id,
+                    method: "DELETE",
+                    data: {
+                        _token: "{{ csrf_token() }}"
+                    },
+                    success: function (response) {
+                        Swal.fire(
+                            'Deleted!',
+                            response.message || 'Item has been deleted.',
+                            'success'
+                        );
+                        // Fade out and remove the row from the table
+                        row.fadeOut(300, function() { $(this).remove(); });
+                    },
+                    error: function (xhr) {
+                        Swal.fire(
+                            'Error!',
+                            xhr.responseJSON?.message || 'Something went wrong.',
+                            'error'
+                        );
+                    }
                 });
             }
         });

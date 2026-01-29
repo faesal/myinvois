@@ -20,147 +20,88 @@
         }
 
         /* ===== HEADER ===== */
-        .invoice-header table {
-            width:100%;
-            border:1px solid #000;
-            border-collapse:collapse;
-        }
+        .invoice-header table { width:100%; border:1px solid #000; border-collapse:collapse; }
+        .invoice-header td { padding:6px; vertical-align:top; }
+        
+        .invoice-title { font-size:14px; font-weight:bold; margin:0; }
+        .invoice-sub { font-size:10px; margin:2px 0; }
 
-        .invoice-header td {
-            padding:6px;
-            vertical-align:top;
-        }
-
-        .invoice-title {
-            font-size:14px;
-            font-weight:bold;
-            margin:0;
-        }
-
-        .invoice-sub {
-            font-size:10px;
-            margin:2px 0;
-        }
-
-        /* LOGO & QR ALIGNMENT (Desktop) */
+        /* LOGO & QR ALIGNMENT */
         .header-right-container {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 10px;
+            display: flex; align-items: center; justify-content: flex-end; gap: 10px;
         }
-
-        .lhdn-logo {
-            width: 160px;
-            height: auto;
-        }
+        .lhdn-logo { width: 160px; height: auto; }
 
         /* VALIDATION STRIP */
         .validation-strip {
-            border:1px solid #000;
-            margin-top:4px;
-            font-size:9px;
-            padding:4px;
-            word-break: break-all;
+            border:1px solid #000; margin-top:4px; font-size:9px; padding:4px; word-break: break-all;
         }
 
         /* SECTION */
-        .section-title {
-            font-size:10px;
-            font-weight:bold;
-            margin:8px 0 4px;
-        }
+        .section-title { font-size:10px; font-weight:bold; margin:8px 0 4px; }
 
         /* TABLE */
-        table.data-table {
-            width:100%;
-            border-collapse:collapse;
-        }
-
-        table.data-table th,
-        table.data-table td {
-            border:1px solid #000;
-            padding:3px;
-            font-size:9px;
-        }
-
-        table.data-table th {
-            background:#eee;
-            font-weight:bold;
-        }
-
+        table.data-table { width:100%; border-collapse:collapse; }
+        table.data-table th, table.data-table td { border:1px solid #000; padding:3px; font-size:9px; }
+        table.data-table th { background:#eee; font-weight:bold; }
         .right { text-align:right; }
 
-        /* PDF MODE */
-        .pdf-mode {
-            font-size:9px;
-        }
-
-        .pdf-mode canvas {
-            width:75px !important;
-            height:auto !important;
-            border:1px solid #000;
-            padding:2px;
-        }
-
-        .pdf-mode .lhdn-logo {
-            width: 80px !important;
-        }
-
         /* ==========================================
-           MOBILE OPTIMIZATIONS (Only for Screens < 768px)
+           MOBILE SCREEN VIEW
            ========================================== */
-        @media(max-width:768px){
-            .invoice-container { 
-                padding:12px; 
-                margin: 10px;
-            }
-
-            /* Maintain Header Table Structure */
-            .invoice-header td {
-                padding: 4px;
-            }
-
-            /* FORCE HORIZONTAL ALIGNMENT ON MOBILE */
+        @media screen and (max-width:768px){
+            .invoice-container { padding:12px; margin: 10px; }
+            .invoice-header td { padding: 4px; }
+            
             .header-right-container {
                 display: flex !important;
-                flex-direction: row !important; /* Fixed to Horizontal */
+                flex-direction: row !important;
                 justify-content: flex-end !important;
                 align-items: center !important;
                 gap: 8px !important;
             }
-
-            /* Smaller Logo for Mobile */
-            .lhdn-logo {
-                width: 80px !important; /* Smaller size to fit horizontally */
-            }
-
-            /* Smaller QR for Mobile View */
-            #invoiceQR {
-                width: 70px !important; /* Smaller size to fit horizontally */
-                height: 70px !important;
-            }
+            .lhdn-logo { width: 80px !important; }
+            #invoiceQR { width: 70px !important; height: 70px !important; }
 
             .table-responsive-custom {
-                display: block;
-                width: 100%;
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
+                display: block; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
             }
+            .data-table { min-width: 450px; }
+            .data-table tr td[width="50%"] { display: table-cell; width: 50% !important; }
+        }
 
-            .data-table {
-                min-width: 450px; 
+        /* ==========================================
+           PRINT / PDF VIEW
+           ========================================== */
+        @media print {
+            @page { size: A4 portrait; margin: 10mm; }
+            body { background: #fff; -webkit-print-color-adjust: exact; }
+            .invoice-container {
+                box-shadow: none; margin: 0; padding: 0; max-width: 100%; width: 100%; border: none;
             }
-
-            /* Allow details to stack if they don't fit side-by-side */
-            .data-table tr td[width="50%"] {
-                display: table-cell; /* Keeps horizontal layout if possible */
-                width: 50% !important;
-            }
+            .table-responsive-custom { overflow: visible !important; display: block !important; }
+            .data-table { min-width: 100% !important; width: 100% !important; }
+            .lhdn-logo { width: 140px !important; }
+            #invoiceQR { width: 100px !important; height: 100px !important; }
+            .no-print, #btnGeneratePDF, .btn { display: none !important; }
         }
     </style>
 </head>
 <body>
+
+    @php
+        function getStateName($code) {
+            if (!$code) return '';
+            $state = \Illuminate\Support\Facades\DB::table('lookup_state')
+                        ->where('state_code', $code)
+                        ->first();
+            // FIX: Force Uppercase
+            return $state ? strtoupper($state->state_name) : $code;
+        }
+
+        $supplierState = getStateName($supplier->country_subentity_code);
+        $customerState = getStateName($customer->country_subentity_code);
+    @endphp
 
     <div class="container mt-3 mb-5">
 
@@ -175,7 +116,7 @@
                         </td>
                         <td width="40%" align="right">
                             <div class="header-right-container">
-                            <img src="{{url('/assets/images/')}}/LHDN_logo.png" class="lhdn-logo" alt="LHDN Logo" crossorigin="anonymous">
+                                <img src="{{url('/assets/images/')}}/LHDN_logo.png" class="lhdn-logo" alt="LHDN Logo" crossorigin="anonymous">
                                 <canvas id="invoiceQR"></canvas>
                             </div>
                         </td>
@@ -205,8 +146,9 @@
                             Address:
                             {{ $supplier->address_line_1 }} {{ $supplier->address_line_2 }},
                             {{ $supplier->city_name }},
+                            {{ $supplierState }},
                             {{ $supplier->postal_zone }},
-                            {{ $supplier->country_code }}
+                            {{ str_replace('MYS', 'MALAYSIA', $supplier->country_code) }}
                         </td>
                         <td width="50%">
                             <div class="section-title">Buyer Details</div>
@@ -218,8 +160,9 @@
                             Address:
                             {{ $customer->address_line_1 }} {{ $customer->address_line_2 }},
                             {{ $customer->city_name }},
+                            {{ $customerState }},
                             {{ $customer->postal_zone }},
-                            {{ $customer->country_code }}
+                            {{ str_replace('MYS', 'MALAYSIA', $customer->country_code) }}
                         </td>
                         @else
 
@@ -233,10 +176,10 @@
                             Address:
                             {{ $customer->address_line_1 }} {{ $customer->address_line_2 }},
                             {{ $customer->city_name }},
+                            {{ $customerState }},
                             {{ $customer->postal_zone }},
-                            {{ $customer->country_code }}
+                            {{ str_replace('MYS', 'MALAYSIA', $customer->country_code) }}
                         </td>
-
 
                         <td width="50%">
                             <div class="section-title">Buyer Details</div>
@@ -248,8 +191,9 @@
                             Address:
                             {{ $supplier->address_line_1 }} {{ $supplier->address_line_2 }},
                             {{ $supplier->city_name }},
+                            {{ $supplierState }},
                             {{ $supplier->postal_zone }},
-                            {{ $supplier->country_code }}
+                            {{ str_replace('MYS', 'MALAYSIA', $supplier->country_code) }}
                         </td>
                         
                         @endif
@@ -272,7 +216,12 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @php $i=1; $total=0; @endphp
+                        @php 
+                            $i = 1; 
+                            $calculatedTotal = 0; 
+                            $totalDiscount = 0; 
+                        @endphp
+
                         @foreach($items as $item)
                         <tr>
                             <td>{{ $i++ }}</td>
@@ -282,33 +231,36 @@
                             <td class="right">{{ number_format($item->price_discount,2) }}</td>
                             <td class="right">{{ number_format($item->price_extension_amount,2) }}</td>
                         </tr>
-                        @php $total += $item->line_extension_amount; @endphp
+                        @php 
+                            $calculatedTotal += $item->line_extension_amount; 
+                            $totalDiscount += $item->price_discount;
+                        @endphp
                         @endforeach
                     </tbody>
                 </table>
             </div>
 
             @php
-                $total=$invoice->taxable_amount+$invoice->tax_amount;
+                $finalPayable = $invoice->taxable_amount + $invoice->tax_amount;
             @endphp
 
             <div class="table-responsive-custom">
                 <table class="data-table" style="margin-top:6px;">
                     <tr>
                         <td class="right">Total Discount</td>
-                        <td class="right">MYR {{ number_format($invoice->total_price_discount,2) }}</td>
+                        <td class="right">MYR {{ number_format($totalDiscount, 2) }}</td>
                     </tr>
                     <tr>
                         <td class="right">Total Excluding Tax</td>
-                        <td class="right" width="20%">MYR {{ number_format($invoice->taxable_amount,2) }}</td>
+                        <td class="right" width="20%">MYR {{ number_format($invoice->taxable_amount, 2) }}</td>
                     </tr>
                     <tr>
                         <td class="right">Total Tax Amount</td>
-                        <td class="right">MYR {{ number_format($invoice->tax_amount,2) }}</td>
+                        <td class="right">MYR {{ number_format($invoice->tax_amount, 2) }}</td>
                     </tr>
                     <tr>
                         <td class="right"><strong>Total Payable Amount</strong></td>
-                        <td class="right"><strong>MYR {{ number_format($total,2) }}</strong></td>
+                        <td class="right"><strong>MYR {{ number_format($finalPayable, 2) }}</strong></td>
                     </tr>
                 </table>
             </div>
@@ -317,7 +269,7 @@
 
         <div class="mt-4 text-center">
             <button id="btnGeneratePDF" class="btn btn-primary btn-lg w-100 mb-3" style="max-width: 300px;">
-                📄 Download PDF
+                📄 Download / Print PDF
             </button>
         </div>
 
@@ -325,7 +277,6 @@
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <script>
         const uuid = "{{ $invoice->unique_id }}";
@@ -343,26 +294,9 @@
                 );
             });
 
-
-        // JS PDF
+        // NATIVE PRINT (Fix for Mobile)
         $('#btnGeneratePDF').on('click', function () {
-
-            const el = document.getElementById('invoicePDF');
-            el.classList.add('pdf-mode');
-
-            html2pdf().set({
-                margin: [5,5,5,5],
-                filename: 'Invoice-{{ $invoice->invoice_no }}.pdf',
-                image: { type:'jpeg', quality:0.98 },
-                html2canvas: { 
-                    scale:2, 
-                    scrollY:0,
-                    useCORS: true 
-                },
-                jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
-            }).from(el).save().then(() => {
-                el.classList.remove('pdf-mode');
-            });
+            window.print();
         });
     </script>
 </body>

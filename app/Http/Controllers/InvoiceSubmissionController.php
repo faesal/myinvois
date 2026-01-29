@@ -243,9 +243,9 @@ public function consolidate(Request $request)
     return view('developer.consolidate', compact('items', 'start', 'end', 'availableConnections', 'selectedConnection'));
 }
 
-    public function ConsolidateSelected(Request $request)
+ public function ConsolidateSelected(Request $request)
     {
-        $developerId = auth()->user()->id;   // ← NEW
+        $developerId = auth()->user()->id;
         $selectedIds = $request->input('selected_items', []);
         $selected_connection = $request->input('connection');
 
@@ -290,11 +290,14 @@ public function consolidate(Request $request)
 
         foreach ($chunks as $chunk) {
 
-            // 🔥 Get sale_id_integrate from first item in chunk
+            // Get sale_id_integrate from first item
             $saleId = $chunk->first()->sale_id_integrate;
 
-            // Calculate total
+            // --- FIX START: Calculate Totals ---
             $total = $chunk->sum('line_extension_amount');
+            $totalDiscount = $chunk->sum('price_discount'); // Sum of discounts
+            // --- FIX END ---
+
             $uniqueId = Str::uuid();
             $invoiceNo = $invoiceBaseNo . '-V' . $version;
 
@@ -303,10 +306,10 @@ public function consolidate(Request $request)
             // -----------------------------------------------
             $invoiceId = DB::table('invoice')->insertGetId([
                 'unique_id' => $uniqueId,
-                'sale_id_integrate' => $saleId,   // ← NEW (A)
+                'sale_id_integrate' => $saleId,
                 'connection_integrate' => $selected_connection,
                 'invoice_status' => 'manual',
-                'id_developer' => $developerId,  // ← NEW (C)
+                'id_developer' => $developerId,
                 'id_customer' => 6, 
                 'id_supplier' => $customer->id_customer,
                 'invoice_no' => $invoiceNo,
@@ -314,7 +317,12 @@ public function consolidate(Request $request)
                 'issue_date' => now(),
                 'tax_scheme_id' => 'OTH',
                 'tax_category_id'=>'01',
+                
+                // --- FIX START: Insert Calculated Values ---
                 'price' => $total,
+                'total_price_discount' => $totalDiscount, // Save the discount here
+                // --- FIX END ---
+                
                 'taxable_amount' => 0,
                 'payment_note_term' => 'CASH',
                 'tax_amount' => 0,
@@ -328,11 +336,11 @@ public function consolidate(Request $request)
             // -----------------------------------------------
             foreach ($chunk as $index => $item) {
                 DB::table('invoice_item')->insert([
-                    'id_developer' => $developerId,   // ← NEW (C)
+                    'id_developer' => $developerId,
                     'unique_id' => $uniqueId,
                     'issue_date' => $item->issue_date,
                     'connection_integrate' => $item->connection_integrate,
-                    'sale_id_integrate' => $item->sale_id_integrate,  // already correct
+                    'sale_id_integrate' => $item->sale_id_integrate,
                     'id_consolidate_invoice' => $item->id_consolidate_invoice,
                     'line_id' => $index + 1,
                     'id_invoice' => $invoiceId,
@@ -523,5 +531,31 @@ public function showInvoice($unique_id)
             DB::rollBack();
             return redirect()->back()->with('error', 'Delete failed: ' . $e->getMessage());
         }
+    }
+    /**
+     * Delete a specific Consolidate Item
+     */
+ public function destroyConsolidateItem($id)
+    {
+        // 1. Find the item
+        $item = DB::table('consolidate_invoice_item')
+            ->where('id_invoice_item', $id)
+            ->first();
+
+        // Check if it exists at all
+        if (!$item) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Item not found.'
+            ], 404);
+        }
+
+        // 2. Force Delete (Safety check removed as requested)
+        DB::table('consolidate_invoice_item')->where('id_invoice_item', $id)->delete();
+
+        return response()->json([
+            'success' => true, 
+            'message' => 'Item deleted successfully.'
+        ]);
     }
 }

@@ -313,11 +313,10 @@ LHDN MyInvois rules.
 
 <pre>
 {
-  "mysynctax_key": "F3kW8nP1zS0aL9tQ4vB7uR6yJ2cX5mT8gH1eK3oN",
-  "mysynctax_secret": "K8pR3sL1vF9gQ2wE6nC4bT7jH0mD5yU1aX8zV3kS4tN9fG2qM7rY0uJ5hP",
-  "invoice_no": "INV-9002029",
-  "sale_id_integrate": 9002029,
-  "total_amount": 210.00,
+  "mysynctax_key": "oHwIxxxx",
+  "mysynctax_secret": "fYxPMxxxxx",
+  "invoice_no": "INV-9002050",
+  "sale_id_integrate": 9002050,
   "payment_note_term": "CASH",
   "items": [
     {
@@ -326,8 +325,8 @@ LHDN MyInvois rules.
       "invoiced_quantity": 2,
       "unit_price": 60.00,
       "item_description": "Premium Nasi Ayam Set",
-      "total": 120.00,
-      "price_discount": 0
+      "price_discount": 20,
+      "tax_amount": 10.00
     },
     {
       "item_id": 13,
@@ -335,11 +334,12 @@ LHDN MyInvois rules.
       "invoiced_quantity": 1,
       "unit_price": 90.00,
       "item_description": "Iced Coffee Latte",
-      "total": 90.00,
-      "price_discount": 0
+      "price_discount": 10,
+      "tax_amount": 8.00
     }
   ]
 }
+
 
 </pre>
 

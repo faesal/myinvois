@@ -3,9 +3,9 @@
 @section('content')
 @php
     $noteType = $noteType ?? 'credit';
-
     $title = ucfirst($noteType) . ' Note';
 
+    // Original logic to determine prefix (e.g., 'credit_note')
     $routePrefix = match($noteType) {
         'credit' => 'credit_note',
         'debit' => 'debit_note',
@@ -13,12 +13,12 @@
         default => 'credit_note'
     };
 
-    $store = route('note.store', ['note_type' => $routePrefix]);
-    $redirect = url("/{$routePrefix}/listing");
-    $fetchRoute = url("/{$routePrefix}/fetchInvoiceItems");
+    // ✅ UPDATED: Use custom routes if passed from controller (for Self-Bill), else use default
+    $store = $customStoreRoute ?? route('note.store', ['note_type' => $routePrefix]);
+    $redirect = $customRedirectRoute ?? url("/{$routePrefix}/listing");
+    $fetchRoute = $customFetchRoute ?? url("/{$routePrefix}/fetchInvoiceItems");
 @endphp
 
-<!-- Select2 CSS -->
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 
@@ -26,10 +26,16 @@
     <h2 class="text-center mb-4">MySyncTax e-Invoice - {{ $title }}</h2>
 
     <div class="mb-4">
+        <div class="mb-4">
         <select id="invoiceSelect" class="form-select select2" style="width: 100%;">
             <option value="">Choose Invoice</option>
             @foreach ($invoices as $invoice)
-                <option value="{{ $invoice->id_invoice }}">{{ $invoice->invoice_no }}</option>
+                {{-- ✅ FILTER: Only show invoices that have been submitted (have a UUID) --}}
+                @if(!empty($invoice->uuid))
+                    <option value="{{ $invoice->id_invoice }}">
+                        {{ $invoice->invoice_no }} ({{ $invoice->issue_date }})
+                    </option>
+                @endif
             @endforeach
         </select>
         <button class="btn btn-primary mt-2" id="searchInvoice">Search Invoice</button>
@@ -99,7 +105,6 @@
     </div>
 </div>
 
-<!-- Modal -->
 <div class="modal fade" id="submitModal" tabindex="-1" aria-labelledby="submitModalLabel" aria-hidden="true">
     <div class="modal-dialog"><div class="modal-content">
         <div class="modal-header">
@@ -113,7 +118,6 @@
     </div></div>
 </div>
 
-<!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
 $(document).ready(function () {
@@ -123,6 +127,7 @@ $(document).ready(function () {
         const invoiceId = $('#invoiceSelect').val();
         if (!invoiceId) return;
 
+        // JS appends the ID to the base route we defined in PHP
         $.get(`{{ $fetchRoute }}/${invoiceId}`, function (data) {
             $('#einvoice_no').text(data.invoice.invoice_no);
             $('#invoice_uuid').text(data.invoice.uuid);
@@ -192,55 +197,54 @@ $(document).ready(function () {
         $('#total_credit_note').val(total.toFixed(2));
     }
 
-$('#submitCreditNote').click(function () {
-    const formData = $('#creditNoteForm').serialize();
+    $('#submitCreditNote').click(function () {
+        const formData = $('#creditNoteForm').serialize();
 
-    // Optional: show a loading indicator
-    Swal.fire({
-        title: 'Submitting...',
-        text: 'Please wait',
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading()
-    });
-
-    $.post(`{{ $store }}`, formData, function (response) {
-
-        // Close loading popup
-        Swal.close();
-
-        // Success popup
+        // Optional: show a loading indicator
         Swal.fire({
-            icon: 'success',
-            title: 'Success!',
-            text: response.message ?? '{{ $title }} submitted successfully.',
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#22c55e',
-            timer: 3000,
-            timerProgressBar: true,
-        }).then(() => {
-            window.location = '{{ $redirect }}';
+            title: 'Submitting...',
+            text: 'Please wait',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
         });
 
-    }).fail(function (xhr) {
+        $.post(`{{ $store }}`, formData, function (response) {
 
-        // Close loading popup
-        Swal.close();
+            // Close loading popup
+            Swal.close();
 
-        let msg = 'Submission failed.';
-        if (xhr.responseJSON && xhr.responseJSON.message) {
-            msg = xhr.responseJSON.message;
-        }
+            // Success popup
+            Swal.fire({
+                icon: 'success',
+                title: 'Success!',
+                text: response.message ?? '{{ $title }} submitted successfully.',
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#22c55e',
+                timer: 3000,
+                timerProgressBar: true,
+            }).then(() => {
+                window.location = '{{ $redirect }}';
+            });
 
-        Swal.fire({
-            icon: 'error',
-            title: 'Error!',
-            text: msg,
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#ef4444',
+        }).fail(function (xhr) {
+
+            // Close loading popup
+            Swal.close();
+
+            let msg = 'Submission failed.';
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                msg = xhr.responseJSON.message;
+            }
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error!',
+                text: msg,
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#ef4444',
+            });
         });
     });
-});
-
 });
 </script>
 
