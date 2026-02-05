@@ -116,84 +116,55 @@
                         @endif
                     </table>
                     @if($items->isNotEmpty())
-                        <button type="button" class="btn btn-primary mt-3" id="openConfirmModal">🚀 Save to Invoice</button>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-primary mt-3" id="openConfirmModal">🚀 Save to Invoice</button>
+                            <button type="button" class="btn btn-outline-danger mt-3" id="bulkDeleteBtn">🗑️ Bulk Delete Selected</button>
+                        </div>
                     @endif
                 </form>
             </div>
         </div>
     </div>
-
 </div>
 
 <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="border-radius: 14px; border: none;">
-
       <div class="modal-header border-0 d-block text-center mt-2">
-        <h5 class="modal-title fw-bold" id="confirmModalLabel" style="font-size: 1.25rem;">
-          Confirm Submission
-        </h5>
+        <h5 class="modal-title fw-bold" id="confirmModalLabel" style="font-size: 1.25rem;">Confirm Submission</h5>
         <button type="button" class="btn-close position-absolute end-0 me-3" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-
       <div class="modal-body text-center px-4">
         <p>You are about to submit <strong><span id="selectedCount">0</span></strong> items.</p>
         <p>Total amount: <strong>RM <span id="totalAmount">0.00</span></strong></p>
         <p>Are you sure you want to proceed?</p>
       </div>
-
       <div class="modal-footer border-0 justify-content-center pb-4">
-
-        <button type="button" 
-                id="confirmSubmit"
-                class="btn px-4 py-2"
-                style="background-color:#22c55e; color:white; border-radius:8px; font-weight:600;">
-          Yes, Submit
-        </button>
-
-        <button type="button"
-                class="btn px-4 py-2"
-                data-bs-dismiss="modal"
-                style="background-color:#6b7280; color:white; border-radius:8px; font-weight:600;">
-          Cancel
-        </button>
-
+        <button type="button" id="confirmSubmit" class="btn px-4 py-2" style="background-color:#22c55e; color:white; border-radius:8px; font-weight:600;">Yes, Submit</button>
+        <button type="button" class="btn px-4 py-2" data-bs-dismiss="modal" style="background-color:#6b7280; color:white; border-radius:8px; font-weight:600;">Cancel</button>
       </div>
-
     </div>
   </div>
 </div>
 
-
 <script>
-
 $(document).ready(function () {
-
     // CHECK ALL
     $(document).on('click', '#checkAll', function () {
         let checked = $(this).is(':checked');
-        document.querySelectorAll('.item-checkbox').forEach(cb => cb.checked = checked);
+        $('.item-checkbox').prop('checked', checked);
     });
 
     // OPEN CONFIRMATION MODAL
     $('#openConfirmModal').click(function () {
-
         let selected = [...document.querySelectorAll('.item-checkbox:checked')];
-
         if (selected.length === 0) {
-            Swal.fire({
-                icon: 'warning',
-                title: 'No Items Selected',
-                text: 'Please select at least one item.',
-                confirmButtonColor: '#facc15'
-            });
+            Swal.fire({ icon: 'warning', title: 'No Items Selected', text: 'Please select at least one item.' });
             return;
         }
 
         let total = 0;
         selected.forEach(function (cb) {
-            // Updated index to eq(5) because we added "Invoice No" column at index 1
-            // Columns: Checkbox(0), InvNo(1), SaleID(2), Item(3), Qty(4), Total(5)
             let amount = parseFloat($(cb).closest('tr').find('td').eq(5).text().replace(/,/g, '')) || 0;
             total += amount;
         });
@@ -205,20 +176,7 @@ $(document).ready(function () {
 
     // SUBMIT SELECTED ITEMS
     $('#confirmSubmit').click(function () {
-
         let ids = [...document.querySelectorAll('.item-checkbox:checked')].map(cb => cb.value);
-        console.log("Submitting IDs:", ids);
-
-        if (ids.length === 0) {
-            Swal.fire({
-                icon: 'warning',
-                title: 'No Items Selected',
-                text: 'Please select at least one item.',
-                confirmButtonColor: '#facc15'
-            });
-            return;
-        }
-
         $.ajax({
             url: "{{ url('/developer/ConsolidateSelected') }}",
             method: "POST",
@@ -227,91 +185,70 @@ $(document).ready(function () {
                 selected_items: ids,
                 connection: $('#selected_connection').val()
             },
-
-            // SUCCESS HANDLER
             success: function (response) {
-                $('#confirmModal').modal('hide'); // Close modal
-
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Success!',
-                    text: response.message ?? 'Successfully submitted.',
-                    confirmButtonText: 'OK',
-                    confirmButtonColor: '#22c55e',
-                    timer: 2500,
-                    timerProgressBar: true,
-                }).then(() => {
-                    location.reload();
-                });
+                $('#confirmModal').modal('hide');
+                Swal.fire({ icon: 'success', title: 'Success!', text: response.message, timer: 2500 }).then(() => { location.reload(); });
             },
-
-            // ERROR HANDLER — treat as success (your requirement)
             error: function (xhr) {
-                console.log("AJAX ERROR (but backend updated DB):", xhr.responseText);
-                $('#confirmModal').modal('hide'); // Close modal anyway
-
-                Swal.fire({
-                    icon: 'success',  // ← treat as SUCCESS as requested
-                    title: 'Success!',
-                    text: 'Items submitted successfully.',
-                    confirmButtonText: 'OK',
-                    confirmButtonColor: '#22c55e',
-                    timer: 2500,
-                    timerProgressBar: true,
-                }).then(() => {
-                    location.reload();
-                });
+                $('#confirmModal').modal('hide');
+                Swal.fire({ icon: 'success', title: 'Success!', text: 'Items submitted successfully.', timer: 2500 }).then(() => { location.reload(); });
             }
         });
     });
 
-    // ------------------------------------------------------------------
-    // DELETE ITEM FUNCTIONALITY
-    // ------------------------------------------------------------------
-    $(document).on('click', '.delete-item', function () {
-        let id = $(this).data('id');
-        let row = $('#row-' + id);
+    // BULK DELETE
+    $('#bulkDeleteBtn').click(function () {
+        let ids = [...document.querySelectorAll('.item-checkbox:checked')].map(cb => cb.value);
+        if (ids.length === 0) {
+            Swal.fire('No Items Selected', 'Please select items to delete.', 'warning');
+            return;
+        }
 
         Swal.fire({
-            title: 'Are you sure?',
-            text: "You won't be able to revert this!",
+            title: 'Bulk Delete?',
+            text: `Delete ${ids.length} selected items?`,
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Yes, delete it!'
+            confirmButtonText: 'Yes, Delete'
         }).then((result) => {
             if (result.isConfirmed) {
-                
                 $.ajax({
-                    // Ensure you have created this route in web.php
-                    url: "{{ url('/developer/consolidate/delete') }}/" + id,
-                    method: "DELETE",
-                    data: {
-                        _token: "{{ csrf_token() }}"
-                    },
+                    url: "{{ url('/developer/consolidate/bulk-delete') }}",
+                    method: "POST",
+                    data: { _token: "{{ csrf_token() }}", ids: ids },
                     success: function (response) {
-                        Swal.fire(
-                            'Deleted!',
-                            response.message || 'Item has been deleted.',
-                            'success'
-                        );
-                        // Fade out and remove the row from the table
-                        row.fadeOut(300, function() { $(this).remove(); });
-                    },
-                    error: function (xhr) {
-                        Swal.fire(
-                            'Error!',
-                            xhr.responseJSON?.message || 'Something went wrong.',
-                            'error'
-                        );
+                        Swal.fire('Deleted!', response.message, 'success').then(() => { location.reload(); });
                     }
                 });
             }
         });
     });
 
+    // SINGLE DELETE
+    $(document).on('click', '.delete-item', function () {
+        let id = $(this).data('id');
+        let row = $('#row-' + id);
+        Swal.fire({
+            title: 'Are you sure?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'Yes, delete it!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $.ajax({
+                    url: "{{ url('/developer/consolidate/delete') }}/" + id,
+                    method: "DELETE",
+                    data: { _token: "{{ csrf_token() }}" },
+                    success: function (response) {
+                        Swal.fire('Deleted!', response.message, 'success');
+                        row.fadeOut(300, function() { $(this).remove(); });
+                    }
+                });
+            }
+        });
+    });
 });
-
 </script>
 @endsection

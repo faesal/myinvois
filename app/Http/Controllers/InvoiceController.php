@@ -20,6 +20,8 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Session;
 use App\Services\MyInvois\MyInvoisService;
 use App\Services\MyInvois\Template\TemplateScanner;
+use App\Services\MyInvois\Builder\InvoiceJsonBuilderService;
+use Illuminate\Http\JsonResponse;
 use Exception;
 
 class InvoiceController extends Controller
@@ -40,21 +42,144 @@ class InvoiceController extends Controller
         return new MyInvoisClient($this->clientId, $this->clientSecret, $this->prodMode);
     }
 
-    public function test()
+
+    public function test(
+        int $invoiceId,
+        InvoiceJsonBuilderService $service)
     {
-        $documentType = 'invoice';
+        //try {
+            $json = $service->build($invoiceId, '1.1');
+            //print_r($json);
 
-        $json = file_get_contents(base_path("app/Services/MyInvois/Templates/{$documentType}.json"));
+           //dd($json); 
 
-        $scanner = new \App\Services\MyInvois\Template\TemplateScanner();
-        $scanner->scanJson($json, $documentType, '1.1');
+            
 
-        $xml = app(MyInvoisService::class)->generate(1);
+            return response()->json($json);
+            dd($json);
+        //} catch (\Throwable $e) {
 
-        return response($xml, 200)
-            ->header('Content-Type', 'application/xml');
+           // return response()->json([
+             //   'status' => 'error',
+              //  'message' => $e->getMessage()
+           // ], 500);
+       // }
     }
 
+   public function test3(
+    int $invoiceId,
+    InvoiceJsonBuilderService $service
+)
+{
+    // First, let's debug to see what data is loaded
+    $debugInfo = $service->debug($invoiceId, '1.1');
+    
+    echo "<h2>Debug Information</h2>";
+    echo "<pre>";
+    print_r($debugInfo);
+    echo "</pre>";
+    
+    // Now build the JSON
+    $json = $service->build($invoiceId, '1.1');
+    
+    echo "<h2>Generated JSON</h2>";
+    echo "<pre>";
+    echo json_encode($json, JSON_PRETTY_PRINT);
+    echo "</pre>";
+    
+    exit;
+}
+public function test2(
+    int $invoiceId,
+    InvoiceJsonBuilderService $service,
+    TemplateScanner $scanner
+): JsonResponse
+{
+
+    $documentType = 'invoice';
+    $json = file_get_contents(base_path("app/Services/MyInvois/Templates/{$documentType}.json"));
+
+    try {
+        // First, get the JSON
+        //$json = $service->build($invoiceId);
+        
+        // Scan the JSON and store mappings
+        $scanner->scanJson($json, 'invoice', '1.1');
+        
+        // Get the mapping data to display
+        $mappings = $scanner->getMappingFromDB('invoice', '1.1');
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => [
+                'invoice_json' => json_decode($json, true),
+                'mappings' => $mappings
+            ]
+        ]);
+
+    } catch (\Throwable $e) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => $e->getMessage()
+        ], 500);
+    }
+}
+
+
+public function test4()
+{
+    // Example usage
+    $scanner = new TemplateScanner();
+    $documentType="invoice";
+    $jsonString = file_get_contents(base_path("app/Services/MyInvois/Templates/{$documentType}.json"));
+
+    try {
+        // Compare JSON with existing database mappings
+        $comparison = $scanner->compareJsonWithDb($jsonString, 'invoice', '1.1');
+        
+        // Display results
+        echo "Comparison Results:\n";
+        echo "<pre>JSON Paths: " . $comparison['summary']['json_paths_count'] . "</pre>\<br>";
+        echo "<pre>DB Paths: " . $comparison['summary']['db_paths_count'] . "</pre>\<br>";
+        echo "Missing in DB: " . $comparison['summary']['missing_in_db_count'] . "</pre>\<br>";
+        echo "Missing in JSON: " . $comparison['summary']['missing_in_json_count'] . "</pre>\<br>";
+        
+        // Show details of missing paths in database
+        if (!empty($comparison['missing_in_database'])) {
+            echo "Paths found in JSON but missing in database:\n";
+            foreach ($comparison['missing_in_database'] as $item) {
+                echo "- " . $item['field_path'] . " (Type: " . $item['type'] . ")\<br>";
+            }
+            echo "\<br><br>";
+        }
+        
+        // Show details of paths in database but not in JSON
+        if (!empty($comparison['missing_in_json'])) {
+            echo "Paths in database but not found in JSON (possibly deprecated):\n";
+            foreach ($comparison['missing_in_json'] as $item) {
+               echo "- " . $item['field_path'] . " (Type: " . $item['type'] . ")\<br>";
+            }
+        }
+        
+        // You can also save the missing segments to a file or database
+        file_put_contents('missing_segments.json', json_encode($comparison, JSON_PRETTY_PRINT));
+        
+    } catch (Exception $e) {
+        echo "Error: " . $e->getMessage() . "\n";
+    }
+}
+
+
+    public function getMappingFromDB($documentType, $version)
+    {
+        $data = DB::table('document_field_mapping')
+            ->where('document_type', $documentType)
+            ->where('version', $version)
+            ->orderBy('id')
+            ->get();
+
+        return $data;
+    }
 
     public function presubmit($id)
     {

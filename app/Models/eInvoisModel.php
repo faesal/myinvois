@@ -643,14 +643,14 @@ public function submit($id_customer)
 
 
 
-    public function cancelDocument(string $id, string $reason = 'Customer refund')
+    public function cancelDocument(string $uuid, string $reason = 'Cancel')
     {
         $client = $this->getClient();
         $client->login();
         $access_token = $client->getAccessToken();
         $client->setAccessToken($access_token);
 
-        return $client->cancelDocument($id, $reason);
+        return $client->cancelDocument($uuid, $reason);
     }
 
     public function rejectDocument(string $id, string $reason = 'Customer reject')

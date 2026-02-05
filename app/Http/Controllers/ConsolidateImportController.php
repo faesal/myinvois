@@ -56,6 +56,7 @@ public function importBatch(Request $request)
     $currentDate = Carbon::now();
     $invoiceNoToSave = 'CONSO-' . $currentDate->format('YmdHis');
 
+    // 1. Create Header
     $invoiceId = DB::table('consolidate_invoice')->insertGetId([
         'unique_id' => $batchUniqueId,
         'invoice_no' => $invoiceNoToSave,
@@ -91,14 +92,24 @@ public function importBatch(Request $request)
             DB::table('consolidate_invoice')->where('id_invoice', $invoiceId)->update(['invoice_no' => $invoiceNoToSave]);
         }
 
-        // --- CALCULATION LOGIC WITH ROUNDING ---
+        // --- CALCULATION LOGIC ---
         $priceExt = $qty * $unitPrice; 
         $lineExt = $priceExt - $discAmt; 
         if ($lineExt < 0) $lineExt = 0;
 
-        $taxRM = round($lineExt * ($taxRate / 100), 2); // FIXED ROUNDING
+        // FIXED ROUNDING: Prevents long decimals in DB
+        $taxRM = round($lineExt * ($taxRate / 100), 2);
         $itemTotal = $lineExt + $taxRM;
 
+        // --- DATE PARSING FIX ---
+        // Converts M/D/YYYY or other formats to MySQL Y-m-d
+        try {
+            $issueDate = !empty($row[0]) ? Carbon::parse($row[0])->format('Y-m-d') : $currentDate->format('Y-m-d');
+        } catch (\Exception $e) {
+            $issueDate = $currentDate->format('Y-m-d'); // Fallback to today if date is garbled
+        }
+
+        // 2. Create Items
         $itemId = DB::table('consolidate_invoice_item')->insertGetId([
             'unique_id' => (string) Str::uuid(),
             'id_consolidate_invoice' => $invoiceId,
@@ -107,7 +118,7 @@ public function importBatch(Request $request)
             'id_customer' => 6,
             'line_id' => $totalItems + 1,
             'is_import' => 1,
-            'issue_date' => $row[0] ?? $currentDate->format('Y-m-d'),
+            'issue_date' => $issueDate,
             'invoiced_quantity' => $qty,
             'price_amount' => $unitPrice,
             'price_discount' => $discAmt,
@@ -127,9 +138,11 @@ public function importBatch(Request $request)
     }
     fclose($handle);
 
+    // Update Header Totals with rounding
     DB::table('consolidate_invoice')->where('id_invoice', $invoiceId)->update([
         'consolidate_total_item' => $totalItems,
         'consolidate_complete_total' => round($totalGrand, 2),
+        'consolidate_list_sale_item_id' => implode(',', $itemIds),
         'consolidate_total_amount_before' => round($totalLineExt, 2),
         'price' => round($totalGrand, 2),
         'taxable_amount' => round($totalLineExt, 2),

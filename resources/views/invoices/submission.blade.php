@@ -11,6 +11,14 @@
     .table-responsive { overflow-x: auto; }
     #invoice-table td { vertical-align: middle; }
     .error-text { color: #dc3545; font-size: 0.8rem; display: block; margin-top: 2px; }
+
+    /* FIX: Prevent SweetAlert Icon from being too big */
+    .swal2-icon {
+        font-size: 1rem !important; 
+        width: 5em !important;
+        height: 5em !important;
+        margin: 2.5em auto .6em !important;
+    }
 </style>
 
 <div class="container-fluid py-4">
@@ -90,18 +98,18 @@
                                 @endif
                             </td>
                             <td>
-                               {{-- Inside the foreach loop in submission.blade.php --}}
-                                        <div class="btn-group">
-                                            {{-- View Button: Now passes Supplier ID, Customer ID, and the Unique ID string --}}
-                                          <a target="_blank" href="{{ route('invoice.view.public', ['unique_id' => $invoice->unique_id]) }}" class="btn btn-sm btn-outline-primary">View</a>
-                                            @if ($invoice->uuid)
-                                                <a href="{{ url('/cancelDocument/'.$invoice->uuid) }}" class="cancel-link btn btn-sm btn-outline-danger ms-1">Cancel</a>
-                                            @endif
+                                <div class="btn-group">
+                                    <a target="_blank" href="{{ route('invoice.view.public', ['unique_id' => $invoice->unique_id]) }}" class="btn btn-sm btn-outline-primary">View</a>
+                                    
+                                    @if ($invoice->uuid)
+                                        {{-- Updated: Use unique_id in URL --}}
+                                        <a href="{{ url('/api/myinvois/cancelDocument/'.$invoice->unique_id) }}" class="cancel-link btn btn-sm btn-outline-danger ms-1">Cancel</a>
+                                    @endif
 
-                                            @if (in_array($status, ['pending', 'failed', '']))
-                                                <button onclick="confirmDelete('{{ $invoice->id_invoice }}')" class="btn btn-sm btn-outline-danger ms-1">Delete</button>
-                                            @endif
-                                        </div>
+                                    @if (in_array($status, ['pending', 'failed', '']))
+                                        <button onclick="confirmDelete('{{ $invoice->id_invoice }}')" class="btn btn-sm btn-outline-danger ms-1">Delete</button>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                         @endforeach
@@ -124,87 +132,52 @@ $(document).ready(function () {
         columnDefs: [{ orderable: false, targets: 0 }]
     });
 
-    // 1. Select All Logic (DataTable aware)
     $('#selectAll').on('click', function() {
         var rows = table.rows({ 'search': 'applied' }).nodes();
         $('input.select-item', rows).prop('checked', this.checked);
     });
 
-    // 2. Bulk Submit AJAX with Detailed Error Popups
     $('#submitSelectedBtn').on('click', function() {
         let selected = [];
-        // Important: use table.$ to select items across all pages if pagination is active
-        table.$('input.select-item:checked').each(function() {
-            selected.push($(this).val());
-        });
+        table.$('input.select-item:checked').each(function() { selected.push($(this).val()); });
 
-        if (selected.length === 0) {
-            return Swal.fire("Selection Empty", "Please select at least one invoice to proceed.", "warning");
-        }
+        if (selected.length === 0) return Swal.fire("Selection Empty", "Please select at least one invoice.", "warning");
 
         Swal.fire({
             title: 'Submit to LHDN?',
-            text: `You are about to process ${selected.length} invoice(s).`,
+            text: `Processing ${selected.length} invoice(s).`,
             icon: 'question',
             showCancelButton: true,
             confirmButtonText: 'Confirm Submission',
-            confirmButtonColor: '#198754',
-            cancelButtonColor: '#6e7881'
+            confirmButtonColor: '#198754'
         }).then((result) => {
             if (result.isConfirmed) {
                 $.ajax({
                     url: "{{ route('invoice.submit_selected_lhdn') }}",
                     method: "POST",
-                    data: {
-                        _token: "{{ csrf_token() }}",
-                        invoices: selected
-                    },
-                    beforeSend: function() {
-                        Swal.fire({ 
-                            title: 'Connecting to LHDN...', 
-                            text: 'Processing API submission, please wait.',
-                            allowOutsideClick: false, 
-                            didOpen: () => { Swal.showLoading(); }
-                        });
-                    },
+                    data: { _token: "{{ csrf_token() }}", invoices: selected },
+                    beforeSend: function() { Swal.fire({ title: 'Connecting...', didOpen: () => { Swal.showLoading(); } }); },
                     success: function(response) {
                         if (response.errors && response.errors.length > 0) {
-                            let errorHtml = '<div style="text-align: left; max-height: 300px; overflow-y: auto;">';
-                            errorHtml += '<b>Results:</b> ' + response.message + '<br><br>';
-                            errorHtml += '<b>Failure Details:</b><ul class="text-danger">';
-                            response.errors.forEach(err => {
-                                errorHtml += `<li>${err}</li>`;
-                            });
-                            errorHtml += '</ul></div>';
-
-                            Swal.fire({
-                                icon: 'warning',
-                                title: 'Submission Completed with Errors',
-                                html: errorHtml,
-                                confirmButtonText: 'Close & Refresh'
-                            }).then(() => { location.reload(); });
+                            let errorHtml = '<ul class="text-danger text-start">';
+                            response.errors.forEach(err => { errorHtml += `<li>${err}</li>`; });
+                            errorHtml += '</ul>';
+                            Swal.fire({ icon: 'warning', title: 'Completed with Errors', html: errorHtml }).then(() => location.reload());
                         } else {
-                            Swal.fire({
-                                icon: 'success',
-                                title: 'Success',
-                                text: response.message,
-                                timer: 2000,
-                                showConfirmButton: false
-                            }).then(() => { location.reload(); });
+                            Swal.fire({ icon: 'success', title: 'Success', text: response.message, timer: 2000, showConfirmButton: false }).then(() => location.reload());
                         }
                     },
-                    error: function(xhr) {
-                        Swal.fire("System Error", "Could not reach the submission server.", "error");
-                    }
+                    error: function() { Swal.fire("System Error", "Could not reach server.", "error"); }
                 });
             }
         });
     });
 
-    // 3. Cancel Document Alert (Using Event Delegation)
+    // --- UPDATED CANCEL LOGIC ---
     $(document).on('click', '.cancel-link', function (e) {
         e.preventDefault();
-        const href = this.href;
+        const cancelUrl = this.href;
+        
         Swal.fire({
             title: 'Cancel Document?',
             text: 'This will void the document on LHDN. This action is permanent.',
@@ -213,11 +186,33 @@ $(document).ready(function () {
             confirmButtonText: 'Yes, Cancel It',
             confirmButtonColor: '#ef4444'
         }).then((result) => {
-            if (result.isConfirmed) window.location.href = href;
+            if (result.isConfirmed) {
+                $.ajax({
+                    url: cancelUrl,
+                    method: 'POST', // Use POST
+                    data: {
+                        _token: "{{ csrf_token() }}", 
+                        reason: "Wrong invoice details"
+                    },
+                    beforeSend: function() {
+                        Swal.fire({ title: 'Cancelling...', didOpen: () => { Swal.showLoading(); } });
+                    },
+                    success: function(response) {
+                        Swal.fire('Cancelled!', response.message, 'success').then(() => location.reload());
+                    },
+                    error: function(xhr) {
+                        // Display the real error message sent from the Controller
+                        let msg = 'Failed to cancel document.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            msg = xhr.responseJSON.message;
+                        }
+                        Swal.fire('Error', msg, 'error');
+                    }
+                });
+            }
         });
     });
 
-    // 4. FIX: Define confirmDelete globally for onclick attribute
     window.confirmDelete = function(id) {
         Swal.fire({
             title: 'Delete Invoice?',
@@ -225,13 +220,9 @@ $(document).ready(function () {
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#dc3545',
-            cancelButtonColor: '#6e7881',
             confirmButtonText: 'Yes, delete it'
         }).then((result) => {
-            if (result.isConfirmed) {
-                // Ensure this route exists in your web.php
-                window.location.href = "{{ url('/delete_invoice') }}/" + id;
-            }
+            if (result.isConfirmed) window.location.href = "{{ url('/delete_invoice') }}/" + id;
         });
     };
 });

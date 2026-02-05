@@ -62,6 +62,8 @@ use App\Http\Controllers\SelfBillNoteController;
 
 use App\Http\Controllers\SelfInvoiceController;
 
+use App\Http\Controllers\IntegrationInvoiceController2;
+
 
 
 Route::get('/admin/mysynctax/send-credential/{id}', [
@@ -207,8 +209,6 @@ Route::middleware('auth')->group(function () {
 
        // Route::any('/invoice/resubmit/{id_invoice}', [InvoiceController::class, 'cancelDocument']);
 
-      //  Route::any('/invoice/cancelDocument/{uuid}', [InvoiceController::class, 'cancelDocument']);
-
         Route::any('submit_items', [InvoiceController::class, 'submitSelected'])->name('consolidate.submit');
 
         Route::get('/show_invoice/{unique_id}', [InvoiceController::class, 'show_invoice'])->name('invoice.show');
@@ -346,6 +346,9 @@ Route::middleware(['auth'])->group(function () {
     Route::any('/developer/consolidate', [InvoiceSubmissionController::class, 'consolidate']);
 
     Route::delete('/developer/consolidate/delete/{id}', [InvoiceSubmissionController::class, 'destroyConsolidateItem']);
+
+    // Inside the auth middleware group
+Route::post('/developer/consolidate/bulk-delete', [InvoiceSubmissionController::class, 'bulkDeleteConsolidateItems']);
 
     Route::get('/developer/settings', [DeveloperDashboardController::class, 'settings'])
         ->name('developer.settings');
