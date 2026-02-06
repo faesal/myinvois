@@ -45,6 +45,15 @@ class InvoiceController extends Controller
     }
 
 
+    public function submitxml($id_invoice,$json)
+    {
+        $record = DB::table('invoice')->where('id_invoice', $id_invoice)->first();
+        $invoice = new eInvoisModel($record->connection_integrate);
+        //session(['invoice_type_code' => $record->invoice_type_code, 'invoice_unique_id' => $record->unique_id]);
+        $result = $invoice->submitxml($json);
+        //print_r($result);
+    }
+
    public function test(int $invoiceId, InvoiceJsonBuilderService $service)
 {
     // ===== 1. Build Invoice JSON =====
@@ -83,7 +92,8 @@ class InvoiceController extends Controller
             ]
         ]
     ];
-
+    echo response()->json($output);
+    echo $this->submitxml($invoiceId,response()->json($output));
     return response()->json($output);
 }
 
