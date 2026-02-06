@@ -7,6 +7,8 @@ use Illuminate\Support\Str;
 use App\Models\eInvoisModel;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail; 
+use Illuminate\Support\Facades\Log;
 
 class InvoiceSubmissionController extends Controller
 {
@@ -194,30 +196,28 @@ public function consolidate(Request $request)
     // ---------------------------------------------------
     // Query Consolidate Invoice Items
     // ---------------------------------------------------
-    // We use a Left Join to get the invoice_no from the invoice table 
-    // based on the shared sale_id_integrate.
     $query = DB::table('consolidate_invoice_item AS cii')
-        ->leftJoin('invoice AS i', 'cii.sale_id_integrate', '=', 'i.sale_id_integrate')
+        ->leftJoin('consolidate_invoice AS ci', 'cii.unique_id', '=', 'ci.unique_id')
         ->select(
             'cii.*', 
-            'i.invoice_no' // This allows {{ $item->invoice_no }} to work in Blade
+            'ci.invoice_no' 
         )
         ->whereBetween('cii.issue_date', [$start, $end]);
 
-    // Apply Filter Logic
+    // ✅ NEW FILTER: Only show items that are NOT "set" (New Data Only)
+    $query->where(function ($q) {
+        $q->where('cii.is_sent_invoice', 0)
+          ->orWhereNull('cii.is_sent_invoice');
+    });
+
+    // ✅ STATUS CHECK: Only show items that are NOT submitted yet
+    $query->whereNull('cii.submition_status');
+
+    // Apply Connection Filters
     if ($selectedConnection) {
-        $query->where('cii.connection_integrate', $selectedConnection)
-            ->where(function ($q) {
-                $q->whereNull('cii.is_invoice')
-                  ->orWhere('cii.is_invoice', '!=', 1);
-            });
+        $query->where('cii.connection_integrate', $selectedConnection);
     } else {
-        $query->where('cii.id_developer', $developerId)
-            ->whereNull('cii.submition_status')
-            ->where(function ($q) {
-                $q->whereNull('cii.is_invoice')
-                  ->orWhere('cii.is_invoice', '!=', 1);
-            });
+        $query->where('cii.id_developer', $developerId);
     }
 
     $items = $query->orderBy('cii.issue_date')->get();
@@ -243,137 +243,118 @@ public function consolidate(Request $request)
     return view('developer.consolidate', compact('items', 'start', 'end', 'availableConnections', 'selectedConnection'));
 }
 
- public function ConsolidateSelected(Request $request)
-    {
-        $developerId = auth()->user()->id;
-        $selectedIds = $request->input('selected_items', []);
-        $selected_connection = $request->input('connection');
+public function ConsolidateSelected(Request $request)
+{
+    $developerId = auth()->user()->id;
+    $selectedIds = $request->input('selected_items', []);
+    $selected_connection = $request->input('connection');
 
-        if (empty($selectedIds)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No items selected.'
-            ], 400);
-        }
-
-        // Fetch selected consolidate items
-        $items = DB::table('consolidate_invoice_item')
-            ->whereIn('id_invoice_item', $selectedIds)
-            ->get();
-
-        if ($items->isEmpty()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No invoice items found for submission.'
-            ], 400);
-        }
-
-        // Find supplier (customer table)
-        $customer = DB::table('customer')
-            ->where('connection_integrate', $selected_connection)
-            ->where('customer_type', 'SUPPLIER')
-            ->whereNull('deleted')
-            ->first();
-
-        if (!$customer) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Customer not found for selected connection.'
-            ], 400);
-        }
-
-        $items = collect($items);
-        $chunks = $items->chunk(25);
-
-        $invoiceBaseNo = 'CONSOLIDATE-' . now()->format('Ymd-His');
-        $version = 1;
-
-        foreach ($chunks as $chunk) {
-
-            // Get sale_id_integrate from first item
-            $saleId = $chunk->first()->sale_id_integrate;
-
-            // --- FIX START: Calculate Totals ---
-            $total = $chunk->sum('line_extension_amount');
-            $totalDiscount = $chunk->sum('price_discount'); // Sum of discounts
-            // --- FIX END ---
-
-            $uniqueId = Str::uuid();
-            $invoiceNo = $invoiceBaseNo . '-V' . $version;
-
-            // -----------------------------------------------
-            // INSERT INTO INVOICE (HEADER)
-            // -----------------------------------------------
-            $invoiceId = DB::table('invoice')->insertGetId([
-                'unique_id' => $uniqueId,
-                'sale_id_integrate' => $saleId,
-                'connection_integrate' => $selected_connection,
-                'invoice_status' => 'manual',
-                'id_developer' => $developerId,
-                'id_customer' => 6, 
-                'id_supplier' => $customer->id_customer,
-                'invoice_no' => $invoiceNo,
-                'invoice_type_code' => '01',
-                'issue_date' => now(),
-                'tax_scheme_id' => 'OTH',
-                'tax_category_id'=>'01',
-                
-                // --- FIX START: Insert Calculated Values ---
-                'price' => $total,
-                'total_price_discount' => $totalDiscount, // Save the discount here
-                // --- FIX END ---
-                
-                'taxable_amount' => 0,
-                'payment_note_term' => 'CASH',
-                'tax_amount' => 0,
-                'tax_percent' => 0,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            // -----------------------------------------------
-            // INSERT INTO INVOICE_ITEM
-            // -----------------------------------------------
-            foreach ($chunk as $index => $item) {
-                DB::table('invoice_item')->insert([
-                    'id_developer' => $developerId,
-                    'unique_id' => $uniqueId,
-                    'issue_date' => $item->issue_date,
-                    'connection_integrate' => $item->connection_integrate,
-                    'sale_id_integrate' => $item->sale_id_integrate,
-                    'id_consolidate_invoice' => $item->id_consolidate_invoice,
-                    'line_id' => $index + 1,
-                    'id_invoice' => $invoiceId,
-                    'id_customer' => $customer->id_customer,
-                    'invoiced_quantity' => $item->invoiced_quantity,
-                    'line_extension_amount' => $item->line_extension_amount,
-                    'item_description' => $item->item_description,
-                    'price_amount' => $item->price_amount,
-                    'price_discount' => $item->price_discount,
-                    'price_extension_amount' => $item->price_extension_amount,
-                    'item_clasification_value' => '004',
-                    'created_at' => now(),
-                ]);
-            }
-
-            // Mark consolidate items as submitted
-            DB::table('consolidate_invoice_item')
-                ->whereIn('id_invoice_item', $chunk->pluck('id_invoice_item'))
-                ->update([
-                    'submition_status' => 'submitted',
-                    'is_invoice'       => 1,
-                    'updated_at'       => now()
-                ]);
-
-            $version++;
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Selected items submitted as multiple invoices.'
-        ]);
+    if (empty($selectedIds)) {
+        return response()->json(['success' => false, 'message' => 'No items selected.'], 400);
     }
 
+    // Fetch items
+    $items = DB::table('consolidate_invoice_item')->whereIn('id_invoice_item', $selectedIds)->get();
+
+    if ($items->isEmpty()) {
+        return response()->json(['success' => false, 'message' => 'No items found.'], 400);
+    }
+
+    // Fetch supplier info
+    $customer = DB::table('customer')
+        ->where('connection_integrate', $selected_connection)
+        ->where('customer_type', 'SUPPLIER')
+        ->whereNull('deleted')
+        ->first();
+
+    if (!$customer) {
+        return response()->json(['success' => false, 'message' => 'Supplier connection not found.'], 400);
+    }
+
+    $chunks = collect($items)->chunk(25);
+    $invoiceBaseNo = 'CONSO-' . now()->format('Ymd-His');
+    $version = 1;
+    
+    $totalProcessedAmount = 0; 
+
+    foreach ($chunks as $chunk) {
+        $uniqueId = (string) Str::uuid();
+        $invoiceNo = $invoiceBaseNo . '-V' . $version;
+
+        // --- CALCULATION LOGIC ---
+        $taxTotal = $chunk->sum('tax');
+        $subtotal = $chunk->sum(function($item) {
+            return ($item->price_amount * $item->invoiced_quantity) - $item->price_discount;
+        });
+        $grandTotal = $subtotal + $taxTotal;
+        $totalProcessedAmount += $grandTotal;
+
+        // 1. Create Invoice Header
+        $invoiceId = DB::table('invoice')->insertGetId([
+            'unique_id' => $uniqueId,
+            'connection_integrate' => $selected_connection,
+            'invoice_status' => 'manual',
+            'id_developer' => $developerId,
+            'id_customer' => 6, 
+            'id_supplier' => $customer->id_customer,
+            'invoice_no' => $invoiceNo,
+            'invoice_type_code' => '01',
+            'issue_date' => now(),
+            'tax_scheme_id' => 'OTH',
+            'tax_category_id'=> '01',
+            'price' => $grandTotal,
+            'taxable_amount' => $subtotal,
+            'tax_amount' => $taxTotal,
+            'payment_note_term' => 'CASH',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // 2. Create Invoice Items
+        foreach ($chunk as $index => $item) {
+            $lineNetAmount = ($item->price_amount * $item->invoiced_quantity) - $item->price_discount;
+
+            DB::table('invoice_item')->insert([
+                'id_developer' => $developerId,
+                'unique_id' => $uniqueId, 
+                'id_invoice' => $invoiceId, 
+                'issue_date' => $item->issue_date,
+                'connection_integrate' => $item->connection_integrate,
+                'sale_id_integrate' => $item->sale_id_integrate,
+                'id_consolidate_invoice' => $item->id_consolidate_invoice,
+                'line_id' => $index + 1,
+                'id_customer' => $customer->id_customer,
+                'invoiced_quantity' => $item->invoiced_quantity,
+                'line_extension_amount' => $lineNetAmount, 
+                'item_description' => $item->item_description,
+                'price_amount' => $item->price_amount,
+                'price_discount' => $item->price_discount,
+                'price_extension_amount' => $item->price_extension_amount,
+                'tax' => $item->tax, 
+                'item_clasification_value' => '004',
+                'created_at' => now(),
+            ]);
+        }
+
+        // 3. Update Status (Mark as SET)
+        DB::table('consolidate_invoice_item')
+            ->whereIn('id_invoice_item', $chunk->pluck('id_invoice_item'))
+            ->update([
+                'submition_status' => 'submitted', 
+                'is_sent_invoice' => 1, // ✅ New Flag
+                'updated_at' => now()
+            ]);
+
+        $version++;
+    }
+
+    $formattedTotal = number_format($totalProcessedAmount, 2);
+
+    return response()->json([
+        'success' => true, 
+        'message' => "Consolidation successful! Total Amount: RM {$formattedTotal}"
+    ]);
+}
     public function view($id_invoice)
     {
         return "Invoice detailed page coming soon. ID: " . $id_invoice;
@@ -483,55 +464,49 @@ public function showInvoice($unique_id)
     /**
      * Delete Invoice (Only if Pending or Failed)
      */
-    public function deleteInvoice($id)
-    {
-        $invoice = DB::table('invoice')->where('id_invoice', $id)->first();
+public function deleteInvoice($id)
+{
+    $invoice = DB::table('invoice')->where('id_invoice', $id)->first();
 
-        // 1. Validation: Check if invoice exists
-        if (!$invoice) {
-            return redirect()->back()->with('error', 'Invoice not found.');
-        }
-
-        // 2. Validation: Prevent deleting 'Submitted' invoices
-        // We allow deleting if status is NULL, '', 'Pending', or 'Failed'
-        $status = strtolower($invoice->submission_status ?? '');
-        if ($status === 'submitted') {
-            return redirect()->back()->with('error', 'Cannot delete an invoice that has been successfully submitted to LHDN.');
-        }
-
-        DB::beginTransaction();
-        try {
-            // 3. Reset Consolidation Items (Important!)
-            // If this was a consolidated invoice, we must "release" the items back to the pool
-            // so they can be selected again in the consolidation page.
-            DB::table('consolidate_invoice_item')
-                ->whereIn('id_consolidate_invoice', function($query) use ($id) {
-                    $query->select('id_consolidate_invoice')
-                          ->from('invoice_item')
-                          ->where('id_invoice', $id);
-                })
-                ->update([
-                    'submition_status' => null, // Clear submitted flag
-                    'is_invoice' => null,       // Clear invoice flag
-                    'updated_at' => now()
-                ]);
-
-            // 4. Delete Invoice Items
-            DB::table('invoice_item')->where('id_invoice', $id)->delete();
-
-            // 5. Delete Invoice Header
-            DB::table('invoice')->where('id_invoice', $id)->delete();
-
-            DB::commit();
-            
-            // --- UPDATED MESSAGE AS REQUESTED ---
-            return redirect()->back()->with('success', 'Invoice deleted successfully. Items (if consolidated) are available again.');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return redirect()->back()->with('error', 'Delete failed: ' . $e->getMessage());
-        }
+    // 1. Validation
+    if (!$invoice) {
+        return redirect()->back()->with('error', 'Invoice not found.');
     }
+
+    // 2. Validation
+    $status = strtolower($invoice->submission_status ?? '');
+    if ($status === 'submitted') {
+        return redirect()->back()->with('error', 'Cannot delete an invoice that has been successfully submitted to LHDN.');
+    }
+
+    DB::beginTransaction();
+    try {
+        // 3. REVERSAL: Find items belonging to this invoice and reset flag to 0
+        DB::table('consolidate_invoice_item')
+            ->whereIn('id_consolidate_invoice', function($query) use ($id) {
+                $query->select('id_consolidate_invoice')
+                      ->from('invoice_item')
+                      ->where('id_invoice', $id);
+            })
+            ->update([
+                'submition_status' => null, // Clear submitted status
+                'is_sent_invoice' => 0,      // ✅ Reset flag to 0 so it reappears
+                'updated_at' => now()
+            ]);
+
+        // 4. Delete Invoice Data
+        DB::table('invoice_item')->where('id_invoice', $id)->delete();
+        DB::table('invoice')->where('id_invoice', $id)->delete();
+
+        DB::commit();
+        
+        return redirect()->back()->with('success', 'Invoice deleted successfully. Items (if consolidated) are available again.');
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return redirect()->back()->with('error', 'Delete failed: ' . $e->getMessage());
+    }
+}
     /**
      * Delete a specific Consolidate Item
      */
@@ -556,6 +531,236 @@ public function showInvoice($unique_id)
         return response()->json([
             'success' => true, 
             'message' => 'Item deleted successfully.'
+        ]);
+    }
+    public function bulkDeleteConsolidateItems(Request $request)
+    {
+        $ids = $request->input('ids', []);
+        if (empty($ids)) {
+            return response()->json(['success' => false, 'message' => 'No items selected.'], 400);
+        }
+
+        DB::table('consolidate_invoice_item')->whereIn('id_invoice_item', $ids)->delete();
+
+        return response()->json(['success' => true, 'message' => count($ids) . ' items deleted successfully.']);
+    }
+
+
+public function autoConsolidate(Request $request)
+    {
+        // ====================================================================
+        // 1. CHECK SCHEDULE (By Developer ID)
+        // ====================================================================
+        $dueDeveloperIds = DB::table('consolidate_setting')
+            ->join('customer', 'consolidate_setting.connection_integrate', '=', 'customer.connection_integrate')
+            ->where('consolidate_setting.is_enabled', 1)
+            ->where('consolidate_setting.next_consolidate', '<=', now())
+            ->pluck('customer.id_developer');
+
+        if ($dueDeveloperIds->isEmpty()) {
+            return response()->json(['success' => true, 'message' => 'No scheduled consolidations due.']);
+        }
+
+        // ====================================================================
+        // 2. FETCH PENDING ITEMS
+        // ====================================================================
+        $pendingItems = DB::table('consolidate_invoice_item')
+            ->whereNull('submition_status')
+            ->where(function ($query) {
+                $query->where('is_sent_invoice', 0)
+                      ->orWhereNull('is_sent_invoice');
+            })
+            ->whereIn('id_developer', $dueDeveloperIds) 
+            ->orderBy('issue_date', 'asc')
+            ->get();
+
+        if ($pendingItems->isEmpty()) {
+            return response()->json(['success' => true, 'message' => 'Scheduled developers found, but no items.']);
+        }
+
+        $groupedItems = $pendingItems->groupBy('id_developer');
+        
+        $totalInvoicesCreated = 0;
+        $processedIds = [];
+        $emailDebugLog = []; 
+
+        // ====================================================================
+        // 3. PROCESS EACH DEVELOPER
+        // ====================================================================
+        foreach ($groupedItems as $developerId => $items) {
+            
+            $supplier = DB::table('customer')
+                ->where('id_developer', $developerId)
+                ->where('customer_type', 'SUPPLIER')
+                ->whereNull('deleted')
+                ->first();
+
+            if (!$supplier) continue; 
+
+            $cleanConnection = $supplier->connection_integrate;
+            Session::put('connection_integrate', $cleanConnection);
+
+            $supplierInvoiceCount = 0;
+            $totalAmountForEmail = 0;
+
+            $chunks = $items->chunk(50);
+            $invoiceBaseNo = 'AUTO-' . now()->format('Ymd-His');
+
+            // Invoice Loop
+            foreach ($chunks as $chunk) {
+                $uniqueId = (string) Str::uuid();
+                $invoiceNo = $invoiceBaseNo . '-' . strtoupper(Str::random(4));
+
+                $taxTotal = $chunk->sum('tax');
+                $subtotal = $chunk->sum(function($item) {
+                    return ($item->price_amount * $item->invoiced_quantity) - $item->price_discount;
+                });
+                $grandTotal = $subtotal + $taxTotal;
+                $totalAmountForEmail += $grandTotal;
+
+                // Insert Invoice Header
+                $invoiceId = DB::table('invoice')->insertGetId([
+                    'unique_id' => $uniqueId,
+                    'connection_integrate' => $cleanConnection,
+                    'invoice_status' => 'manual',
+                    'submission_status' => 'Pending',
+                    'id_developer' => $developerId,
+                    'id_customer' => 6, 
+                    'id_supplier' => $supplier->id_customer,
+                    'invoice_no' => $invoiceNo,
+                    'invoice_type_code' => '01',
+                    'issue_date' => now(),
+                    'tax_scheme_id' => 'OTH',
+                    'tax_category_id'=> '01',
+                    'price' => $grandTotal,
+                    'taxable_amount' => $subtotal,
+                    'tax_amount' => $taxTotal,
+                    'payment_note_term' => 'CASH',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                // Insert Invoice Items
+                foreach ($chunk as $index => $item) {
+                    $lineNetAmount = ($item->price_amount * $item->invoiced_quantity) - $item->price_discount;
+                    DB::table('invoice_item')->insert([
+                        'id_developer' => $item->id_developer,
+                        'unique_id' => $uniqueId, 
+                        'id_invoice' => $invoiceId, 
+                        'issue_date' => $item->issue_date,
+                        'connection_integrate' => $cleanConnection, 
+                        'sale_id_integrate' => $item->sale_id_integrate,
+                        'id_consolidate_invoice' => $item->id_consolidate_invoice,
+                        'line_id' => $index + 1,
+                        'id_customer' => $supplier->id_customer,
+                        'invoiced_quantity' => $item->invoiced_quantity,
+                        'line_extension_amount' => $lineNetAmount, 
+                        'item_description' => $item->item_description,
+                        'price_amount' => $item->price_amount,
+                        'price_discount' => $item->price_discount,
+                        'price_extension_amount' => $item->price_extension_amount,
+                        'tax' => $item->tax, 
+                        'item_clasification_value' => '004',
+                        'created_at' => now(),
+                    ]);
+                    $processedIds[] = $item->id_invoice_item;
+                }
+
+                // Submit to e-Invoicing Model
+                session(['invoice_type_code' => '01', 'invoice_unique_id' => $uniqueId, 'consolidate_status' => '']);
+                $model = new \App\Models\eInvoisModel;
+                $model->submit($invoiceId);
+
+                DB::table('invoice')->where('id_invoice', $invoiceId)->update([
+                    'submission_status' => 'Submitted',
+                    'updated_at' => now()
+                ]);
+
+                $totalInvoicesCreated++;
+                $supplierInvoiceCount++; 
+            }
+
+            // =========================================================
+            // ✅ EMAIL & RESCHEDULE LOGIC (Updated to fjusrin@gmail.com)
+            // =========================================================
+            $setting = DB::table('consolidate_setting')->where('connection_integrate', $cleanConnection)->first();
+            
+            if ($setting) {
+                $debugMsg = "Supplier: " . $supplier->registration_name;
+
+                if ($setting->is_send_email == 1) {
+                    try {
+                        $formattedAmount = number_format($totalAmountForEmail, 2);
+                        
+                        $emailData = [
+                            'name' => $supplier->registration_name,
+                            'count' => $supplierInvoiceCount,
+                            'amount' => $formattedAmount,
+                            'date' => now()->format('d M Y')
+                        ];
+
+                        // Path fixed to match your filename: emails.auto_consolidate
+                        Mail::send('emails.auto_consolidate', $emailData, function ($message) use ($supplier) {
+                            $ccEmail = 'fjusrin@gmail.com';
+                            
+                            if (!empty($supplier->email)) {
+                                $message->to($supplier->email)->cc($ccEmail);
+                            } else {
+                                $message->to($ccEmail);
+                            }
+                            
+                            $message->subject('Auto-Consolidation Completed');
+                        });
+                        
+                        $debugMsg .= " | Email Status: SENT";
+                        Log::info("HTML Email sent for {$supplier->registration_name}");
+                    } catch (\Exception $e) {
+                        $debugMsg .= " | Email Status: FAILED (" . $e->getMessage() . ")";
+                        Log::error("Failed to send email to {$supplier->email}: " . $e->getMessage());
+                    }
+                } else {
+                    $debugMsg .= " | Email Status: SKIPPED (Setting OFF)";
+                }
+                
+                $emailDebugLog[] = $debugMsg;
+
+                // Update Next Run Date
+                $nextDate = null;
+                $now = now();
+
+                if ($setting->is_daily) {
+                    $nextDate = $now->copy()->addDay()->startOfDay();
+                } elseif ($setting->is_weekly) {
+                    $nextDate = $now->copy()->next('Sunday')->startOfDay();
+                } elseif ($setting->is_monthly) {
+                    $nextDate = $now->copy()->addMonth()->endOfMonth()->startOfDay();
+                } elseif ($setting->is_spesific_date) {
+                    $candidate = $now->copy()->day($setting->is_spesific_date)->startOfDay();
+                    $nextDate = ($candidate->lte($now)) 
+                        ? $now->copy()->addMonth()->day($setting->is_spesific_date)->startOfDay()
+                        : $candidate;
+                }
+
+                if ($nextDate) {
+                    DB::table('consolidate_setting')
+                        ->where('connection_integrate', $cleanConnection)
+                        ->update(['last_consolidate' => now(), 'next_consolidate' => $nextDate]);
+                }
+            }
+        }
+
+        // 4. Final Status Update
+        if (!empty($processedIds)) {
+            DB::table('consolidate_invoice_item')
+                ->whereIn('id_invoice_item', $processedIds)
+                ->update(['submition_status' => 'submitted', 'is_sent_invoice' => 1, 'updated_at' => now()]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "Auto-consolidation complete. Created {$totalInvoicesCreated} invoices.",
+            'processed_items' => count($processedIds),
+            'email_logs' => $emailDebugLog
         ]);
     }
 }

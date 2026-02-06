@@ -431,17 +431,17 @@ $(document).ready(function() {
 
 
     // ---------------------------------------------------------
-    // AUTO-SAVE LOGIC: Toggles
+    // CORE FUNCTION: Save Consolidation Settings (Centralized)
     // ---------------------------------------------------------
-
-    // 3. Consolidation Toggle Auto-Save
-    $('#toggleConsolidation').on('change', function() {
-        updateToggleState(this, '#consolidationWrapper');
-        
-        let isEnabled = $(this).is(':checked') ? 1 : 0;
+    function saveConsolidationSettings() {
+        // Gather all values from the form
+        let isEnabled = $('#toggleConsolidation').is(':checked') ? 1 : 0;
         let freq = $('input[name="freq"]:checked').val() || 'daily';
         let specificDate = $('#specific_date_input').val();
         let emailNotif = $('#email_notif').is(':checked') ? 1 : 0;
+
+        // Log for debugging (optional)
+        // console.log("Saving Settings:", { isEnabled, freq, specificDate, emailNotif });
 
         $.ajax({
             url: "{{ route('client.settings.consolidate', '') }}/" + clientId,
@@ -456,18 +456,54 @@ $(document).ready(function() {
             success: function(response) {
                 Toast.fire({ 
                     icon: 'success', 
-                    title: 'Consolidation Status Updated' 
-                }).then(() => {
-                    location.reload(); // Refresh to ensure backend sync
+                    title: 'Settings Saved' 
                 });
+                
+                // Optional: Update UI text if backend returns next run date
+                if(response.next_run) {
+                    // You can add a span with id="nextRunPreview" in your blade if you want to show this
+                    // $('#nextRunPreview').text(response.next_run);
+                }
             },
             error: function(xhr) {
-                Swal.fire('Error', 'Failed to auto-save consolidation status', 'error');
+                let msg = xhr.responseJSON ? xhr.responseJSON.message : 'Failed to save settings';
+                Swal.fire('Error', msg, 'error');
             }
         });
+    }
+
+    // ---------------------------------------------------------
+    // EVENT LISTENERS: Auto-Save Triggers
+    // ---------------------------------------------------------
+
+    // 1. Master Toggle Switch
+    $('#toggleConsolidation').on('change', function() {
+        updateToggleState(this, '#consolidationWrapper');
+        saveConsolidationSettings();
     });
 
-    // 4. IP Whitelist Toggle Auto-Save
+    // 2. Frequency Radio Buttons (Daily, Weekly, Monthly...)
+    $('input[name="freq"]').on('change', function() {
+        saveConsolidationSettings();
+    });
+
+    // 3. Specific Date Input (Save on blur/loss of focus to avoid spamming)
+    $('#specific_date_input').on('blur', function() {
+        // Only save if the value changed or is valid
+        saveConsolidationSettings();
+    });
+
+    // 4. Email Notification Checkbox
+    $('#email_notif').on('change', function() {
+        saveConsolidationSettings();
+    });
+
+
+    // ---------------------------------------------------------
+    // IP WHITELIST LOGIC
+    // ---------------------------------------------------------
+
+    // IP Whitelist Toggle Auto-Save
     $('#toggleIpWhitelist').on('change', function() {
         updateToggleState(this, '#ipWhitelistWrapper');
         
@@ -484,8 +520,6 @@ $(document).ready(function() {
                 Toast.fire({ 
                     icon: 'success', 
                     title: 'IP Whitelist Status Updated' 
-                }).then(() => {
-                    location.reload(); // Refresh to sync UI state
                 });
             },
             error: function(xhr) {
@@ -494,46 +528,26 @@ $(document).ready(function() {
         });
     });
 
-
     // ---------------------------------------------------------
     // MASTER UPDATE BUTTON (Account Info & Keys)
     // ---------------------------------------------------------
     $('#masterUpdateBtn').click(function(e) {
         e.preventDefault();
         const $btn = $(this);
+        
+        // Visual feedback
         $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-2"></i> Saving...');
 
-        // Final sync of consolidation before main submit (Original Logic)
-        let freq = $('input[name="freq"]:checked').val(); 
-        let specificDate = $('#specific_date_input').val();
-        let emailNotif = $('#email_notif').is(':checked') ? 1 : 0;
-        let isConsolidateEnabled = $('#toggleConsolidation').is(':checked') ? 1 : 0;
-
-        $.ajax({
-            url: "{{ route('client.settings.consolidate', '') }}/" + clientId,
-            method: "POST",
-            data: {
-                _token: "{{ csrf_token() }}",
-                freq: freq,
-                specific_date: specificDate,
-                email_notif: emailNotif,
-                is_enabled: isConsolidateEnabled
-            },
-            success: function(response) {
-                $('#mainClientForm').submit();
-            },
-            error: function(xhr) {
-                $btn.prop('disabled', false).text('Update Account');
-                Swal.fire('Error', 'Failed to save settings.', 'error');
-            }
-        });
+        // We trigger one last save of consolidation settings just to be safe, then submit form
+        // Or simply submit the form directly since we have auto-save on inputs
+        $('#mainClientForm').submit();
     });
 
     // ---------------------------------------------------------
-    // IP WHITELIST MANAGEMENT (AJAX)
+    // IP MANAGEMENT (Add/Delete)
     // ---------------------------------------------------------
 
-    // 5. Add IP Logic
+    // Add IP Logic
     $('#addIpBtn').click(function() {
         let ip = $('#newIpAddress').val();
         let desc = $('#newIpDesc').val();
@@ -558,7 +572,9 @@ $(document).ready(function() {
                 $('#noIpRow').remove();
                 $('#ipTableBody').append(`
                     <tr class="border-bottom" data-id="${response.id}">
-                        <td class="ps-3 py-3"><i class="fa-regular fa-square-check text-dark me-2"></i> ${ip}</td>
+                        <td class="ps-3 py-3">
+                            <i class="fa-regular fa-square-check text-dark me-2"></i> ${ip}
+                        </td>
                         <td class="text-muted">${desc || ''}</td>
                         <td><span class="badge bg-success-subtle text-success border border-success">Active</span></td>
                         <td class="text-end pe-3">
@@ -581,7 +597,7 @@ $(document).ready(function() {
         });
     });
 
-    // 6. Delete IP Logic
+    // Delete IP Logic
     $(document).on('click', '.delete-ip', function() {
         let id = $(this).data('id');
         let $row = $(this).closest('tr');

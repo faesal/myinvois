@@ -331,7 +331,7 @@ Route::get('/developer/register', [DeveloperController::class, 'showRegistration
 
 Route::post('/developer/register', [DeveloperController::class, 'register'])->name('developer.register.submit');
 
-
+Route::get('/developer/cron/consolidate', [InvoiceSubmissionController::class, 'autoConsolidate']);
 
 
 
@@ -348,7 +348,11 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/developer/consolidate/delete/{id}', [InvoiceSubmissionController::class, 'destroyConsolidateItem']);
 
     // Inside the auth middleware group
-Route::post('/developer/consolidate/bulk-delete', [InvoiceSubmissionController::class, 'bulkDeleteConsolidateItems']);
+    Route::post('/developer/consolidate/bulk-delete', [InvoiceSubmissionController::class, 'bulkDeleteConsolidateItems']);
+
+
+    // Route for CronJob Auto Consolidation
+    //Route::get('/developer/cron/consolidate', [InvoiceSubmissionController::class, 'autoConsolidate']);
 
     Route::get('/developer/settings', [DeveloperDashboardController::class, 'settings'])
         ->name('developer.settings');

@@ -23,6 +23,8 @@ use App\Services\MyInvois\Template\TemplateScanner;
 use App\Services\MyInvois\Builder\InvoiceJsonBuilderService;
 use Illuminate\Http\JsonResponse;
 use Exception;
+use App\Services\MyInvois\Builder\InvoiceXmlBuilder;
+use App\Services\MyInvois\Signer\XadesSigner;
 
 class InvoiceController extends Controller
 {
@@ -43,7 +45,50 @@ class InvoiceController extends Controller
     }
 
 
-    public function test(
+   public function test(int $invoiceId, InvoiceJsonBuilderService $service)
+{
+    // ===== 1. Build Invoice JSON =====
+    $json = $service->build($invoiceId, '1.1');
+
+    // ===== 2. JSON → XML =====
+    $xmlBuilder = new InvoiceXmlBuilder();
+    $xmlString = $xmlBuilder->build($json);
+
+    // ===== 3. Sign XML =====
+    $signer = new XadesSigner(
+        base_path('cert/certificate.crt'),
+        base_path('cert/private.key')
+    );
+
+    $signedXml = $signer->sign($xmlString);
+
+    // ===== 4. Generate MyInvois Submission Format =====
+
+    // Document Hash = BASE64( SHA256( XML Content ) )
+    $documentHash = base64_encode(hash('sha256', $signedXml, true));
+
+    // Document Base64
+    $documentBase64 = base64_encode($signedXml);
+
+    // Invoice Number (ambil dari JSON original)
+    $invoiceNumber = $json['Invoice'][0]['ID'][0]['_'] ?? 'UNKNOWN';
+
+    $output = [
+        "documents" => [
+            [
+                "format" => "XML",
+                "documentHash" => $documentHash,
+                "codeNumber" => $invoiceNumber,
+                "document" => $documentBase64
+            ]
+        ]
+    ];
+
+    return response()->json($output);
+}
+
+
+    public function test5(
         int $invoiceId,
         InvoiceJsonBuilderService $service)
     {

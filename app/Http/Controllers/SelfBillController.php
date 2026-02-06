@@ -42,7 +42,8 @@ class SelfBillController extends Controller
 
          $identification_no =data_get($customerPayload, 'identification_no');
 
-         $identification_type = 'BRN';
+         $identification_type = data_get($customerPayload, 'identification_type');
+
 
          if ($mode === 'normal') {
              // normal invoice → TIN ini tak dibenarkan
@@ -52,6 +53,9 @@ class SelfBillController extends Controller
                      'message' => 'This TIN No. is not allowed for normal invoice'
                  ], 422);
              }
+
+
+             
          }
      
          if ($mode === 'general') {
@@ -63,7 +67,7 @@ class SelfBillController extends Controller
                  ], 422);
              }
 
-             if ($tin_no === 'EI00000000010') {
+            /* if ($tin_no === 'EI00000000010') {
                 $item_clasification_code = '004';
                 $identification_no = 'NA';
                 $identification_type = 'BRN';
@@ -83,11 +87,74 @@ class SelfBillController extends Controller
                 $item_clasification_code = '036';
                 $identification_no = 'NA';
                 $identification_type = 'BRN';
+            }*/
+
+
+            //SELFBILL
+
+            if ($tin_no === 'EI00000000010') {
+                $item_clasification_code = '004';
+                if($identification_no==''){
+                    $identification_no='NA';
+                }
+                //$identification_no = 'NA';
+                //identification_type (NRIC/PASSPORT/BRN/ARMY) 
+                /*if($identification_no!='NA'){
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'LHDN : Only allow NA, identification No for - TIN EI00000000010 !'
+                    ], 400);
+                }*/
+    
+            } elseif ($tin_no === 'EI00000000020') {
+                $item_clasification_code = '022';
+                //$identification_no = 'NA';
+                //$identification_type = 'BRN';
+    
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'This TIN No. not allowed for selfbill foreign supplier , please use EI00000000030'
+                ], 422);
+    
+    
+            } elseif ($tin_no === 'EI00000000030') {
+                $item_clasification_code = '036';
+                if($identification_type!='BRN'){
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'LHDN : EI00000000030 - Please use Identification type BRN !'
+                    ], 400);
+                    }
+        
+                   if($identification_no==''){
+                    $identification_no='NA';
+                   }
+
+    
+            } elseif ($tin_no === 'EI00000000040') {
+                $item_clasification_code = '036';
+               // $identification_no = 'NA';
+               // $identification_type = 'BRN';
+    
+               if($identification_type!='BRN'){
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'LHDN : EI00000000040 - Please use Identification type BRN !'
+                ], 400);
+                }
+    
+                if($identification_no!='NA'){
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'LHDN : EI00000000040 - Only support Identification No NA !'
+                    ], 400);
+                    }
+    
             }
 
 
             }
-     
+  
          // =====================================================
          // 1. AUTHENTICATION (UNCHANGED)
          // =====================================================
@@ -378,7 +445,7 @@ class SelfBillController extends Controller
              $qr_lhdn = 'No LHDN QR Link Provided';
              $result  = 'Please manualy submit in system, since isAutoLHDN = 0';
          }
-     
+        
          return response()->json([
              'status'          => 'ok',
              'invoice_id'      => $idCon,

@@ -61,7 +61,6 @@
         </div>
     </form>
 
-   
     <div class="card">
         <div class="card-body">
             <div class="table-responsive">
@@ -76,10 +75,11 @@
                                 <th>Sale ID</th>
                                 <th>Item Name</th>
                                 <th>Quantity</th>
-                                <th>Total (RM)</th>
+                                <th>Tax (RM)</th> <th>Total (RM)</th>
                                 <th>Connection</th>
                                 <th>Date</th>
-                                <th class="text-center">Action</th> </tr>
+                                <th class="text-center">Action</th> 
+                            </tr>
                         </thead>
                         @if($selectedConnection)
                         <tbody>
@@ -91,6 +91,9 @@
                                         <td>{{ $item->sale_id_integrate }}</td>
                                         <td>{{ $item->item_description }}</td>
                                         <td>{{ $item->invoiced_quantity }}</td>
+                                        
+                                        <td>{{ number_format($item->tax, 2) }}</td>
+
                                         <td>{{ number_format($item->line_extension_amount, 2) }}</td>
                                         <td>{{ $item->connection_integrate }}</td>
                                         <td>{{ \Carbon\Carbon::parse($item->issue_date)->format('d-m-Y H:i:s') }}</td>
@@ -107,7 +110,7 @@
                                 @endforeach
                             @else
                                 <tr>
-                                    <td colspan="9" class="text-center text-muted">
+                                    <td colspan="10" class="text-center text-muted">
                                         No items found for selected connection and date range.
                                     </td>
                                 </tr>
@@ -165,7 +168,8 @@ $(document).ready(function () {
 
         let total = 0;
         selected.forEach(function (cb) {
-            let amount = parseFloat($(cb).closest('tr').find('td').eq(5).text().replace(/,/g, '')) || 0;
+            // ✅ UPDATED INDEX: eq(6) because Tax column was added at index 5
+            let amount = parseFloat($(cb).closest('tr').find('td').eq(6).text().replace(/,/g, '')) || 0;
             total += amount;
         });
 

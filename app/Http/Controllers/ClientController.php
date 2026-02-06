@@ -310,7 +310,13 @@ class ClientController extends Controller
     // -------------------------------------------
     // AJAX: SAVE CONSOLIDATION SETTINGS
     // -------------------------------------------
-    public function saveConsolidation(Request $request, $id)
+ // -------------------------------------------
+    // AJAX: SAVE CONSOLIDATION SETTINGS
+    // -------------------------------------------
+ // -------------------------------------------
+    // AJAX: SAVE CONSOLIDATION SETTINGS
+    // -------------------------------------------
+ public function saveConsolidation(Request $request, $id)
     {
         try {
             $connectionKey = $this->getConnectionKey($id);
@@ -318,24 +324,80 @@ class ClientController extends Controller
                 return response()->json(['success' => false, 'message' => 'Customer link not found.'], 404);
             }
 
-            $freq = $request->freq;
-            $sendEmail = ($request->email_notif === 'true' || $request->email_notif === '1' || $request->email_notif === 1) ? 1 : 0;
-            $isEnabled = ($request->is_enabled === 'true' || $request->is_enabled === '1' || $request->is_enabled === 1) ? 1 : 0;
+            // 1. Basic Validation
+            $validator = Validator::make($request->all(), [
+                'freq' => 'required|in:daily,weekly,monthly,specific',
+                'specific_date' => 'nullable|integer|min:1|max:31',
+                'is_enabled' => 'required'
+            ]);
 
+            if ($validator->fails()) {
+                return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+            }
+
+            $freq = $request->freq;
+            $specificDate = $request->specific_date;
+            
+            // ---------------------------------------------------------
+            // ✅ EXCEPTION CHECK: Catch missing date for "Specific" option
+            // ---------------------------------------------------------
+            if ($freq === 'specific' && empty($specificDate)) {
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'Specific Date must be inserted first.'
+                ], 422); // 422 Unprocessable Entity
+            }
+            // ---------------------------------------------------------
+
+            // Handle Boolean conversions
+            $sendEmail = filter_var($request->email_notif, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+            $isEnabled = filter_var($request->is_enabled, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+
+            // Calculate Next Consolidation Date
+            $nextDate = null;
+            if ($isEnabled) {
+                $now = now();
+                switch ($freq) {
+                    case 'daily':
+                        $nextDate = $now->copy()->addDay()->startOfDay();
+                        break;
+                    case 'weekly':
+                        $nextDate = $now->copy()->next('Sunday')->startOfDay();
+                        break;
+                    case 'monthly':
+                        $endOfMonth = $now->copy()->endOfMonth()->startOfDay();
+                        if ($now->isSameDay($endOfMonth)) {
+                            $nextDate = $now->copy()->addMonth()->endOfMonth()->startOfDay();
+                        } else {
+                            $nextDate = $endOfMonth;
+                        }
+                        break;
+                    case 'specific':
+                        // We already checked !empty($specificDate) above, so safe to proceed
+                        $candidateDate = $now->copy()->day($specificDate)->startOfDay();
+                        if ($now->greaterThan($candidateDate)) {
+                            $nextDate = $now->copy()->addMonth()->day($specificDate)->startOfDay();
+                        } else {
+                            $nextDate = $candidateDate;
+                        }
+                        break;
+                }
+            }
+
+            // Prepare Data
             $data = [
                 'connection_integrate' => $connectionKey,
-                'is_enabled' => $isEnabled,
-                'is_daily' => ($freq === 'daily') ? 1 : 0,
-                'is_weekly' => ($freq === 'weekly') ? 1 : 0,
-                'is_monthly' => ($freq === 'monthly') ? 1 : 0,
-                'is_spesific_date' => ($freq === 'specific') ? ($request->specific_date ?? '') : '',
-                'is_custom_daily_interval' => '',
-                'last_consolidate' => '', 
-                'next_consolidate' => '', 
-                'is_send_email' => $sendEmail,
-                'created_date' => now()
+                'is_enabled'       => $isEnabled,
+                'is_daily'         => ($freq === 'daily') ? 1 : 0,
+                'is_weekly'        => ($freq === 'weekly') ? 1 : 0,
+                'is_monthly'       => ($freq === 'monthly') ? 1 : 0,
+                'is_spesific_date' => ($freq === 'specific') ? $specificDate : '', 
+                'is_custom_daily_interval' => '', 
+                'next_consolidate' => $nextDate ? $nextDate->format('Y-m-d H:i:s') : '',
+                'is_send_email'    => $sendEmail,
             ];
 
+            // Update or Insert
             $exists = DB::table('consolidate_setting')
                 ->where('connection_integrate', $connectionKey)
                 ->exists();
@@ -345,14 +407,19 @@ class ClientController extends Controller
                     ->where('connection_integrate', $connectionKey)
                     ->update($data);
             } else {
+                $data['created_date'] = now(); 
                 DB::table('consolidate_setting')->insert($data);
             }
 
-            return response()->json(['success' => true, 'message' => 'Consolidation settings saved.']);
+            return response()->json([
+                'success' => true, 
+                'message' => 'Consolidation settings saved.',
+                'next_run' => $nextDate ? $nextDate->format('Y-m-d') : 'Paused'
+            ]);
 
         } catch (\Exception $e) {
             Log::error("Consolidate Save Error: " . $e->getMessage());
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => 'Server Error: ' . $e->getMessage()], 500);
         }
     }
 
