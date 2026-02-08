@@ -39,6 +39,23 @@ class eInvoisModel extends Model
         }
     }
 
+    public function submitxml($document)
+    {
+
+    $client = $this->getClient();
+    /// print_r($client);
+    //exit();
+    $client->login();
+
+    $client->setAccessToken($client->getAccessToken());
+
+    $response  = $client->submitDocument([$document]);
+        
+   
+
+
+    }
+
     public function checkExpired($connCode){
 
         $supplier = DB::table('customer')
@@ -78,7 +95,16 @@ class eInvoisModel extends Model
 
         $this->clientId = $customer->secret_key1;
         $this->clientSecret = $customer->secret_key2;
+
+        if($customer->is_version=='1.1'){
+            $this->clientId = env('CLIENT_ID');
+            $this->clientSecret =  env('CLIENT_SECRET');
+        }
+
         $this->tinNo = $customer->tin_no;
+        $this->idNo = $customer->identification_no;
+        $this->is_version=$customer->is_version;
+
         if(env('MYINVOIS_ENVIRONMENT', 'preprod')=='pre_prod'){
             $this->prodMode=false;
         }else{
@@ -108,6 +134,7 @@ class eInvoisModel extends Model
         $client->login($this->tinNo);
         $access_token = $client->getAccessToken();
         $client->setAccessToken($access_token);
+        
         $client->setOnbehalfof($this->tinNo);
         return $client;
     }
@@ -357,20 +384,25 @@ public function qr_link($uuid)
 public function submit($id_customer)
 {
 
-
+        //echo $this->tinNo;
         $client = $this->getClient();
-       /// print_r($client);
+        //print_r($client);
         //exit();
-        $client->login();
-
-        $client->setAccessToken($client->getAccessToken());
-
+        if($this->is_version=='1.1'){
+        $client->login($this->tinNo.':'.$this->idNo);
+        }else{
+        $client->login();   
+        }
+        $token=$client->getAccessToken();
+        //exit();
+        $client->setAccessToken($token);
+        
         /* =====================================================
          * CERTIFICATE VALIDATION (KEKAL)
          * ===================================================== */
         $certPath    = base_path('cert/certificate.crt');
         $privatePath = base_path('cert/private.key');
-
+        $pkcs = base_path('cert/FAESAL_AMAR_BIN_JAAFAR.p12');
         if (!file_exists($certPath) || !file_exists($privatePath)) {
             throw new \Exception("Certificate files not found");
         }
@@ -543,6 +575,7 @@ public function submit($id_customer)
 
         $data['items'] = $items;
 
+        $data['is_version']=$this->is_version;
         /* =====================================================
          * CREATE & SUBMIT DOCUMENT (KEKAL)
          * ===================================================== */
@@ -559,6 +592,25 @@ public function submit($id_customer)
             '14' => InvoiceTypeCodes::SELF_BILLED_REFUND_NOTE,
         ];
       
+        if($this->is_version=='1.1'){
+            $example = new CreateDocumentExample();
+            $invoiceJson = $example->createXmlDocument(
+                $invoiceTypes[$invoice_type_code],
+                $record->invoice_no,
+                $supplier, 
+                $customer, 
+                $delivery, 
+                true, 
+                $certPath,
+                $privatePath,
+                env('PKCS12_PASSWORD'),
+                [
+                    'SigningTime' => date('Y-m-d\TH:i:s\Z'),
+                ],
+                $data);
+    
+        }else{
+
         $invoiceJson = $example->createJsonDocument(
             $invoiceTypes[$invoice_type_code],
             $record->invoice_no,
@@ -575,13 +627,14 @@ public function submit($id_customer)
             $data
         );
      
-       
+        }
+        
 
         $document  = MyInvoisHelper::getSubmitDocument($id, $invoiceJson);
        
         $response  = $client->submitDocument([$document]);
      
-        //print_r($invoiceJson);
+     
         /* =====================================================
          * SAVE RESULT (KEKAL)
          * ===================================================== */
@@ -1166,20 +1219,45 @@ DB::table('invoice')
             $tin = data_get($payload, 'customer.tin_no');
     
             $item_clasification_code = '022';
-            $identification_no = null;
-            $identification_type = null;
+            $identification_no   = data_get($payload, 'customer.identification_no');
+            $identification_type = data_get($payload, 'customer.identification_type');
+
+            if(empty($identification_no)){
+                $identification_no = 'NA';
+            }
+            if(empty($identification_type)){
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'LHDN : Invalid Identification Type !'
+                ], 400);
+            }
+
     
             if ($type == 'GENERAL') {
     
                 if ($tin === 'EI00000000010') {
                     $item_clasification_code = '004';
-                    $identification_no = 'NA';
-                    $identification_type = 'BRN';
+                    //$identification_no = 'NA';
+                    //identification_type (NRIC/PASSPORT/BRN/ARMY) 
+                    if($identification_no!='NA'){
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'LHDN : Only allow NA, identification No for - TIN EI00000000010 !'
+                        ], 400);
+                    }
     
                 } elseif ($tin === 'EI00000000020') {
                     $item_clasification_code = '022';
-                    $identification_no = 'NA';
-                    $identification_type = 'BRN';
+                    //$identification_no = 'NA';
+                    //$identification_type = 'BRN';
+
+                    if($identification_type!='PASSPORT' ){
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'LHDN : For TIN No. EI00000000020, not allow other then PASSPORT'
+                        ], 400);
+                    }
+
     
                 } elseif ($tin === 'EI00000000030') {
                     return response()->json([
@@ -1190,8 +1268,23 @@ DB::table('invoice')
     
                 } elseif ($tin === 'EI00000000040') {
                     $item_clasification_code = '022';
-                    $identification_no = 'NA';
-                    $identification_type = 'BRN';
+                   // $identification_no = 'NA';
+                   // $identification_type = 'BRN';
+
+                   if($identification_type!='BRN'){
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'LHDN : EI00000000040 - Please use Identification type BRN !'
+                    ], 400);
+                    }
+
+                    if($identification_no!='NA'){
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'LHDN : EI00000000040 - Only support Identification No NA !'
+                        ], 400);
+                        }
+
                 }
     
             } else {
@@ -1570,6 +1663,10 @@ DB::table('invoice')
             ], 400);
             exit();
         }
+        $tin = data_get($payload, 'supplier.tin_no');
+
+       
+
 
         /* =====================================================
            1. AUTH
