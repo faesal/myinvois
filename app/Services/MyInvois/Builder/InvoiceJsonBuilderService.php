@@ -134,6 +134,7 @@ class InvoiceJsonBuilderService
         return $jsonContent;
     }
 
+    
     /**
      * Create an InvoiceLine structure from database item
      */
