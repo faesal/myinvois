@@ -251,6 +251,35 @@ class ClientController extends Controller
 
         return view('developer.edit_client', compact('client', 'connection', 'consolidation', 'ip_list'));
     }
+    // -------------------------------------------
+    // AJAX: UPDATE API VERSION
+    // -------------------------------------------
+    public function updateApiVersion(Request $request, $id)
+    {
+        // 1. Validate Input
+        $validator = Validator::make($request->all(), [
+            'version' => 'required|in:1.0,1.1'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+        }
+
+        try {
+            // 2. Update Database
+            DB::table('customer')
+                ->where('id_customer', $id)
+                ->update([
+                    'is_version' => $request->version,
+                    'updated_at' => now()
+                ]);
+
+            return response()->json(['success' => true, 'message' => 'API Version Updated']);
+
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
 
     // -------------------------------------------
     // UPDATE CLIENT (MAIN FORM)

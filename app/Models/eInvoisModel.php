@@ -45,15 +45,37 @@ class eInvoisModel extends Model
     $client = $this->getClient();
     /// print_r($client);
     //exit();
-    $client->login();
+    if($this->is_version=='1.1'){
+        $client->login($this->tinNo.':'.$this->idNo);
+        }else{
+        $client->login();   
+        }
 
     $client->setAccessToken($client->getAccessToken());
 
     $response  = $client->submitDocument([$document]);
+    }
+
+    public function resubmit($id_invoice)
+    {
+        $record = DB::table('invoice')->where('id_invoice', $id_invoice)->first();
         
-   
 
-
+        if($record->invoice_type_code){
+        session([
+            'invoice_unique_id'   => $record->unique_id,
+            'previous_uuid'       => $record->previous_uuid,
+            'previous_invoice_no' => $record->previous_invoice_no,
+            'invoice_type_code'   => $record->invoice_type_code
+        ]);
+        }else{
+        session([
+            'invoice_type_code' => $record->invoice_type_code, 
+            'invoice_unique_id' => $record->unique_id]);
+        }
+        $model  = new eInvoisModel($record->connection_integrate);
+        $result = $model->submit($id_invoice);
+        //print_r($result);
     }
 
     public function checkExpired($connCode){
@@ -121,7 +143,11 @@ class eInvoisModel extends Model
 
     public function validate_tin($tin,$idType, $idValue){
         $client = $this->getClient();
-        $client->login();
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
         $access_token = $client->getAccessToken();
         $client->setAccessToken($access_token);
         $response = $client->validateTaxPayerTin($tin, $idType, $idValue);
@@ -131,11 +157,13 @@ class eInvoisModel extends Model
     public function login()
     {
         $client = $this->getClient();
-        $client->login($this->tinNo);
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
         $access_token = $client->getAccessToken();
-        $client->setAccessToken($access_token);
         
-        $client->setOnbehalfof($this->tinNo);
         return $client;
     }
 
@@ -148,7 +176,11 @@ class eInvoisModel extends Model
         $client = $this->getClient();
     
         // Login & token
-        $client->login();
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
         $accessToken = $client->getAccessToken();
         $token =$client->setAccessToken($accessToken);
         //print_r($accessToken);
@@ -186,7 +218,11 @@ class eInvoisModel extends Model
         $client = $this->getClient();
     
         // Login & token
-        $client->login();
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
         $accessToken = $client->getAccessToken();
         $client->setAccessToken($accessToken);
     
@@ -234,7 +270,11 @@ class eInvoisModel extends Model
         // 4. Login MyInvois Client
         // =====================================================
         $client = $this->getClient();
-        $client->login();
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
     
         $client->setAccessToken($client->getAccessToken());
     
@@ -296,7 +336,11 @@ class eInvoisModel extends Model
             $model  = new eInvoisModel($invoice->connection_integrate);
             $client = $model->getClient();
     
-            $client->login();
+            if($this->is_version=='1.1'){
+                $client->login($this->tinNo.':'.$this->idNo);
+                }else{
+                $client->login();   
+                }
             $client->setAccessToken($client->getAccessToken());
             
             $response = $client->getDocument($invoice->uuid);
@@ -350,7 +394,11 @@ public function qr_link($uuid)
     $model = new eInvoisModel($connection_integrate);
 
     $client = $this->getClient();
-    $client->login();
+    if($this->is_version=='1.1'){
+        $client->login($this->tinNo.':'.$this->idNo);
+        }else{
+        $client->login();   
+        }
 
     $access_token = $client->getAccessToken();
     $client->setAccessToken($access_token);
@@ -699,7 +747,11 @@ public function submit($id_customer)
     public function cancelDocument(string $uuid, string $reason = 'Cancel')
     {
         $client = $this->getClient();
-        $client->login();
+        if($this->is_version=='1.1'){
+        $client->login($this->tinNo.':'.$this->idNo);
+        }else{
+        $client->login();   
+        }
         $access_token = $client->getAccessToken();
         $client->setAccessToken($access_token);
 
@@ -709,7 +761,11 @@ public function submit($id_customer)
     public function rejectDocument(string $id, string $reason = 'Customer reject')
     {
         $client = $this->getClient();
-        $client->login();
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
         $access_token = $client->getAccessToken();
         $client->setAccessToken($access_token);
    
@@ -735,7 +791,11 @@ public function submit($id_customer)
         ?string $issuerTin = null
     ) {
         $client = $this->getClient();
-        $client->login();
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
         $access_token = $client->getAccessToken();
         $client->setAccessToken($access_token);
 
@@ -752,7 +812,11 @@ public function submit($id_customer)
     public function getSubmission(string $id, int $pageNo = 1, int $pageSize = 100)
     {
         $client = $this->getClient();
-        $client->login();
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
         $access_token = $client->getAccessToken();
         $client->setAccessToken($access_token);
 
@@ -762,7 +826,11 @@ public function submit($id_customer)
     public function getDocument(string $id)
     {
         $client = $this->getClient();
-        $client->login();
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
         $access_token = $client->getAccessToken();
         $client->setAccessToken($access_token);
 
@@ -771,8 +839,11 @@ public function submit($id_customer)
 
     public function getDocumentDetail(string $id)
     {
-        $client = $this->getClient();
-        $client->login();
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
         $access_token = $client->getAccessToken();
         $client->setAccessToken($access_token);
 
@@ -793,7 +864,11 @@ public function submit($id_customer)
         ?string $searchQuery = null
     ) {
         $client = $this->getClient();
-        $client->login();
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
         $access_token = $client->getAccessToken();
         $client->setAccessToken($access_token);
 
@@ -815,7 +890,11 @@ public function submit($id_customer)
     public function generateDocumentQrCodeUrl(string $id, string $longId): string
     {
         $client = $this->getClient();
-        $client->login();
+        if($this->is_version=='1.1'){
+            $client->login($this->tinNo.':'.$this->idNo);
+            }else{
+            $client->login();   
+            }
         $access_token = $client->getAccessToken();
         $client->setAccessToken($access_token);
 
@@ -1794,6 +1873,23 @@ DB::table('invoice')
             'updated_at'           => now(),
         ]);
 
+
+        $customer = DB::table('customer')
+                ->where('id_customer', $original->id_customer)
+                ->first();
+        //echo $customer->tin_no;
+        //exit;
+        $item_clasification_value = '022';
+        if ($customer->tin_no == 'EI00000000010') {
+            $item_clasification_value = '004';
+        } elseif ($customer->tin_no== 'EI00000000020') {
+            $item_clasification_value = '022';
+        } elseif ($customer->tin_no == 'EI00000000030') {
+            $item_clasification_value ='022';
+        } elseif ($customer->tin_no == 'EI00000000040') {
+            $item_clasification_value = '022';
+        }
+
         /* =====================================================
            5. ITEMS
         ===================================================== */
@@ -1833,6 +1929,8 @@ DB::table('invoice')
 
             $lineAmount = (($qty * $price) - $discount) * $sign;
 
+            
+
             DB::table('invoice_item')->insert([
                 'id_invoice'               => $noteInvoiceId,
                 'sale_id_integrate'        => $originalInvoiceId,
@@ -1851,7 +1949,7 @@ DB::table('invoice')
                 'price_extension_amount'   => $lineAmount,
                 'tax'                      => $tax * $sign,
                 'item_description'         => data_get($item, 'description', ''),
-                'item_clasification_value' => '022',
+                'item_clasification_value' => $item_clasification_value,
                 'created_at'               => now(),
                 'updated_at'               => now(),
             ]);
