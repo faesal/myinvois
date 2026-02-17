@@ -39,7 +39,7 @@
             <p class="mt-1 text-sm md:text-base text-gray-600">Overview of your customer and invoice data.</p>
         </div>
 
-        {{-- Stats Cards Grid (Responsive: 1 col mobile, 2 col tablet, 4 col desktop) --}}
+        {{-- Stats Cards Grid --}}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {{-- Card 1: Customers --}}
             <div class="bg-emerald-600 text-white rounded-xl shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -84,20 +84,52 @@
             <div class="p-4 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <h2 class="text-lg font-bold text-gray-800">Recent Invoices</h2>
                 
-                {{-- Status Pills --}}
+                {{-- Aggregation Logic for Status Pills --}}
+                @php
+                    // Initialize counters for the 3 main statuses
+                    $counts = [
+                        'submitted' => 0,
+                        'pending'   => 0,
+                        'failed'    => 0
+                    ];
+
+                    // Loop through DB results and group them into the 3 buckets
+                    foreach ($invoiceStatus as $status) {
+                        $raw = strtolower($status->submission_status ?? '');
+
+                        if ($raw === 'submitted') {
+                            $counts['submitted'] += $status->total;
+                        } elseif (in_array($raw, ['failed', 'rejected', 'error', 'cancelled'])) {
+                            $counts['failed'] += $status->total;
+                        } else {
+                            // Null, draft, processing, or empty -> count as Pending
+                            $counts['pending'] += $status->total;
+                        }
+                    }
+                @endphp
+
+                {{-- Status Pills (Strictly 3 types) --}}
                 <div class="flex flex-wrap gap-2">
-                    @forelse ($invoiceStatus as $status)
-                        @php
-                            $isSubmitted = strtolower($status->submission_status) == 'submitted';
-                            $statusText = $isSubmitted ? 'Submitted' : 'Failed';
-                            $bgClass = $isSubmitted ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200';
-                        @endphp
-                        <div class="flex items-center border px-3 py-1 rounded-full text-[11px] font-bold {{ $bgClass }}">
-                            {{ $statusText }}: <span class="ml-1.5 text-gray-900">{{ $status->total }}</span>
-                        </div>
-                    @empty
-                        <div class="text-gray-400 italic text-xs">No status data</div>
-                    @endforelse
+                    {{-- Submitted Pill --}}
+                    @if($counts['submitted'] > 0)
+                    <div class="flex items-center border px-3 py-1 rounded-full text-[11px] font-bold bg-green-50 text-green-700 border-green-200">
+                        Submitted: <span class="ml-1.5 text-gray-900">{{ $counts['submitted'] }}</span>
+                    </div>
+                    @endif
+
+                    {{-- Pending Pill --}}
+                    @if($counts['pending'] > 0)
+                    <div class="flex items-center border px-3 py-1 rounded-full text-[11px] font-bold bg-yellow-50 text-yellow-700 border-yellow-200">
+                        Pending: <span class="ml-1.5 text-gray-900">{{ $counts['pending'] }}</span>
+                    </div>
+                    @endif
+
+                    {{-- Failed Pill --}}
+                    @if($counts['failed'] > 0)
+                    <div class="flex items-center border px-3 py-1 rounded-full text-[11px] font-bold bg-red-50 text-red-700 border-red-200">
+                        Failed: <span class="ml-1.5 text-gray-900">{{ $counts['failed'] }}</span>
+                    </div>
+                    @endif
                 </div>
             </div>
 
@@ -129,15 +161,25 @@
                                     RM {{ number_format((float) str_replace(['$', ','], '', $invoice->price), 2) }}
                                 </td>
                                 <td class="px-4 py-3.5 md:px-6 text-center">
-                                    @if(strtolower($invoice->submission_status) == 'submitted')
+                                    @php
+                                        $invStatus = strtolower($invoice->submission_status ?? '');
+                                    @endphp
+
+                                    @if($invStatus == 'submitted')
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800">
                                             <span class="w-1.5 h-1.5 mr-1.5 bg-green-500 rounded-full"></span>
                                             Submitted
                                         </span>
-                                    @else
+                                    @elseif(in_array($invStatus, ['failed', 'rejected', 'error', 'cancelled']))
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800">
                                             <span class="w-1.5 h-1.5 mr-1.5 bg-red-500 rounded-full"></span>
                                             Failed
+                                        </span>
+                                    @else
+                                        {{-- CATCH-ALL: Anything else (Null, Draft, Processing) becomes Pending --}}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 text-yellow-800">
+                                            <span class="w-1.5 h-1.5 mr-1.5 bg-yellow-500 rounded-full"></span>
+                                            Pending
                                         </span>
                                     @endif
                                 </td>

@@ -290,8 +290,15 @@
         </li>
 
         <li>
-            <a href="{{ url('/developer/consolidate') }}" class="{{ request()->is('developer/consolidate*') ? 'active' : '' }}">
+            <a href="{{ url('/developer/consolidate') }}" class="{{ request()->is('developer/consolidate') ? 'active' : '' }}">
                 <i class="fa-solid fa-file-invoice"></i> Consolidate List
+            </a>
+        </li>
+
+        {{-- NEW: Consolidate Import Button --}}
+        <li>
+            <a href="{{ route('consolidate.import.index') }}" class="{{ request()->routeIs('consolidate.import.index') ? 'active' : '' }}">
+                <i class="fa-solid fa-file-import"></i> Consolidate Import
             </a>
         </li>
 
@@ -315,7 +322,6 @@
             </li>
         </ul>
 
-        {{-- NEW: Manage Customer Button --}}
         <li>
             <a href="{{ route('manage_customer.index') }}" class="{{ request()->routeIs('manage_customer*') ? 'active' : '' }}">
                 <i class="fa-solid fa-address-book"></i> Manage Customer

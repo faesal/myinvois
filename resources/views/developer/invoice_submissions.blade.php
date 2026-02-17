@@ -12,7 +12,7 @@
         padding: 8px !important;
         font-size: 0.75rem !important;
     }
-    .btn-info, .btn-warning, .btn-danger {
+    .btn-info, .btn-warning, .btn-danger, .resubmit-btn {
         width: 100%;
     }
 }
@@ -85,8 +85,11 @@
     </div>
 </div>
 
-<div class="mb-3">
+<div class="mb-3 d-flex gap-2">
+    {{-- Submit Button --}}
     <button class="btn btn-success" id="submitSelectedBtn">Submit Selected</button>
+    {{-- Resubmit Button --}}
+    <button class="btn btn-warning text-white" id="resubmitSelectedBtn">Resubmit Selected</button>
 </div>
 
 <div class="card">
@@ -139,12 +142,10 @@
 
         <td class="text-center">
             <div class="btn-group" role="group">
-                {{-- View Button --}}
                 <a href="{{ route('invoice.view.public', $inv->unique_id) }}" target="_blank" class="btn btn-sm btn-info text-white">
                     View
                 </a>
                 
-                {{-- Cancel Button: Only for SUBMITTED invoices --}}
                 @if($status === 'SUBMITTED')
                     <button type="button" 
                             class="btn btn-sm btn-warning text-white" 
@@ -153,7 +154,6 @@
                     </button>
                 @endif
                 
-                {{-- Delete Button: Only if NOT Submitted --}}
                 @if($status !== 'SUBMITTED')
                     <button type="button" 
                             class="btn btn-sm btn-danger" 
@@ -197,10 +197,6 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
-// ============================================
-//  GLOBAL FUNCTIONS (MUST BE OUTSIDE .ready)
-// ============================================
-
 // 1. Delete Confirmation
 window.confirmDelete = function(id) {
     Swal.fire({
@@ -218,7 +214,7 @@ window.confirmDelete = function(id) {
     });
 };
 
-// 2. Cancel Document Logic (using IntegrationInvoiceController2 route)
+// 2. Cancel Document
 window.cancelDocument = function(uniqueId) {
     Swal.fire({
         title: 'Cancel Document?',
@@ -241,17 +237,15 @@ window.cancelDocument = function(uniqueId) {
     }).then((result) => {
         if (result.isConfirmed) {
             $.ajax({
-                // 🔥 THE FIX: Added '/api' prefix because the route is in api.php
                 url: "{{ url('/api/myinvois/cancelDocument') }}/" + uniqueId,
                 method: "POST",
                 data: {
-                    _token: "{{ csrf_token() }}", // Required because of middleware('web')
+                    _token: "{{ csrf_token() }}",
                     reason: result.value
                 },
                 beforeSend: function() {
                     Swal.fire({
                         title: 'Connecting to MyInvois...',
-                        text: 'Verifying cancellation with LHDN servers.',
                         didOpen: () => Swal.showLoading(),
                         allowOutsideClick: false
                     });
@@ -264,8 +258,7 @@ window.cancelDocument = function(uniqueId) {
                     }).then(() => location.reload());
                 },
                 error: function(xhr) {
-                    // This handles the 72-hour rejection or session timeout
-                    let errorMsg = xhr.responseJSON?.message || "LHDN rejected the cancellation. (Note: limit is 72 hours).";
+                    let errorMsg = xhr.responseJSON?.message || "LHDN rejected the cancellation.";
                     Swal.fire('Cancellation Failed', errorMsg, 'error');
                 }
             });
@@ -284,17 +277,16 @@ $(document).ready(function() {
             responsive: true,
             autoWidth: false,
         });
-    @else
-        if ($.fn.DataTable.isDataTable('#invoiceTable')) {
-            $('#invoiceTable').DataTable().clear().destroy();
-        }
     @endif
 
     $("#select-all").on("click", function() {
         $(".select-item").prop('checked', this.checked);
     });
 
-    $("#submitSelectedBtn").on("click", function() {
+    /**
+     * Reusable logic for processing both Submit and Resubmit
+     */
+    function processInvoices(actionType) {
         let selected = [];
         let totalPrice = 0;
         let supplierCheck = null;
@@ -326,37 +318,70 @@ $(document).ready(function() {
         }
 
         let connection = $("select[name='connection_integrate']").val();
+        
+        // --- DYNAMIC LOGIC BASED ON ACTION ---
+        let titleText, confirmBtnText, confirmBtnColor, targetUrl;
+
+        if (actionType === 'resubmit') {
+            titleText = "Confirm Resubmission";
+            confirmBtnText = "Resubmit Now";
+            confirmBtnColor = "#f1c40f"; // Warning Yellow
+            // Update this URL to your bulk resubmit API endpoint
+            targetUrl = "{{ url('api/invoices/bulk-resubmit') }}"; 
+        } else {
+            titleText = "Confirm Submission";
+            confirmBtnText = "Submit Now";
+            confirmBtnColor = "#22c55e"; // Success Green
+            targetUrl = "{{ route('developer.invoices.submitSelected') }}";
+        }
 
         Swal.fire({
             icon: "info",
-            title: "Confirm Submission",
+            title: titleText,
             html: `<b>Total Invoices:</b> ${selected.length}<br><b>Total Amount:</b> RM ${totalPrice.toFixed(2)}`,
             showCancelButton: true,
-            confirmButtonText: "Submit Now",
-            confirmButtonColor: "#22c55e",
+            confirmButtonText: confirmBtnText,
+            confirmButtonColor: confirmBtnColor,
         }).then((res) => {
             if (!res.isConfirmed) return;
 
             $.ajax({
-                url: "{{ route('developer.invoices.submitSelected') }}",
+                url: targetUrl, 
                 method: "POST",
                 data: {
                     _token: "{{ csrf_token() }}",
                     invoices: selected,
                     connection_integrate: connection,
-                    id_supplier: supplierCheck
+                    id_supplier: supplierCheck,
+                    mode: actionType 
                 },
                 beforeSend: function() {
                     Swal.fire({ title: "Processing...", didOpen: () => Swal.showLoading(), allowOutsideClick: false });
                 },
                 success: function(response) {
-                    Swal.fire({ icon: "success", title: "Success!", timer: 1800, showConfirmButton: false }).then(() => location.reload());
+                    Swal.fire({ 
+                        icon: "success", 
+                        title: "Success!", 
+                        text: response.message || "Action completed successfully.",
+                        timer: 1800, 
+                        showConfirmButton: false 
+                    }).then(() => location.reload());
                 },
                 error: function(xhr) {
-                    Swal.fire({ icon: "error", title: "Submission Failed", text: xhr.responseJSON?.message });
+                    let errorMsg = xhr.responseJSON?.message || "An error occurred during processing.";
+                    Swal.fire({ icon: "error", title: "Action Failed", text: errorMsg });
                 }
             });
         });
+    }
+
+    // Attach click events to the buttons
+    $("#submitSelectedBtn").on("click", function() {
+        processInvoices('submit');
+    });
+
+    $("#resubmitSelectedBtn").on("click", function() {
+        processInvoices('resubmit');
     });
 
     @if(session('success'))
@@ -366,7 +391,6 @@ $(document).ready(function() {
     @if(session('error'))
         Swal.fire({ icon: 'error', title: 'Error', text: "{{ session('error') }}" });
     @endif
-
 });
 </script>
 @endsection

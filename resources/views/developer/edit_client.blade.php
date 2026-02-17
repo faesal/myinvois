@@ -222,6 +222,35 @@
 
             {{-- 
                 =========================================
+                API VERSION SETTINGS (ADDED)
+                =========================================
+            --}}
+            <div class="section-title">
+                <i class="fa-solid fa-code-branch"></i> API Version
+            </div>
+            <p class="text-muted small">Select the MyInvois API version for this client.</p>
+
+            <div class="card bg-light border-0 p-3 mb-4">
+                <div class="d-flex gap-4">
+                    <div class="form-check">
+                        <input class="form-check-input api-version-radio" type="radio" name="is_version" id="ver_1_0" value="1.0" {{ ($client->is_version ?? '1.0') == '1.0' ? 'checked' : '' }}>
+                        <label class="form-check-label fw-bold" for="ver_1_0">
+                            Version 1.0
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input api-version-radio" type="radio" name="is_version" id="ver_1_1" value="1.1" {{ ($client->is_version ?? '1.0') == '1.1' ? 'checked' : '' }}>
+                        <label class="form-check-label fw-bold" for="ver_1_1">
+                            Version 1.1
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            {{-- 
+                =========================================
                 DYNAMIC CONSOLIDATION SETTINGS
                 =========================================
             --}}
@@ -429,6 +458,31 @@ $(document).ready(function() {
     updateToggleState('#toggleConsolidation', '#consolidationWrapper', true);
     updateToggleState('#toggleIpWhitelist', '#ipWhitelistWrapper', true);
 
+    // ---------------------------------------------------------
+    // API VERSION AUTO-SAVE (NEW)
+    // ---------------------------------------------------------
+    $('.api-version-radio').on('change', function() {
+        let version = $(this).val();
+
+        $.ajax({
+            url: "{{ route('client.settings.update_version', '') }}/" + clientId,
+            method: "POST",
+            data: {
+                _token: "{{ csrf_token() }}",
+                version: version
+            },
+            success: function(response) {
+                Toast.fire({
+                    icon: 'success',
+                    title: 'API Version Updated'
+                });
+            },
+            error: function(xhr) {
+                let msg = xhr.responseJSON ? xhr.responseJSON.message : 'Failed to update version';
+                Swal.fire('Error', msg, 'error');
+            }
+        });
+    });
 
     // ---------------------------------------------------------
     // CORE FUNCTION: Save Consolidation Settings (Centralized)
@@ -439,9 +493,6 @@ $(document).ready(function() {
         let freq = $('input[name="freq"]:checked').val() || 'daily';
         let specificDate = $('#specific_date_input').val();
         let emailNotif = $('#email_notif').is(':checked') ? 1 : 0;
-
-        // Log for debugging (optional)
-        // console.log("Saving Settings:", { isEnabled, freq, specificDate, emailNotif });
 
         $.ajax({
             url: "{{ route('client.settings.consolidate', '') }}/" + clientId,

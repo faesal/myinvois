@@ -115,10 +115,11 @@
                                 </div>
                             </td>
                             <td>
-                                <input type="date" class="form-control form-control-sm end-date bg-light border-0 mb-1" 
+                                {{-- UPDATED: Removed readonly, removed bg-light, added data-id --}}
+                                <input type="date" class="form-control form-control-sm end-date border-light-subtle mb-1" 
                                        value="{{ $sub->date_end }}" 
                                        style="max-width: 130px;"
-                                       readonly>
+                                       data-id="{{ $sub->id }}">
                                 <div class="small text-muted text-center display-date-end">
                                     {{ $sub->date_end ? \Carbon\Carbon::parse($sub->date_end)->format('d/m/Y') : '-' }}
                                 </div>
@@ -131,8 +132,7 @@
                                     
                                     <button class="btn btn-sm btn-outline-dark px-3 rounded-pill border-light-subtle shadow-sm" style="font-size: 0.75rem;">Resend</button>
                                     
-                                    {{-- UPDATED: DELETE BUTTON --}}
-                                    {{-- Added class 'delete-btn' and 'data-id' attribute --}}
+                                    {{-- Soft Delete Button --}}
                                     <button type="button" class="btn btn-sm btn-light text-danger border-0 rounded-circle delete-btn" data-id="{{ $sub->id }}" title="Delete">
                                         <i class="fa-solid fa-trash"></i>
                                     </button>
@@ -171,29 +171,58 @@
 <script>
 $(document).ready(function() {
 
-    // Auto Update Logic (Date)
+    // Helper: Format Date for Display (YYYY-MM-DD to DD/MM/YYYY)
+    function formatDateToDisplay(dateString) {
+        if(!dateString) return '-';
+        let date = new Date(dateString);
+        let d = String(date.getDate()).padStart(2, '0');
+        let m = String(date.getMonth() + 1).padStart(2, '0');
+        let y = date.getFullYear();
+        return `${d}/${m}/${y}`;
+    }
+
+    // 1. Auto Update Logic (Start Date Change)
+    // Logic: Updates Start Date AND Auto-calculates End Date (+1 Year)
     $(document).on('change', '.start-date', function() {
         let startDateVal = $(this).val();
         let $row = $(this).closest('tr');
         let id = $(this).data('id'); 
         
         if(startDateVal && id) {
-            let date = new Date(startDateVal);
-            let d = String(date.getDate()).padStart(2, '0');
-            let m = String(date.getMonth() + 1).padStart(2, '0');
-            let y = date.getFullYear();
-            $row.find('.display-date-start').text(`${d}/${m}/${y}`);
+            // Update Start Display
+            $row.find('.display-date-start').text(formatDateToDisplay(startDateVal));
 
+            // Calculate +1 Year
+            let date = new Date(startDateVal);
             date.setFullYear(date.getFullYear() + 1);
+            
             let nextY = date.getFullYear();
             let nextM = String(date.getMonth() + 1).padStart(2, '0');
             let nextD = String(date.getDate()).padStart(2, '0');
             let newEndDateDB = `${nextY}-${nextM}-${nextD}`;
             
+            // Update End Input & Display
             $row.find('.end-date').val(newEndDateDB);
             $row.find('.display-date-end').text(`${nextD}/${nextM}/${nextY}`);
             
+            // Save both dates
             updateSubscriber(id, { date_start: startDateVal, date_end: newEndDateDB });
+        }
+    });
+
+    // 2. Manual Update Logic (End Date Change)
+    // Logic: Allows user to manually override the End Date
+    $(document).on('change', '.end-date', function() {
+        let endDateVal = $(this).val();
+        let $row = $(this).closest('tr');
+        let id = $(this).data('id');
+
+        if(endDateVal && id) {
+            // Update End Display
+            $row.find('.display-date-end').text(formatDateToDisplay(endDateVal));
+
+            // Save only end date
+            updateSubscriber(id, { date_end: endDateVal });
         }
     });
 
@@ -227,7 +256,7 @@ $(document).ready(function() {
         });
     }
 
-    // --- NEW: DELETE FUNCTION (SOFT DELETE) ---
+    // --- DELETE FUNCTION (SOFT DELETE) ---
     $(document).on('click', '.delete-btn', function() {
         let id = $(this).data('id');
         let $row = $('#row-' + id);
@@ -243,38 +272,23 @@ $(document).ready(function() {
         }).then((result) => {
             if (result.isConfirmed) {
                 $.ajax({
-                    // Route to the destroy method defined in web.php
                     url: "{{ url('/admin/subscribers') }}/" + id,
                     type: "POST",
                     data: {
-                        _method: 'DELETE', // Laravel expects this for DELETE requests
+                        _method: 'DELETE',
                         _token: '{{ csrf_token() }}'
                     },
                     success: function(response) {
                         if (response.success) {
-                            // Fade out and remove the row from the DOM
                             $row.fadeOut(300, function() { $(this).remove(); });
-                            
-                            Swal.fire(
-                                'Deleted!',
-                                response.message,
-                                'success'
-                            );
+                            Swal.fire('Deleted!', response.message, 'success');
                         } else {
-                            Swal.fire(
-                                'Error!',
-                                response.message,
-                                'error'
-                            );
+                            Swal.fire('Error!', response.message, 'error');
                         }
                     },
                     error: function(xhr) {
                         console.error("Delete error:", xhr.responseText);
-                        Swal.fire(
-                            'Error!',
-                            'Something went wrong. Please try again.',
-                            'error'
-                        );
+                        Swal.fire('Error!', 'Something went wrong. Please try again.', 'error');
                     }
                 });
             }

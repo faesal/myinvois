@@ -9,12 +9,9 @@
     <link href="{{ asset('assets/icons/phosphor/styles.min.css') }}" rel="stylesheet" type="text/css">
     <link href="{{ asset('assets/css/ltr/all.min.css') }}" id="stylesheet" rel="stylesheet" type="text/css">
 
+    {{-- Essential Layout Scripts Only --}}
     <script src="{{ asset('assets/demo/demo_configurator.js') }}"></script>
     <script src="{{ asset('assets/js/bootstrap/bootstrap.bundle.min.js') }}"></script>
-
-    <script src="{{ asset('assets/js/jquery/jquery.min.js') }}"></script>
-    <script src="{{ asset('assets/js/vendor/tables/datatables/datatables.min.js')}}"></script>
-    
     <script src="{{ asset('assets/js/app.js') }}"></script>
 
     <style>
@@ -107,6 +104,12 @@
                                 <span>Customer Listing</span>
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a href="{{ route('consolidate.import') }}" class="nav-link {{ request()->routeIs('consolidate.import') ? 'active' : '' }}">
+                                <i class="ph-upload-simple"></i>
+                                <span>Consolidate Import</span>
+                            </a>
+                        </li>
 
                         <li class="nav-item">
                             <a href="{{ route('manage_customer.index') }}" class="nav-link {{ request()->routeIs('manage_customer*') ? 'active' : '' }}">
@@ -115,9 +118,10 @@
                             </a>
                         </li>
 
-                        {{-- ✅ REPAIRED: SELF BILL INVOICE SUBMENU --}}
                         <li class="nav-item nav-item-submenu {{ 
-                            request()->is('self_bill/*') || (request()->is('invoice/create') && request()->query('type') == 'self_bill')
+                            (request()->is('listing_submission') && request()->query('type') == 'self_bill') || 
+                            (request()->is('invoice/create') && request()->query('type') == 'self_bill') ||
+                            request()->is('self_bill/*')
                             ? 'nav-item-open' : '' 
                         }}">
                             <a href="#" class="nav-link">
@@ -126,7 +130,9 @@
                             </a>
 
                             <ul class="nav-group-sub collapse {{ 
-                                request()->is('self_bill/*') || (request()->is('invoice/create') && request()->query('type') == 'self_bill')
+                                (request()->is('listing_submission') && request()->query('type') == 'self_bill') || 
+                                (request()->is('invoice/create') && request()->query('type') == 'self_bill') ||
+                                request()->is('self_bill/*')
                                 ? 'show' : '' 
                             }}">
                                 <li class="nav-item">
@@ -135,7 +141,10 @@
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a href="{{ url('self_bill/listing') }}" class="nav-link {{ request()->is('self_bill/listing') ? 'active' : '' }}">Listing Submission</a>
+                                    <a href="{{ url('listing_submission?type=self_bill') }}" 
+                                       class="nav-link {{ (request()->is('listing_submission') && request()->query('type') == 'self_bill') ? 'active' : '' }}">
+                                       Listing Submission
+                                    </a>
                                 </li>
                                 <li class="nav-item">
                                     <a href="{{ route('self_bill_note.listing', ['note_type' => 'credit_note']) }}" class="nav-link {{ request()->is('*/credit_note/*') ? 'active' : '' }}">Listing Credit Note</a>
@@ -149,28 +158,22 @@
                             </ul>
                         </li>
 
-                                {{-- ✅ REPAIRED: NORMAL INVOICE SUBMENU --}}
-                                {{-- We wrap ALL "Normal" route checks in a group and ensure type IS NOT self_bill --}}
-                                <li class="nav-item nav-item-submenu {{ 
-                                    (
-                                        request()->is('invoice/create') || 
-                                        request()->is('listing_submission') || 
-                                        request()->is('credit_note/listing') || 
-                                        request()->is('debit_note/listing') || 
-                                        request()->is('refund_note/listing') || 
-                                        request()->is('select_items') || 
-                                        request()->is('compare')
-                                    ) && request()->query('type') != 'self_bill' 
-                                    ? 'nav-item-open' : '' 
-                                }}">
+                        <li class="nav-item nav-item-submenu {{ 
+                            ((request()->is('listing_submission') || request()->is('invoice/create')) && request()->query('type') != 'self_bill') || 
+                            request()->is('credit_note/listing') || 
+                            request()->is('debit_note/listing') || 
+                            request()->is('refund_note/listing') || 
+                            request()->is('select_items') || 
+                            request()->is('compare') 
+                            ? 'nav-item-open' : '' 
+                        }}">
                             <a href="#" class="nav-link">
                                 <i class="ph-receipt"></i>
                                 <span>Normal Invoice</span>
                             </a>
 
                             <ul class="nav-group-sub collapse {{ 
-                                (request()->is('invoice/create') && request()->query('type') != 'self_bill') || 
-                                request()->is('listing_submission') || 
+                                ((request()->is('listing_submission') || request()->is('invoice/create')) && request()->query('type') != 'self_bill') || 
                                 request()->is('credit_note/listing') || 
                                 request()->is('debit_note/listing') || 
                                 request()->is('refund_note/listing') || 
@@ -181,20 +184,15 @@
                                 <li class="nav-item">
                                     <a href="{{url('/invoice/create')}}" class="nav-link {{ (request()->is('invoice/create') && request()->query('type') != 'self_bill') ? 'active' : '' }}">Create New Invoice</a>
                                 </li>
-                                <li class="nav-item"><a href="{{url('listing_submission')}}" class="nav-link {{ request()->is('listing_submission') ? 'active' : '' }}">Listing Submission</a></li>
+                                <li class="nav-item">
+                                    <a href="{{url('listing_submission')}}" class="nav-link {{ (request()->is('listing_submission') && request()->query('type') != 'self_bill') ? 'active' : '' }}">Listing Submission</a>
+                                </li>
                                 <li class="nav-item"><a href="{{url('credit_note/listing')}}" class="nav-link {{ request()->is('credit_note/listing') ? 'active' : '' }}">Listing Credit Note</a></li>
                                 <li class="nav-item"><a href="{{url('debit_note/listing')}}" class="nav-link {{ request()->is('debit_note/listing') ? 'active' : '' }}">Listing Debit Note</a></li>
                                 <li class="nav-item"><a href="{{url('refund_note/listing')}}" class="nav-link {{ request()->is('refund_note/listing') ? 'active' : '' }}">Listing Refund</a></li>
                                 <li class="nav-item"><a href="{{url('select_items')}}" class="nav-link {{ request()->is('select_items') ? 'active' : '' }}">Consolidate List</a></li>
                                 <li class="nav-item"><a href="{{url('compare')}}" class="nav-link {{ request()->is('compare') ? 'active' : '' }}">Compare List</a></li>
                             </ul>
-                        </li>
-
-                        <li class="nav-item">
-                            <a href="{{ route('consolidate.import') }}" class="nav-link {{ request()->routeIs('consolidate.import') ? 'active' : '' }}">
-                                <i class="ph-upload-simple"></i>
-                                <span>Consolidate Import</span>
-                            </a>
                         </li>
                     </ul>
                 </div>
@@ -205,7 +203,6 @@
             <div class="content">
                 <div class="card">
                     <div class="card-header bg-white border-bottom">
-                        {{-- ✅ DYNAMIC HEADER --}}
                         <h5 class="mb-0">
                             {{ (request()->query('type') == 'self_bill' || request()->is('self_bill/*')) ? 'Self-Bill Management' : 'Invoice Submission' }}
                         </h5>
@@ -229,5 +226,8 @@
         @if(session('success')) Swal.fire({ icon: 'success', title: 'Success!', text: "{{ session('success') }}", timer: 3000 }); @endif
         @if(session('error')) Swal.fire({ icon: 'error', title: 'Error!', text: "{{ session('error') }}" }); @endif
     </script>
+    
+    {{-- This allows child pages to push custom scripts --}}
+    @yield('scripts')
 </body>
 </html>

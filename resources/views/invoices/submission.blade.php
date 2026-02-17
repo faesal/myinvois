@@ -1,6 +1,12 @@
 @extends('layouts.app')
 
 @section('content')
+@php
+    // Detect type and handle the default state
+    $type = request()->query('type');
+    $isSelfBill = $type === 'self_bill';
+    $pageTitle = $isSelfBill ? 'Self-Bill Submissions' : 'Invoice Submissions';
+@endphp
 
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
@@ -12,7 +18,7 @@
     #invoice-table td { vertical-align: middle; }
     .error-text { color: #dc3545; font-size: 0.8rem; display: block; margin-top: 2px; }
 
-    /* FIX: Prevent SweetAlert Icon from being too big */
+    /* SweetAlert Icon Fix */
     .swal2-icon {
         font-size: 1rem !important; 
         width: 5em !important;
@@ -23,15 +29,28 @@
 
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="mb-0">Invoice Submissions</h3>
-        <div>
+        <h3 class="mb-0">{{ $pageTitle }}</h3>
+        <div class="d-flex gap-2">
+            @if($isSelfBill)
+                {{-- 🚩 Self-Bill Specific Actions --}}
+                <button type="button" class="btn btn-light border shadow-sm" data-bs-toggle="modal" data-bs-target="#importModal">
+                    <i class="ph ph-file-arrow-up me-2"></i> Bulk Import
+                </button>
+                <button class="btn btn-light border shadow-sm" id="btnExportSelected">
+                    <i class="ph ph-file-arrow-down me-2"></i> Export Selected
+                </button>
+            @endif
+
             <button class="btn btn-success shadow-sm" id="submitSelectedBtn">
-                <i class="ph-paper-plane-tilt me-2"></i> Submit Selected to LHDN
+                <i class="ph ph-paper-plane-tilt me-2"></i> Submit Selected to LHDN
             </button>
         </div>
     </div>
 
+    {{-- Filter Form --}}
     <form method="GET" action="{{ url('/listing_submission') }}">
+        <input type="hidden" name="type" value="{{ $type }}">
+        
         <div class="card mb-4 border-0 shadow-sm">
             <div class="card-body">
                 <div class="row g-3 align-items-end">
@@ -60,6 +79,7 @@
         </div>
     </form>
 
+    {{-- Table Card --}}
     <div class="card border-0 shadow-sm">
         <div class="card-body">
             <div class="table-responsive">
@@ -70,7 +90,7 @@
                                 <input type="checkbox" class="form-check-input" id="selectAll">
                             </th>
                             <th>Invoice ID</th>
-                            <th>Customer</th>
+                            <th>{{ $isSelfBill ? 'Supplier' : 'Customer' }}</th>
                             <th>Amount</th>
                             <th>Date</th>
                             <th>Status</th>
@@ -102,7 +122,6 @@
                                     <a target="_blank" href="{{ route('invoice.view.public', ['unique_id' => $invoice->unique_id]) }}" class="btn btn-sm btn-outline-primary">View</a>
                                     
                                     @if ($invoice->uuid)
-                                        {{-- Updated: Use unique_id in URL --}}
                                         <a href="{{ url('/api/myinvois/cancelDocument/'.$invoice->unique_id) }}" class="cancel-link btn btn-sm btn-outline-danger ms-1">Cancel</a>
                                     @endif
 
@@ -120,6 +139,41 @@
     </div>
 </div>
 
+@if($isSelfBill)
+{{-- Import Modal --}}
+<div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Import Self-Bill CSV</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ route('self_invoice.import') }}" method="POST" enctype="multipart/form-data">
+                @csrf
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 small">
+                        <i class="ph ph-info me-1"></i> Ensure your CSV matches the template format.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">Upload File</label>
+                        <input type="file" name="csv_file" class="form-control" accept=".csv" required>
+                    </div>
+                    <div class="text-center">
+                        <a href="{{ route('self_invoice.download_template') }}" class="text-decoration-none small fw-bold">
+                            <i class="ph ph-download-simple me-1"></i> Download Template CSV
+                        </a>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Process Import</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+@endif
+
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -135,6 +189,13 @@ $(document).ready(function () {
     $('#selectAll').on('click', function() {
         var rows = table.rows({ 'search': 'applied' }).nodes();
         $('input.select-item', rows).prop('checked', this.checked);
+    });
+
+    $('#btnExportSelected').on('click', function() {
+        let selected = [];
+        table.$('input.select-item:checked').each(function() { selected.push($(this).val()); });
+        if (selected.length === 0) return Swal.fire("Oops", "Please select at least one document.", "warning");
+        window.location.href = "{{ route('self_invoice.export') }}?ids=" + selected.join(',');
     });
 
     $('#submitSelectedBtn').on('click', function() {
@@ -173,40 +234,58 @@ $(document).ready(function () {
         });
     });
 
-    // --- UPDATED CANCEL LOGIC ---
+    // --- UPDATED CANCELLATION LOGIC (Matching Developer Layout) ---
     $(document).on('click', '.cancel-link', function (e) {
         e.preventDefault();
-        const cancelUrl = this.href;
         
+        // Extract unique_id from the href URL
+        const urlParts = this.href.split('/');
+        const uniqueId = urlParts[urlParts.length - 1];
+
         Swal.fire({
             title: 'Cancel Document?',
-            text: 'This will void the document on LHDN. This action is permanent.',
+            text: "This request will be sent to LHDN. Valid only within 72 hours of submission.",
             icon: 'warning',
+            input: 'select',
+            inputOptions: {
+                'wrong_data': 'Incorrect Data / Error in Content',
+                'duplicate': 'Duplicate Document',
+                'order_cancelled': 'Transaction Cancelled by Customer',
+                'other': 'Other'
+            },
+            inputPlaceholder: 'Select a reason',
             showCancelButton: true,
-            confirmButtonText: 'Yes, Cancel It',
-            confirmButtonColor: '#ef4444'
+            confirmButtonColor: '#f1c40f',
+            confirmButtonText: 'Confirm Cancellation',
+            inputValidator: (value) => {
+                if (!value) return 'A reason is required by LHDN!'
+            }
         }).then((result) => {
             if (result.isConfirmed) {
                 $.ajax({
-                    url: cancelUrl,
-                    method: 'POST', // Use POST
+                    url: "{{ url('/api/myinvois/cancelDocument') }}/" + uniqueId,
+                    method: "POST",
                     data: {
-                        _token: "{{ csrf_token() }}", 
-                        reason: "Wrong invoice details"
+                        _token: "{{ csrf_token() }}",
+                        reason: result.value
                     },
                     beforeSend: function() {
-                        Swal.fire({ title: 'Cancelling...', didOpen: () => { Swal.showLoading(); } });
+                        Swal.fire({
+                            title: 'Connecting to MyInvois...',
+                            didOpen: () => Swal.showLoading(),
+                            allowOutsideClick: false
+                        });
                     },
                     success: function(response) {
-                        Swal.fire('Cancelled!', response.message, 'success').then(() => location.reload());
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Success',
+                            text: response.message || 'Invoice cancelled successfully.',
+                        }).then(() => location.reload());
                     },
                     error: function(xhr) {
-                        // Display the real error message sent from the Controller
-                        let msg = 'Failed to cancel document.';
-                        if (xhr.responseJSON && xhr.responseJSON.message) {
-                            msg = xhr.responseJSON.message;
-                        }
-                        Swal.fire('Error', msg, 'error');
+                        let errorMsg = xhr.responseJSON?.message || "LHDN rejected the cancellation.";
+                        Swal.fire('Cancellation Failed', errorMsg, 'error');
                     }
                 });
             }
@@ -227,5 +306,4 @@ $(document).ready(function () {
     };
 });
 </script>
-
 @endsection

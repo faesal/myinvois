@@ -110,7 +110,6 @@
                                 <td class="fw-semibold">RM {{ number_format($note->price, 2) }}</td>
                                 <td>{{ \Carbon\Carbon::parse($note->issue_date)->format('d-m-Y') }}</td>
                                 <td>
-                                    {{-- ✅ FIX: Handle case-insensitive status and specific Submitted label --}}
                                     @if (strtolower($note->submission_status) == 'submitted' || !empty($note->uuid))
                                         <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-3 py-2">Submitted</span>
                                     @else
@@ -121,7 +120,6 @@
                                     <div class="d-flex gap-2 justify-content-center">
                                         <a target="_blank" href="{{ route('invoice.view.public', ['unique_id' => $note->unique_id]) }}" class="btn btn-sm btn-outline-primary px-3">View</a>
 
-                                        {{-- ✅ DELETE logic: Only show if no UUID exists --}}
                                         @if (empty($note->uuid))
                                             <form action="{{ route('self_bill_note.destroy', ['note_type' => $noteTypeSlug, 'id' => $note->id_invoice]) }}" method="POST" class="delete-form">
                                                 @csrf
@@ -131,7 +129,12 @@
                                         @endif
 
                                         @if ($note->uuid != '')
-                                            <a href="{{ url('/cncelDocument') }}/{{ $note->uuid }}" class="btn btn-sm btn-danger cancel-link px-3">Cancel</a>
+                                            {{-- ✅ UPDATED: Use unique_id in URL and AJAX Logic --}}
+                                            <button type="button" 
+                                                    data-url="{{ url('/api/myinvois/cancelDocument/'.$note->unique_id) }}" 
+                                                    class="btn btn-sm btn-danger cancel-link px-3">
+                                                Cancel
+                                            </button>
                                         @endif
                                     </div>
                                 </td>
@@ -153,7 +156,7 @@
 <script>
 $(document).ready(function () {
     const table = $('#datatable-items').DataTable({
-        paging: false, // Handled by Laravel Pagination
+        paging: false, 
         searching: true,
         ordering: true,
         info: false,
@@ -181,22 +184,49 @@ $(document).ready(function () {
         });
     });
 
-    // Custom SweetAlert for Cancel Link
-    $('.cancel-link').on('click', function (e) {
+    // ✅ UPDATED: Cancel Function matching submission.blade.php logic
+    $(document).on('click', '.cancel-link', function (e) {
         e.preventDefault();
-        const href = this.href;
+        const cancelUrl = $(this).data('url');
+        
         Swal.fire({
+            title: 'Cancel Document?',
+            text: 'This will void the document on LHDN. This action is permanent.',
             icon: 'warning',
-            title: 'Warning!',
-            text: 'Are you sure you want to cancel this document with LHDN?',
             showCancelButton: true,
-            confirmButtonText: 'Yes, Cancel',
+            confirmButtonText: 'Yes, Cancel It',
             confirmButtonColor: '#ef4444',
             cancelButtonText: 'No',
             cancelButtonColor: '#6b7280'
         }).then((result) => {
             if (result.isConfirmed) {
-                window.location.href = href;
+                $.ajax({
+                    url: cancelUrl,
+                    method: 'POST',
+                    data: {
+                        _token: "{{ csrf_token() }}", 
+                        reason: "Wrong invoice details"
+                    },
+                    beforeSend: function() {
+                        Swal.fire({ title: 'Cancelling...', didOpen: () => { Swal.showLoading(); } });
+                    },
+                    success: function(response) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Cancelled!',
+                            text: response.message,
+                            timer: 2000,
+                            showConfirmButton: false
+                        }).then(() => location.reload());
+                    },
+                    error: function(xhr) {
+                        let msg = 'Failed to cancel document.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            msg = xhr.responseJSON.message;
+                        }
+                        Swal.fire('Error', msg, 'error');
+                    }
+                });
             }
         });
     });
@@ -210,6 +240,14 @@ $(document).ready(function () {
 .table thead th { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; }
 .dataTables_filter { float: right !important; margin-bottom: 1rem; }
 .dataTables_filter input { border-radius: 6px; border: 1px solid #dee2e6; padding: 5px 10px; }
+
+/* ✅ FIX: Prevent SweetAlert Icon from being too big */
+.swal2-icon {
+    font-size: 1rem !important; 
+    width: 5em !important;
+    height: 5em !important;
+    margin: 2.5em auto .6em !important;
+}
 </style>
 
 @endsection
