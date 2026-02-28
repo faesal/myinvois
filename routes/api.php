@@ -31,6 +31,9 @@ Route::any('/myinvois/note', [IntegrationInvoiceController2::class, 'note']);
  */
 Route::middleware('web')->group(function () {
     Route::post('/myinvois/cancelDocument/{unique_id}', [IntegrationInvoiceController2::class, 'cancelDocument']);
+    Route::get('/invoices/auto-resubmit-failed', [InvoiceController::class, 'autoResubmit']);
+    Route::post('/invoices/bulk-resubmit', [InvoiceController::class, 'bulkResubmit']);
+    Route::post('/invoice/resubmit/{unique_id}', [InvoiceController::class, 'apiResubmit']);
 });
 
 Route::any('/myinvois/selfbill/note', [IntegrationInvoiceController2::class, 'selfBillNote']);
@@ -66,6 +69,7 @@ Route::prefix('invoices')->group(function () {
     Route::get('/recent', [InvoiceController::class, 'getRecentDocuments']);
     Route::get('/submission/{id}', [InvoiceController::class, 'getSubmission']);
     Route::get('/detail/{id}', [InvoiceController::class, 'getDocumentDetail']);
+    Route::post('/bulk-resubmit', [InvoiceController::class, 'bulkResubmit']);
 });
 
 // --- CUSTOMERS ---

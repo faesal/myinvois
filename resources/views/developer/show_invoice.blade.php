@@ -90,7 +90,7 @@
 <body>
 
     @php
-        function getStateName($code) {
+        function getStateNames($code) {
             if (!$code) return '';
             $state = \Illuminate\Support\Facades\DB::table('lookup_state')
                         ->where('state_code', $code)
@@ -99,8 +99,8 @@
             return $state ? strtoupper($state->state_name) : $code;
         }
 
-        $supplierState = getStateName($supplier->country_subentity_code);
-        $customerState = getStateName($customer->country_subentity_code);
+        $supplierState = getStateNames($supplier->country_subentity_code);
+        $customerState = getStateNames($customer->country_subentity_code);
     @endphp
 
     <div class="container mt-3 mb-5">

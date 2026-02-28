@@ -201,7 +201,7 @@ Route::middleware('auth')->group(function () {
 
         //INVOICE
 
-        Route::any('/listing_submission', [InvoiceController::class, 'listing_submission']);
+       Route::any('/listing_submission', [InvoiceController::class, 'listing_submission'])->name('invoice.listing_submission');
 
         Route::get('/invoice/create', [InvoiceController::class, 'create'])->name('invoice.create');
         
@@ -399,6 +399,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/client/settings/consolidate/{id}', [ClientController::class, 'saveConsolidation'])
         ->name('client.settings.consolidate');
 
+        Route::post('/client/settings/update-version/{id}', [ClientController::class, 'updateApiVersion'])
+    ->name('client.settings.update_version');
+
 // ==========================================
     // NEW CLIENT SETTING ROUTES (Paste Here)
     // ==========================================
@@ -422,6 +425,54 @@ Route::post('/client/settings/consolidate/{id}', [ClientController::class, 'save
     Route::put('/developer/profile', [DeveloperProfileController::class, 'update'])
 
         ->name('developer.profile.update');
+
+
+    // ==========================================
+    // CONSOLIDATION IMPORT ROUTES
+    // ==========================================
+    
+    // 1. Main Import Page
+    Route::get('/developer/consolidate/import', [ConsolidateImportController::class, 'index'])
+        ->name('consolidate.import.index');
+
+    // 2. Process CSV Upload
+    Route::post('/developer/consolidate/import/process', [ConsolidateImportController::class, 'importBatch'])
+        ->name('consolidate.import.process');
+
+    // 3. Download CSV Template
+    Route::get('/developer/consolidate/template', [ConsolidateImportController::class, 'downloadTemplate'])
+        ->name('consolidate.template');
+
+    // 4. Submit Selected Batches to Invoice Listing
+    Route::post('/developer/consolidate/submit-lhdn', [ConsolidateImportController::class, 'consolidateSubmitSelected'])
+        ->name('consolidate.submit_lhdn');
+
+    // 5. Manage Batches (View, Delete, Update Header)
+    Route::get('/developer/consolidate/view/{id}', [ConsolidateImportController::class, 'view'])
+        ->name('consolidate.view');
+
+    Route::get('/developer/consolidate/delete/{id}', [ConsolidateImportController::class, 'destroy'])
+        ->name('consolidate.delete');
+
+    Route::post('/developer/consolidate/update/{id}', [ConsolidateImportController::class, 'update'])
+        ->name('consolidate.update');
+
+    // 6. Manage Items inside a Batch (Add, Edit, Delete Rows)
+    Route::post('/developer/consolidate/item/update/{id}', [ConsolidateImportController::class, 'updateItem'])
+        ->name('consolidate.item.update');
+
+    Route::post('/developer/consolidate/item/add/{invoice_id}', [ConsolidateImportController::class, 'addItem'])
+        ->name('consolidate.item.add');
+
+    Route::get('/developer/consolidate/item/delete/{id}', [ConsolidateImportController::class, 'deleteItem'])
+        ->name('consolidate.item.delete');
+
+    // 7. Export Routes
+    Route::get('/developer/consolidate/export/csv', [ConsolidateImportController::class, 'exportCSV'])
+        ->name('consolidate.export.csv');
+
+    Route::get('/developer/consolidate/export/pdf', [ConsolidateImportController::class, 'exportPDF'])
+        ->name('consolidate.export.pdf');
    
 
 
@@ -555,7 +606,9 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
 
 Route::any('/generateFromTemplate/{invoiceId}', [InvoiceController::class, 'generateFromTemplate']);
 
-Route::any('/resubmit/{id}', [InvoiceController::class, 'resubmit']);
+Route::any('/resubmit/{unique_id}', [InvoiceController::class, 'resubmit']);
+
+Route::post('/bulk-resubmit', [InvoiceController::class, 'bulkResubmit'])->name('invoices.bulkResubmit');
 
 Route::any('/syncFromNlbh', [InvoiceController::class, 'syncFromNlbh']);
 
@@ -585,7 +638,7 @@ Route::prefix('manage-customer')->name('manage_customer.')->group(function () {
     
     // --- 1. Custom Actions (Must be defined first to avoid conflict with {id}) ---
     Route::post('/import', [ManageCustomerController::class, 'import'])->name('import');
-    Route::get('/export', [ManageCustomerController::class, 'export'])->name('export');
+     Route::post('/export', [ManageCustomerController::class, 'export'])->name('export');
     
     // FIX: Simplified here because the group already adds "manage-customer" prefix and "manage_customer." name
     Route::get('/download-template', [ManageCustomerController::class, 'downloadTemplate'])->name('download_template');
@@ -609,30 +662,27 @@ Route::prefix('manage-customer')->name('manage_customer.')->group(function () {
 
     // Delete Action (manage_customer.destroy)
     Route::delete('/{id}', [ManageCustomerController::class, 'destroy'])->name('destroy');
+    Route::post('/export', [ManageCustomerController::class, 'export'])->name('export');
 });
 Route::group(['prefix' => 'self_bill', 'as' => 'self_invoice.', 'middleware' => ['auth']], function () {
     
-    // 1. Listing & Management
-    Route::get('/listing', [SelfInvoiceController::class, 'index'])->name('index');
-    Route::put('/update/{id}', [SelfInvoiceController::class, 'update'])->name('update');
-    Route::delete('/delete/{id}', [SelfInvoiceController::class, 'destroy'])->name('destroy');
-    
-    // 2. Creation Process (Standard Invoice Type 11)
-    Route::get('/create', [SelfInvoiceController::class, 'create'])->name('create');
-    Route::post('/store', [SelfInvoiceController::class, 'store'])->name('store');
+    // 1. Redirect index to the unified listing (Optional, but cleaner)
+    Route::get('/listing', function() {
+        return redirect()->route('invoice.listing_submission', ['type' => 'self_bill']);
+    })->name('index');
 
-    // 3. Note Creation (Credit/Debit/Refund)
-    // IMPORTANT: You must add the 'createNote' method to SelfInvoiceController (code below)
-    Route::get('/create-note/{note_type}', [SelfInvoiceController::class, 'createNote'])->name('create_note');
-    
-    // 4. Import / Export / Template
+    // 2. Import / Export / Template (MUST match the names used in submission.blade.php)
     Route::get('/download-template', [SelfInvoiceController::class, 'downloadTemplate'])->name('download_template');
     Route::get('/export', [SelfInvoiceController::class, 'export'])->name('export');
     Route::post('/import', [SelfInvoiceController::class, 'import'])->name('import');
 
-    // 5. AJAX Helpers
-    // Only needed if you have dynamic item loading; otherwise safe to keep or remove
-    Route::get('/fetch-items/{id}', [SelfInvoiceController::class, 'fetchItems'])->name('fetch_items');
+    // 3. Management
+    Route::put('/update/{id}', [SelfInvoiceController::class, 'update'])->name('update');
+    Route::delete('/delete/{id}', [SelfInvoiceController::class, 'destroy'])->name('destroy');
+    
+    // 4. Creation Logic
+    Route::get('/create', [SelfInvoiceController::class, 'create'])->name('create');
+    Route::post('/store', [SelfInvoiceController::class, 'store'])->name('store');
 });
 
 // URL: https://www.mysynctax.com/dev/cron/check-expired/synctax-secure-2026

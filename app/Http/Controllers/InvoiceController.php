@@ -820,9 +820,8 @@ public function store_create(Request $request)
 
         // --- Step 2: Create Invoice Header ---
         
-        // 🚩 FIX: Combine Input Date with Current Time to avoid 00:00:00
+        // Combine Input Date with Current Time to avoid 00:00:00
         if ($request->filled('issue_date')) {
-            // Combine selected date with current time
             $issueDate = \Carbon\Carbon::parse($request->issue_date . ' ' . now()->format('H:i:s'));
         } else {
             $issueDate = now();
@@ -836,19 +835,25 @@ public function store_create(Request $request)
             'invoice_type_code'    => $invoiceType, 
             'tax_category_id'      => '01', 
             'tax_scheme_id'        => 'OTH',
-            'issue_date'           => $issueDate, // 🚩 Updated Variable
+            'issue_date'           => $issueDate,
             'payment_note_term'    => 'CASH',
             'created_at'           => now(),
             'updated_at'           => now(),
             'unique_id'            => $uniqueId,
             'invoice_status'       => 'Manual', 
-            'submission_status'    => 'Pending' 
+            'submission_status'    => 'Pending',
+            // Init totals to 0
+            'price'                => 0,
+            'tax_amount'           => 0,
+            'taxable_amount'       => 0,
+            'total_price_discount' => 0
         ]);
 
         // --- Step 3: Process Items ---
-        $totalLineExtension = 0;
-        $totalTaxAmount = 0;
-        $totalPriceDiscount = 0;
+        $totalLineExtension = 0; // Gross accumulator
+        $totalNet           = 0; // Net accumulator
+        $totalTaxAmount     = 0; // Tax accumulator
+        $totalPriceDiscount = 0; // Discount accumulator
 
         foreach ($request->items as $item) {
             $qty = floatval($item['qty']);
@@ -856,9 +861,14 @@ public function store_create(Request $request)
             $taxRate = floatval($item['tax_rate']);
             $discount = floatval($item['discount'] ?? 0); 
             
+            // 1. Gross Amount (Qty * Unit Price)
             $lineExtension = round($qty * $unitPrice, 2);
-            $taxAmount = round(($lineExtension - $discount) * ($taxRate / 100), 2);
-            $totalItem = ($lineExtension - $discount) + $taxAmount;
+
+            // 2. Net Amount (Gross - Discount)
+            $netAmount = $lineExtension - $discount;
+            
+            // 3. Tax Amount (Tax on Net)
+            $taxAmount = round($netAmount * ($taxRate / 100), 2);
 
             DB::table('invoice_item')->insert([
                 'connection_integrate'     => $connection_integrate,
@@ -870,31 +880,34 @@ public function store_create(Request $request)
                 'price_amount'             => number_format($unitPrice, 2, '.', ''),
                 'price_discount'           => number_format($discount, 2, '.', ''), 
                 'tax'                      => number_format($taxRate, 2, '.', ''),
-                'line_extension_amount'    => number_format($lineExtension, 2, '.', ''),
-                'price_extension_amount'   => number_format($totalItem, 2, '.', ''),
+                
+                // --- CORRECT MAPPINGS ---
+                'line_extension_amount'    => number_format($lineExtension, 2, '.', ''), // Gross
+                'price_extension_amount'   => number_format($netAmount, 2, '.', ''),     // Net
+                // ------------------------
+
                 'created_at'               => now(),
                 'updated_at'               => now(),
                 'item_clasification_value' => '022'
             ]);
 
             $totalLineExtension += $lineExtension;
-            $totalTaxAmount += $taxAmount;
+            $totalNet           += $netAmount;
+            $totalTaxAmount     += $taxAmount;
             $totalPriceDiscount += $discount;
         }
 
         // --- Step 4: Final Totals Update ---
-        $payableAmount = $totalLineExtension - $totalPriceDiscount + $totalTaxAmount;
+        // Payable = Total Net + Total Tax
+        $payableAmount = $totalNet + $totalTaxAmount;
 
         DB::table('invoice')->where('id_invoice', $invoiceId)->update([
-            'price'                => number_format($payableAmount, 2, '.', ''),
+            'price'                => number_format($payableAmount, 2, '.', ''), // Final Payable
             'tax_amount'           => number_format($totalTaxAmount, 2, '.', ''),
-            'taxable_amount'       => number_format($totalLineExtension - $totalPriceDiscount, 2, '.', ''),
+            'taxable_amount'       => number_format($totalNet, 2, '.', ''),      // Total Net
             'total_price_discount' => number_format($totalPriceDiscount, 2, '.', ''), 
             'updated_at'           => now()
         ]);
-
-        // Note: References are saved in the DB (original_invoice_no) 
-        // but no session data is needed for immediate submission.
 
         DB::commit();
 
@@ -949,35 +962,50 @@ public function bulkResubmit(Request $request)
                 continue;
             }
 
-            // 2. Identify Invoice Category (11, 12, 13, 14 are Self-Billed)
-            $isSelfBill = in_array($record->invoice_type_code, ['11', '12', '13', '14']);
+            // -------------------------------------------------------------
+            // ✅ NEW LOGIC: Check status first to prevent duplicate submissions
+            // -------------------------------------------------------------
+            if (strtolower($record->submission_status) === 'submitted') {
+                $results[] = [
+                    'id' => $id,
+                    'no' => $record->invoice_no,
+                    'status' => 'Skipped',
+                    'message' => 'Already Submitted'
+                ];
+                continue;
+            }
 
-            // 3. Apply Session Logic based on Type
-            if ($isSelfBill) {
+            // 2. Clear Session to prevent data mixing
+            session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'previous_uuid', 'previous_invoice_no', 'invoice_type_code', 'is_selfbilled']);
+
+            // 3. Apply Session Logic based on Invoice Type Code
+            // Group 1: Standard Invoices (01) & Self-Billed Invoices (11)
+            if (in_array($record->invoice_type_code, ['01', '11'])) {
                 session([
-                    'selfbill_unique_id' => $record->unique_id,
-                    'invoice_type_code'  => $record->invoice_type_code,
-                    'is_selfbilled'      => true
+                    'invoice_type_code' => $record->invoice_type_code, 
+                    'invoice_unique_id' => $record->unique_id
                 ]);
-            } else {
-                if ($record->invoice_type_code) {
-                    session([
-                        'invoice_unique_id'   => $record->unique_id,
-                        'previous_uuid'       => $record->previous_uuid,
-                        'previous_invoice_no' => $record->previous_invoice_no,
-                        'invoice_type_code'   => $record->invoice_type_code
-                    ]);
-                } else {
-                    session([
-                        'invoice_type_code' => $record->invoice_type_code, 
-                        'invoice_unique_id' => $record->unique_id
-                    ]);
-                }
+            } 
+            // Group 2: Credit/Debit/Refund Notes (02, 03, 04) & Self-Billed Variations (12, 13, 14)
+            elseif (in_array($record->invoice_type_code, ['02', '03', '04', '12', '13', '14'])) {
+                session([
+                    'invoice_unique_id'   => $record->unique_id,
+                    'previous_uuid'       => $record->previous_uuid,
+                    'previous_invoice_no' => $record->previous_invoice_no,
+                    'invoice_type_code'   => $record->invoice_type_code
+                ]);
             }
 
             // 4. Initialize Model and Submit
             $model  = new eInvoisModel($record->connection_integrate);
             $output = $model->submit($id);
+
+            // 5. SUCCESS: Update Database
+            DB::table('invoice')->where('id_invoice', $id)->update([
+                'is_failed' => 0,
+                'submission_status' => 'Submitted',
+                'updated_at' => now()
+            ]);
 
             $results[] = [
                 'id' => $id,
@@ -986,24 +1014,24 @@ public function bulkResubmit(Request $request)
                 'details' => $output
             ];
 
-            // 5. Clear Session for the next loop iteration
-            session()->forget([
-                'invoice_unique_id', 
-                'selfbill_unique_id', 
-                'previous_uuid', 
-                'previous_invoice_no', 
-                'invoice_type_code',
-                'is_selfbilled'
-            ]);
+            // 6. Clear Session
+            session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'previous_uuid', 'previous_invoice_no', 'invoice_type_code', 'is_selfbilled']);
 
         } catch (\Exception $e) {
+            // 7. FAILURE: Update Database
+            DB::table('invoice')->where('id_invoice', $id)->update([
+                'is_failed' => 1,
+                'submission_status' => 'Failed'
+            ]);
+
             $results[] = [
                 'id' => $id,
+                'no' => $record->invoice_no ?? 'Unknown',
                 'status' => 'Error',
                 'message' => $e->getMessage()
             ];
             
-            // Cleanup session even on failure
+            // Cleanup session
             session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'previous_uuid', 'previous_invoice_no', 'invoice_type_code', 'is_selfbilled']);
         }
     }
@@ -1014,10 +1042,10 @@ public function bulkResubmit(Request $request)
         'results' => $results
     ]);
 }
+
 public function autoResubmit()
 {
     // 1. Fetch up to 10 Failed invoices
-    // (Using your original selection logic)
     $failedInvoices = DB::table('invoice')
         ->where('is_failed', 1)
         ->limit(10)
@@ -1034,67 +1062,63 @@ public function autoResubmit()
 
     foreach ($failedInvoices as $record) {
         try {
-            // 2. Identify Invoice Category (Self-Bill vs Normal)
-            $isSelfBill = in_array($record->invoice_type_code, ['11', '12', '13', '14']);
+            // 2. Clear previous session first to be safe
+            session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'invoice_type_code', 'is_selfbilled', 'previous_uuid', 'previous_invoice_no']);
 
-            // 3. Manually populate the Session
-            // Clear previous session first to be safe
-            session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'invoice_type_code', 'is_selfbilled']);
-
-            if ($isSelfBill) {
+            // 3. Populate Session based on Invoice Type Code (Updated Grouping Logic)
+            // ---------------------------------------------------------
+            // Group 1: Standard Invoices (01) & Self-Billed Invoices (11)
+            if (in_array($record->invoice_type_code, ['01', '11'])) {
                 session([
-                    'selfbill_unique_id' => $record->unique_id,
-                    'invoice_type_code'  => $record->invoice_type_code,
-                    'is_selfbilled'      => true
+                    'invoice_type_code' => $record->invoice_type_code, 
+                    'invoice_unique_id' => $record->unique_id
                 ]);
-            } else {
-                if ($record->invoice_type_code) {
-                    session([
-                        'invoice_unique_id'   => $record->unique_id,
-                        'previous_uuid'       => $record->previous_uuid,
-                        'previous_invoice_no' => $record->previous_invoice_no,
-                        'invoice_type_code'   => $record->invoice_type_code
-                    ]);
-                } else {
-                    session([
-                        'invoice_type_code' => $record->invoice_type_code, 
-                        'invoice_unique_id' => $record->unique_id
-                    ]);
-                }
+            } 
+            // Group 2: Credit/Debit/Refund Notes (02-04) & Self-Billed Variations (12-14)
+            elseif (in_array($record->invoice_type_code, ['02', '03', '04', '12', '13', '14'])) {
+                session([
+                    'invoice_unique_id'   => $record->unique_id,
+                    'previous_uuid'       => $record->previous_uuid,
+                    'previous_invoice_no' => $record->previous_invoice_no,
+                    'invoice_type_code'   => $record->invoice_type_code
+                ]);
+            }
+            // Fallback (Optional safety)
+            else {
+                 session([
+                    'invoice_type_code' => $record->invoice_type_code, 
+                    'invoice_unique_id' => $record->unique_id
+                ]);
             }
 
             // 4. Initialize Model and Execute Submission
+            if (!$record->connection_integrate) {
+                throw new \Exception("Missing connection_integrate");
+            }
+
             $model  = new eInvoisModel($record->connection_integrate);
             $result = $model->submit($record->id_invoice);
 
             // 5. SUCCESS: Update Database
-            // Reset the failed flag and update status to Submitted
             DB::table('invoice')
                 ->where('id_invoice', $record->id_invoice)
                 ->update([
                     'is_failed' => 0, 
-                    'submission_status' => 'Submitted'
+                    'submission_status' => 'Submitted',
+                    'updated_at' => now()
                 ]);
 
             $results[] = [
                 'invoice_no' => $record->invoice_no,
                 'status'     => 'Success',
-                'api_result' => $result
+                'api_result' => isset($result['original']) ? $result['original'] : $result
             ];
 
             // 6. CLEAR SESSION for the next record
-            session()->forget([
-                'invoice_unique_id', 
-                'selfbill_unique_id', 
-                'previous_uuid', 
-                'previous_invoice_no', 
-                'invoice_type_code',
-                'is_selfbilled'
-            ]);
+            session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'previous_uuid', 'previous_invoice_no', 'invoice_type_code', 'is_selfbilled']);
 
         } catch (\Exception $e) {
-            // 7. FAILURE: Update Database (Requested Feature)
-            // Mark as failed so we can track it or filter by is_failed later
+            // 7. FAILURE: Update Database
             DB::table('invoice')
                 ->where('id_invoice', $record->id_invoice)
                 ->update([
@@ -1102,11 +1126,10 @@ public function autoResubmit()
                     'submission_status' => 'Failed'
                 ]);
 
-            // Try to extract detailed error message from LHDN response if possible
+            // Try to extract detailed error message
             $errorMessage = $e->getMessage();
             $decoded = json_decode($errorMessage, true);
             
-            // If the error is JSON (from LHDN), format it nicely
             if ($decoded && isset($decoded['error']['details'])) {
                 $errorMessage = json_encode($decoded['error']['details']);
             } elseif ($decoded && isset($decoded['message'])) {
@@ -1120,14 +1143,7 @@ public function autoResubmit()
             ];
             
             // Ensure session is cleared even on failure
-            session()->forget([
-                'invoice_unique_id', 
-                'selfbill_unique_id', 
-                'previous_uuid', 
-                'previous_invoice_no', 
-                'invoice_type_code', 
-                'is_selfbilled'
-            ]);
+            session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'previous_uuid', 'previous_invoice_no', 'invoice_type_code', 'is_selfbilled']);
         }
     }
 
@@ -1137,86 +1153,81 @@ public function autoResubmit()
         'processed' => $results
     ]);
 }
-    public function resubmit($id_invoice)
-    {
-        $record = DB::table('invoice')->where('id_invoice', $id_invoice)->first();
-        
-
-        if($record->invoice_type_code){
-        session([
-            'invoice_unique_id'   => $record->unique_id,
-            'previous_uuid'       => $record->previous_uuid,
-            'previous_invoice_no' => $record->previous_invoice_no,
-            'invoice_type_code'   => $record->invoice_type_code
-        ]);
-        }else{
-        session([
-            'invoice_type_code' => $record->invoice_type_code, 
-            'invoice_unique_id' => $record->unique_id]);
-        }
-        $model  = new eInvoisModel($record->connection_integrate);
-        $result = $model->submit($id_invoice);
-        //print_r($result);
-    }
-public function apiResubmit($unique_id)
+public function resubmit($id_invoice)
 {
-    // 1. Fetch the record using unique_id instead of id_invoice
-    $record = DB::table('invoice')->where('unique_id', $unique_id)->first();
+    // 1. Fetch the record
+    $record = DB::table('invoice')->where('id_invoice', $id_invoice)->first();
 
     if (!$record) {
         return response()->json(['success' => false, 'message' => 'Invoice not found.'], 404);
     }
 
-    try {
-        // 2. Determine Category (11, 12, 13, 14 are Self-Billed)
-        $isSelfBill = in_array($record->invoice_type_code, ['11', '12', '13', '14']);
+    // ---------------------------------------------------------
+    // ✅ STATUS CHECK: If already submitted, stop and return success
+    // ---------------------------------------------------------
+    if (strtolower($record->submission_status) === 'submitted') {
+        return response()->json([
+            'success' => true,
+            'message' => 'Invoice ' . $record->invoice_no . ' is already successfully submitted.',
+            'already_done' => true
+        ]);
+    }
 
-        // 3. Clear session to prevent data mixing
+    try {
+        // 2. Clear session to prevent data mixing
         session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'invoice_type_code', 'is_selfbilled', 'previous_uuid', 'previous_invoice_no']);
 
-        // 4. Populate Session based on Type (Original Logic)
-        if ($isSelfBill) {
+        // 3. Populate Session (Updated Grouping Logic)
+        // ---------------------------------------------------------
+        // Group 1: Standard Invoices (01) & Self-Billed Invoices (11)
+        if (in_array($record->invoice_type_code, ['01', '11'])) {
             session([
-                'selfbill_unique_id' => $record->unique_id,
-                'invoice_type_code'  => $record->invoice_type_code,
-                'is_selfbilled'      => true
+                'invoice_type_code' => $record->invoice_type_code, 
+                'invoice_unique_id' => $record->unique_id
             ]);
-        } else {
-            if ($record->invoice_type_code) {
-                session([
-                    'invoice_unique_id'   => $record->unique_id,
-                    'previous_uuid'       => $record->previous_uuid,
-                    'previous_invoice_no' => $record->previous_invoice_no,
-                    'invoice_type_code'   => $record->invoice_type_code
-                ]);
-            } else {
-                session([
-                    'invoice_type_code' => $record->invoice_type_code, 
-                    'invoice_unique_id' => $record->unique_id
-                ]);
-            }
+        } 
+        // Group 2: Credit/Debit/Refund Notes (02-04) & Self-Billed Variations (12-14)
+        // (These require previous_uuid and previous_invoice_no)
+        elseif (in_array($record->invoice_type_code, ['02', '03', '04', '12', '13', '14'])) {
+            session([
+                'invoice_unique_id'   => $record->unique_id,
+                'previous_uuid'       => $record->previous_uuid,
+                'previous_invoice_no' => $record->previous_invoice_no,
+                'invoice_type_code'   => $record->invoice_type_code
+            ]);
+        }
+        // Fallback: Use original logic if code doesn't match above
+        else {
+             session([
+                'invoice_type_code' => $record->invoice_type_code, 
+                'invoice_unique_id' => $record->unique_id
+            ]);
         }
 
-        // 5. Initialize Model and Submit using the numeric id_invoice from the record
+        // 4. Initialize Model and Submit
         $model  = new eInvoisModel($record->connection_integrate);
-        $result = $model->submit($record->id_invoice);
+        $result = $model->submit($id_invoice);
 
-        // 6. Update database flags using unique_id
-        DB::table('invoice')->where('unique_id', $unique_id)->update([
+        // 5. SUCCESS: Update Database
+        DB::table('invoice')->where('id_invoice', $id_invoice)->update([
             'is_failed' => 0,
             'submission_status' => 'Submitted',
             'updated_at' => now()
         ]);
 
+        // 6. Return response
+        // Check if we can get the clean 'original' array from the result
+        $cleanResult = isset($result['original']) ? $result['original'] : $result;
+
         return response()->json([
             'success' => true,
             'message' => 'Invoice ' . $record->invoice_no . ' resubmitted successfully.',
-            'api_result' => $result
+            'api_result' => $cleanResult
         ]);
 
     } catch (\Exception $e) {
-        // 7. Mark as failed if the API call crashes
-        DB::table('invoice')->where('unique_id', $unique_id)->update([
+        // 7. FAILURE: Update Database
+        DB::table('invoice')->where('id_invoice', $id_invoice)->update([
             'is_failed' => 1,
             'submission_status' => 'Failed'
         ]);
@@ -1227,7 +1238,156 @@ public function apiResubmit($unique_id)
         ], 500);
     }
 }
+public function apiResubmit($unique_id)
+{
+    // 1. Fetch the record using unique_id
+    $record = DB::table('invoice')->where('unique_id', $unique_id)->first();
 
+    if (!$record) {
+        return response()->json([
+            'headers' => (object)[],
+            'original' => ['success' => false, 'message' => 'Invoice not found.'],
+            'exception' => null
+        ], 404);
+    }
+
+    // ---------------------------------------------------------
+    // ✅ STATUS CHECK: If already submitted, stop and return success
+    // ---------------------------------------------------------
+    if (strtolower($record->submission_status) === 'submitted') {
+        return response()->json([
+            'headers' => (object)[],
+            'original' => [
+                'status' => 'ok',
+                'message' => 'Invoice ' . $record->invoice_no . ' is already successfully submitted.',
+                'already_done' => true
+            ],
+            'exception' => null
+        ]);
+    }
+
+    try {
+        // 2. Clear session to prevent data mixing
+        session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'invoice_type_code', 'is_selfbilled', 'previous_uuid', 'previous_invoice_no']);
+
+        // 3. Populate Session based on Invoice Type Code
+        if (in_array($record->invoice_type_code, ['01', '11'])) {
+            session([
+                'invoice_type_code' => $record->invoice_type_code, 
+                'invoice_unique_id' => $record->unique_id
+            ]);
+        } 
+        elseif (in_array($record->invoice_type_code, ['02', '03', '04', '12', '13', '14'])) {
+            session([
+                'invoice_unique_id'   => $record->unique_id,
+                'previous_uuid'       => $record->previous_uuid,
+                'previous_invoice_no' => $record->previous_invoice_no,
+                'invoice_type_code'   => $record->invoice_type_code
+            ]);
+        }
+        else {
+             session([
+                'invoice_type_code' => $record->invoice_type_code, 
+                'invoice_unique_id' => $record->unique_id
+            ]);
+        }
+
+        // 4. Initialize Model and Submit using the numeric id_invoice
+        $model  = new eInvoisModel($record->connection_integrate);
+        $result = $model->submit($record->id_invoice);
+
+        // ---------------------------------------------------------
+        // ✅ STEP A: Convert Model Response to Array
+        // ---------------------------------------------------------
+        $responseData = $result;
+        if ($result instanceof \Illuminate\Http\JsonResponse) {
+            $responseData = $result->getData(true);
+        } elseif (is_object($result)) {
+            $responseData = (array) $result;
+        }
+
+        // Unwrap outer 'original' if it exists to get the actual data layer
+        $mainData = isset($responseData['original']) ? $responseData['original'] : $responseData;
+
+        // ---------------------------------------------------------
+        // ✅ STEP B: Robust LHDN Data Extraction for DB Update
+        // ---------------------------------------------------------
+        $lhdnUuid = null;
+        $submissionUid = null;
+        $lhdnResultBlock = null;
+
+        if (isset($mainData['result']['original'])) {
+            $lhdnResultBlock = $mainData['result']['original'];
+        } elseif (isset($mainData['result'])) {
+            $lhdnResultBlock = $mainData['result'];
+        }
+
+        if ($lhdnResultBlock) {
+            $submissionUid = $lhdnResultBlock['submissionUid'] ?? null;
+            if (isset($lhdnResultBlock['acceptedDocuments'][0]['uuid'])) {
+                $lhdnUuid = $lhdnResultBlock['acceptedDocuments'][0]['uuid'];
+            }
+        }
+
+        // 5. SUCCESS: Update Database
+        $updateData = [
+            'is_failed' => 0,
+            'submission_status' => 'Submitted',
+            'updated_at' => now()
+        ];
+
+        if ($lhdnUuid) { $updateData['uuid'] = $lhdnUuid; }
+        if ($submissionUid) { $updateData['submission_uid'] = $submissionUid; }
+
+        DB::table('invoice')->where('unique_id', $unique_id)->update($updateData);
+
+        // ---------------------------------------------------------
+        // ✅ STEP C: Reconstruct EXACT JSON Response Structure
+        // ---------------------------------------------------------
+        
+        // 1. Construct the inner "result" block
+        $finalResultBlock = [
+            'headers' => (object)[],
+            'original' => [
+                'submissionUid'     => $submissionUid,
+                'acceptedDocuments' => $lhdnResultBlock['acceptedDocuments'] ?? [],
+                'rejectedDocuments' => $lhdnResultBlock['rejectedDocuments'] ?? []
+            ],
+            'exception' => null
+        ];
+
+        // 2. Construct the main "original" block
+        $finalOriginalBlock = [
+            'status'          => $mainData['status'] ?? 'ok',
+            'invoice_id'      => $record->id_invoice,
+            'mysynctax_uuid'  => $record->unique_id,
+            'customer_status' => $mainData['customer_status'] ?? 'updated',
+            'customer_id'     => $record->id_customer,
+            'qr_lhdn'         => 'https://mysynctax.com/dev/qr_link/' . $record->unique_id,
+            'result'          => $finalResultBlock
+        ];
+
+        // 3. Final Return with Outer Wrapper
+        return response()->json([
+            'headers'   => (object)[],
+            'original'  => $finalOriginalBlock,
+            'exception' => null
+        ]);
+
+    } catch (\Exception $e) {
+        // 7. Mark as failed if the API call crashes
+        DB::table('invoice')->where('unique_id', $unique_id)->update([
+            'is_failed' => 1,
+            'submission_status' => 'Failed'
+        ]);
+
+        return response()->json([
+            'headers'   => (object)[],
+            'original'  => ['success' => false, 'message' => $e->getMessage()],
+            'exception' => $e->getMessage()
+        ], 500);
+    }
+}
     public function selectItems(Request $request)
     {
         $start = $request->input('start_date', now()->startOfMonth()->toDateString());
@@ -1577,7 +1737,7 @@ public function cancelDocument(Request $request, $uuid)
     $invoiceModel = new \App\Models\eInvoisModel($connection);
     
     // 3. Prepare Reason from request or use default
-    $reason = $request->input('reason', 'Customer refund');
+    $reason = $request->input('reason', 'NA');
 
     try {
         // 4. LHDN Status Pre-check (Document must be "Valid" to be cancellable)
@@ -1722,7 +1882,6 @@ public function submitSelectedLHDN(Request $request)
         try {
             // ---------------------------------------------------------
             // 1. REPAIR HEADER DATA (Force "0.00" VARCHAR format)
-            // Fixes: "Missing TaxTotal taxAmount"
             // ---------------------------------------------------------
             $taxAmount = (float)($inv->tax_amount ?? 0);
             $taxableAmount = (float)($inv->taxable_amount ?? 0);
@@ -1745,7 +1904,7 @@ public function submitSelectedLHDN(Request $request)
                     DB::table('invoice_item')
                         ->where('id_invoice_item', $item->id_invoice_item)
                         ->update([
-                            'tax'                      => number_format((float)($item->tax ?? 0), 2, '.', ''),
+                            'tax'                    => number_format((float)($item->tax ?? 0), 2, '.', ''),
                             'line_extension_amount'    => number_format((float)$item->line_extension_amount, 2, '.', ''),
                             'price_amount'             => number_format((float)$item->price_amount, 2, '.', ''),
                             'item_clasification_value' => $item->item_clasification_value ?? '004'
@@ -1753,23 +1912,46 @@ public function submitSelectedLHDN(Request $request)
                 });
 
             // ---------------------------------------------------------
-            // 3. SESSION SETUP (Based on InvoiceSubmissionController)
+            // 3. SESSION SETUP (Dynamic Grouping Logic)
             // ---------------------------------------------------------
-            // Set the dynamic connection for API keys
+            
+            // A. Set Connection & Clear Old Data
             Session::put('connection_integrate', $inv->connection_integrate);
+            session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'invoice_type_code', 'is_selfbilled', 'previous_uuid', 'previous_invoice_no', 'consolidate_status']);
 
-            // Reset status first to prevent bleed from previous loop iteration
+            // B. Consolidate Status Logic (Specific to Submit function)
+            // Reset status first
             session(['consolidate_status' => '']);
 
-            // REFERENCE LOGIC: Set to '1' if customer is empty or default consolidate buyer (ID 6)
+            // Set to '1' if customer is empty or default consolidate buyer (ID 6)
             if (empty($inv->id_customer) || $inv->id_customer == 6) {
                 session(['consolidate_status' => '1']);
             }
 
-            session([
-                'invoice_type_code' => '01',
-                'invoice_unique_id' => $inv->unique_id
-            ]);
+            // C. Apply Grouping Logic (01/11 vs Others)
+            // Group 1: Standard Invoices (01) & Self-Billed Invoices (11)
+            if (in_array($inv->invoice_type_code, ['01', '11'])) {
+                session([
+                    'invoice_type_code' => $inv->invoice_type_code, 
+                    'invoice_unique_id' => $inv->unique_id
+                ]);
+            } 
+            // Group 2: Credit/Debit/Refund Notes (02-04) & Self-Billed Variations (12-14)
+            elseif (in_array($inv->invoice_type_code, ['02', '03', '04', '12', '13', '14'])) {
+                session([
+                    'invoice_unique_id'   => $inv->unique_id,
+                    'previous_uuid'       => $inv->previous_uuid,
+                    'previous_invoice_no' => $inv->previous_invoice_no,
+                    'invoice_type_code'   => $inv->invoice_type_code
+                ]);
+            }
+            // Fallback: If type code is missing or unknown, default to what was there or the inv code
+            else {
+                 session([
+                    'invoice_type_code' => $inv->invoice_type_code ?? '01', 
+                    'invoice_unique_id' => $inv->unique_id
+                ]);
+            }
 
             // ---------------------------------------------------------
             // 4. SUBMIT TO LHDN
@@ -1780,18 +1962,27 @@ public function submitSelectedLHDN(Request $request)
             // Update status on success
             DB::table('invoice')->where('id_invoice', $inv->id_invoice)->update([
                 'submission_status' => 'Submitted',
+                'is_failed'         => 0, // Ensure we clear the failed flag if it succeeds
                 'updated_at'        => now()
             ]);
 
             $successCount++;
+            
+            // Clean session after success
+            session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'invoice_type_code', 'is_selfbilled', 'previous_uuid', 'previous_invoice_no', 'consolidate_status']);
+
         } catch (\Exception $e) {
             $failCount++;
             $errors[] = "Inv #{$inv->invoice_no}: " . $e->getMessage();
 
             DB::table('invoice')->where('id_invoice', $inv->id_invoice)->update([
                 'submission_status' => 'Failed',
+                'is_failed'         => 1, // Mark as failed for auto-resubmit to pick up later
                 'updated_at'        => now()
             ]);
+            
+            // Clean session on failure
+            session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'invoice_type_code', 'is_selfbilled', 'previous_uuid', 'previous_invoice_no', 'consolidate_status']);
         }
     }
 

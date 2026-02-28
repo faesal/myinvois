@@ -44,129 +44,157 @@ public function index()
      * - Overwrites the auto-generated number if found
      */
 public function importBatch(Request $request)
-    {
-        $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:10240',
-        ]);
+{
+    $request->validate([
+        'file' => 'required|file|mimes:csv,txt|max:10240',
+    ]);
 
-        $selected_connection = session('connection_integrate');
-        $id_developer = session('id_developer');
+    $selected_connection = session('connection_integrate');
+    $id_developer = session('id_developer');
 
-        if (!$selected_connection) {
-            return redirect()->back()->with('error', 'No active connection found.');
+    if (!$selected_connection) {
+        return redirect()->back()->with('error', 'No active connection found.');
+    }
+
+    $file = $request->file('file');
+    if (($handle = fopen($file->getRealPath(), 'r')) === false) {
+        return redirect()->back()->with('error', 'Could not open the file.');
+    }
+
+    $batchUniqueId = (string) Str::uuid();
+    $currentDate = Carbon::now();
+    $invoiceNoToSave = 'CONSO-' . $currentDate->format('YmdHis');
+
+    // 1. Create Header (Initialized)
+    $invoiceId = DB::table('consolidate_invoice')->insertGetId([
+        'unique_id' => $batchUniqueId,
+        'invoice_no' => $invoiceNoToSave,
+        'connection_integrate' => $selected_connection,
+        'id_developer' => $id_developer,
+        'id_customer' => 6,
+        'invoice_status' => 'consolidated',
+        'is_import' => 1,
+        'tax_category_id' => '01', 
+        'tax_scheme_id' => 'OTH',   
+        'created_at' => $currentDate,
+        'updated_at' => $currentDate,
+        // Default values
+        'price' => 0,
+        'tax_amount' => 0,
+        'taxable_amount' => 0,
+        'consolidate_complete_total' => 0,
+        'consolidate_total_amount_before' => 0,
+        'consolidate_total_item' => 0,
+    ]);
+
+    // Accumulators
+    $totalItems = 0; 
+    $totalGross = 0; // Accumulates Gross (Before Disc)
+    $totalNet = 0;   // Accumulates Net (After Disc)
+    $totalTax = 0;
+    $totalGrand = 0;
+
+    $itemIds = []; 
+    $rowIndex = 0;
+    $customInvoiceNoFound = false;
+
+    while (($row = fgetcsv($handle, 1000, ",")) !== false) {
+        $rowIndex++;
+        if ($rowIndex == 1 || empty($row[0])) continue; 
+
+        $qty = (float)($row[1] ?? 0);
+        $unitPrice = (float)($row[2] ?? 0);
+        $desc = $row[3] ?? 'Imported Item';
+        $discAmt = (float)($row[4] ?? 0); 
+        $taxRate = (float)($row[5] ?? 0); 
+        
+        $csvInvoiceNo = isset($row[6]) ? trim($row[6]) : ''; 
+
+        if (!empty($csvInvoiceNo) && !$customInvoiceNoFound) {
+            $invoiceNoToSave = $csvInvoiceNo;
+            $customInvoiceNoFound = true; 
+            DB::table('consolidate_invoice')->where('id_invoice', $invoiceId)->update(['invoice_no' => $invoiceNoToSave]);
         }
 
-        $file = $request->file('file');
-        if (($handle = fopen($file->getRealPath(), 'r')) === false) {
-            return redirect()->back()->with('error', 'Could not open the file.');
+        // --- CALCULATION LOGIC ---
+        
+        // 1. Gross Amount (Total Before Discount)
+        $grossAmount = $qty * $unitPrice;
+
+        // 2. Net Amount (Total After Discount)
+        $netAmount = $grossAmount - $discAmt;
+        if ($netAmount < 0) $netAmount = 0; 
+
+        // 3. Tax Amount (Calculated on Net but NOT added to total per instruction)
+        $taxAmount = round($netAmount * ($taxRate / 100), 2);
+
+        // 4. Line Total (Per instruction: "before discount and tax")
+        // Therefore, Line Total is strictly the Gross Amount.
+        $lineTotal = $grossAmount;
+
+        // -------------------------
+
+        try {
+            $issueDate = !empty($row[0]) ? Carbon::parse($row[0])->format('Y-m-d') : $currentDate->format('Y-m-d');
+        } catch (\Exception $e) {
+            $issueDate = $currentDate->format('Y-m-d'); 
         }
 
-        $batchUniqueId = (string) Str::uuid();
-        $currentDate = Carbon::now();
-        $invoiceNoToSave = 'CONSO-' . $currentDate->format('YmdHis');
-
-        // 1. Create Header with Default Values (Fixes Error 1364)
-        $invoiceId = DB::table('consolidate_invoice')->insertGetId([
-            'unique_id' => $batchUniqueId,
-            'invoice_no' => $invoiceNoToSave,
+        // 2. Create Items
+        $itemId = DB::table('consolidate_invoice_item')->insertGetId([
+            'unique_id' => (string) Str::uuid(),
+            'id_consolidate_invoice' => $invoiceId,
             'connection_integrate' => $selected_connection,
             'id_developer' => $id_developer,
             'id_customer' => 6,
-            'invoice_status' => 'consolidated',
+            'line_id' => $totalItems + 1,
             'is_import' => 1,
-            'tax_category_id' => '01', 
-            'tax_scheme_id' => 'OTH',   
+            'issue_date' => $issueDate,
+            'invoiced_quantity' => $qty,
+            'price_amount' => $unitPrice,
+            'price_discount' => $discAmt, 
+            'tax' => $taxAmount, 
+            
+            // --- MAPPING based on Schema + Instruction ---
+            'line_extension_amount' => $grossAmount,  // "Total Before price discount"
+            'price_extension_amount' => $netAmount,   // "Total After price discount"
+            // -------------------------------------------
+
+            'item_description' => $desc,
+            'item_clasification_value' => '004',
             'created_at' => $currentDate,
-            'updated_at' => $currentDate,
-            // --- ADDED DEFAULT VALUES HERE ---
-            'price' => 0,
-            'tax_amount' => 0,
-            'taxable_amount' => 0,
-            'consolidate_complete_total' => 0,
-            'consolidate_total_amount_before' => 0,
-            'consolidate_total_item' => 0,
         ]);
 
-        $totalItems = 0; $totalGrand = 0; $totalTaxRM = 0; $totalLineExt = 0;
-        $itemIds = []; $rowIndex = 0;
-        $customInvoiceNoFound = false;
-
-        while (($row = fgetcsv($handle, 1000, ",")) !== false) {
-            $rowIndex++;
-            if ($rowIndex == 1 || empty($row[0])) continue; 
-
-            $qty = (float)($row[1] ?? 0);
-            $unitPrice = (float)($row[2] ?? 0);
-            $desc = $row[3] ?? 'Imported Item';
-            $discAmt = (float)($row[4] ?? 0);
-            $taxRate = (float)($row[5] ?? 0);
-            $csvInvoiceNo = isset($row[6]) ? trim($row[6]) : ''; 
-
-            if (!empty($csvInvoiceNo) && !$customInvoiceNoFound) {
-                $invoiceNoToSave = $csvInvoiceNo;
-                $customInvoiceNoFound = true; 
-                DB::table('consolidate_invoice')->where('id_invoice', $invoiceId)->update(['invoice_no' => $invoiceNoToSave]);
-            }
-
-            // --- CALCULATION LOGIC ---
-            $priceExt = $qty * $unitPrice; 
-            $lineExt = $priceExt - $discAmt; 
-            if ($lineExt < 0) $lineExt = 0;
-
-            // FIXED ROUNDING: Prevents long decimals in DB
-            $taxRM = round($lineExt * ($taxRate / 100), 2);
-            $itemTotal = $lineExt + $taxRM;
-
-            // --- DATE PARSING FIX ---
-            try {
-                $issueDate = !empty($row[0]) ? Carbon::parse($row[0])->format('Y-m-d') : $currentDate->format('Y-m-d');
-            } catch (\Exception $e) {
-                $issueDate = $currentDate->format('Y-m-d'); 
-            }
-
-            // 2. Create Items
-            $itemId = DB::table('consolidate_invoice_item')->insertGetId([
-                'unique_id' => (string) Str::uuid(),
-                'id_consolidate_invoice' => $invoiceId,
-                'connection_integrate' => $selected_connection,
-                'id_developer' => $id_developer,
-                'id_customer' => 6,
-                'line_id' => $totalItems + 1,
-                'is_import' => 1,
-                'issue_date' => $issueDate,
-                'invoiced_quantity' => $qty,
-                'price_amount' => $unitPrice,
-                'price_discount' => $discAmt,
-                'tax' => $taxRM, 
-                'price_extension_amount' => $priceExt,
-                'line_extension_amount' => $lineExt,
-                'item_description' => $desc,
-                'item_clasification_value' => '004',
-                'created_at' => $currentDate,
-            ]);
-
-            $totalItems++;
-            $totalLineExt += $lineExt;
-            $totalTaxRM += $taxRM;
-            $totalGrand += $itemTotal;
-            $itemIds[] = $itemId;
-        }
-        fclose($handle);
-
-        // Update Header Totals with rounding
-        DB::table('consolidate_invoice')->where('id_invoice', $invoiceId)->update([
-            'consolidate_total_item' => $totalItems,
-            'consolidate_complete_total' => round($totalGrand, 2),
-            'consolidate_list_sale_item_id' => implode(',', $itemIds),
-            'consolidate_total_amount_before' => round($totalLineExt, 2),
-            'price' => round($totalGrand, 2),
-            'taxable_amount' => round($totalLineExt, 2),
-            'tax_amount' => round($totalTaxRM, 2),
-            'updated_at' => now()
-        ]);
-
-        return redirect()->back()->with('success', "Batch imported successfully!");
+        $totalItems++;
+        $totalGross += $grossAmount;
+        $totalNet += $netAmount;
+        $totalTax += $taxAmount;
+        $totalGrand += $lineTotal; // Accumulates Gross Amount
+        $itemIds[] = $itemId;
     }
+    fclose($handle);
+
+    // Update Header Totals
+    DB::table('consolidate_invoice')->where('id_invoice', $invoiceId)->update([
+        'consolidate_total_item' => $totalItems,
+        'consolidate_list_sale_item_id' => implode(',', $itemIds),
+        
+        // MAPPING:
+        'price' => round($totalGross, 2),            // Gross (Before Discount)
+        'taxable_amount' => round($totalNet, 2),     // Net (After Discount)
+        
+        // Header Totals
+        'consolidate_total_amount_before' => round($totalNet, 2), // Standard Taxable Amount
+        'tax_amount' => round($totalTax, 2),
+        
+        // "Line Total" Sum (Which is Gross per instruction)
+        'consolidate_complete_total' => round($totalGrand, 2), 
+        
+        'updated_at' => now()
+    ]);
+
+    return redirect()->back()->with('success', "Batch imported successfully!");
+}
      /**
      * Download Template (UPDATED)
      * - Removed 'Total Price'

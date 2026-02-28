@@ -39,6 +39,15 @@ class eInvoisModel extends Model
         }
     }
 
+    public function getStateNames($code) {
+        if (!$code) return '';
+        $state = DB::table('lookup_state')
+                    ->where('state_code', $code)
+                    ->first();
+        // FIX: Force Uppercase
+        return $state ? strtoupper($state->state_name) : $code;
+    }
+
     public function submitxml($document)
     {
 
