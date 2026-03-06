@@ -6,6 +6,18 @@
     $type = request()->query('type');
     $isSelfBill = $type === 'self_bill';
     $pageTitle = $isSelfBill ? 'Self-Bill Submissions' : 'Invoice Submissions';
+
+    // Fetch invoice types dynamically based on the current view mode
+    // This ensures ONLY relevant types (01-04 for normal, 11-14 for self-bill) are shown
+    $invoiceTypes = \Illuminate\Support\Facades\DB::table('invoice_type')
+        ->where('code', 'like', $isSelfBill ? '1%' : '0%') 
+        ->orderBy('code')
+        ->get();
+
+    // Define dynamic routes: Targets 'self_invoice' routes if $isSelfBill is true, otherwise 'invoice'
+    $exportRoute = $isSelfBill ? route('self_invoice.export') : route('invoice.export');
+    $importRoute = $isSelfBill ? route('self_invoice.import') : route('invoice.import');
+    $templateRoute = $isSelfBill ? route('self_invoice.download_template') : route('invoice.download_template');
 @endphp
 
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
@@ -25,21 +37,27 @@
         height: 5em !important;
         margin: 2.5em auto .6em !important;
     }
+    
+    /* Clean up default datatable buttons padding to match bootstrap */
+    div.dt-buttons .dt-button {
+        padding: 0;
+        border: none;
+        background: none;
+    }
+    
+    /* Adjust datatables flex layout */
+    .dt-buttons-container { flex: 1; display: flex; gap: 0.5rem; }
 </style>
 
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3 class="mb-0">{{ $pageTitle }}</h3>
         <div class="d-flex gap-2">
-            @if($isSelfBill)
-                {{-- 🚩 Self-Bill Specific Actions --}}
-                <button type="button" class="btn btn-light border shadow-sm" data-bs-toggle="modal" data-bs-target="#importModal">
-                    <i class="ph ph-file-arrow-up me-2"></i> Bulk Import
-                </button>
-                <button class="btn btn-light border shadow-sm" id="btnExportSelected">
-                    <i class="ph ph-file-arrow-down me-2"></i> Export Selected
-                </button>
-            @endif
+            
+            {{-- Bulk Import --}}
+            <button type="button" class="btn btn-light border shadow-sm" data-bs-toggle="modal" data-bs-target="#importModal">
+                <i class="ph ph-file-arrow-up me-2"></i> Bulk Import
+            </button>
 
             <button class="btn btn-success shadow-sm" id="submitSelectedBtn">
                 <i class="ph ph-paper-plane-tilt me-2"></i> Submit Selected to LHDN
@@ -54,16 +72,27 @@
         <div class="card mb-4 border-0 shadow-sm">
             <div class="card-body">
                 <div class="row g-3 align-items-end">
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Start Date</label>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small text-muted mb-1">Start Date</label>
                         <input type="date" name="start_date" class="form-control" value="{{ request('start_date') }}">
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">End Date</label>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small text-muted mb-1">End Date</label>
                         <input type="date" name="end_date" class="form-control" value="{{ request('end_date') }}">
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label fw-bold">Status</label>
+                        <label class="form-label fw-bold small text-muted mb-1">Document Type</label>
+                        <select name="invoice_type_code" class="form-select">
+                            <option value="">All Types</option>
+                            @foreach($invoiceTypes as $invType)
+                                <option value="{{ $invType->code }}" {{ request('invoice_type_code') == $invType->code ? 'selected' : '' }}>
+                                    {{ $invType->description }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small text-muted mb-1">Status</label>
                         <select name="status" class="form-select">
                             <option value="">All Status</option>
                             <option value="submitted" {{ request('status') == 'submitted' ? 'selected' : '' }}>Submitted</option>
@@ -71,7 +100,7 @@
                             <option value="failed" {{ request('status') == 'failed' ? 'selected' : '' }}>Failed</option>
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <button type="submit" class="btn btn-primary w-100">Search</button>
                     </div>
                 </div>
@@ -104,7 +133,7 @@
                                 <input type="checkbox" class="select-item form-check-input" value="{{ $invoice->id_invoice }}">
                             </td>
                             <td class="fw-bold">{{ $invoice->invoice_no }}</td>
-                            <td>{{ $invoice->customer_name ?? '-' }}</td>
+                           <td>{{ $invoice->customer_name ?? $invoice->supplier_name ?? $invoice->party_name ?? '-' }}</td>
                             <td>RM {{ number_format($invoice->price, 2) }}</td>
                             <td>{{ \Carbon\Carbon::parse($invoice->issue_date)->format('d-m-Y H:i') }}</td>
                             <td>
@@ -119,7 +148,7 @@
                             </td>
                             <td>
                                 <div class="btn-group">
-                                    <a target="_blank" href="{{ route('invoice.view.public', ['unique_id' => $invoice->unique_id]) }}" class="btn btn-sm btn-outline-primary">View</a>
+                                    <a target="_blank" href="{{ url('invoice/view/')}}/{{$invoice->unique_id}}" class="btn btn-sm btn-outline-primary">View</a>
                                     
                                     @if ($invoice->uuid)
                                         <a href="{{ url('/api/myinvois/cancelDocument/'.$invoice->unique_id) }}" class="cancel-link btn btn-sm btn-outline-danger ms-1">Cancel</a>
@@ -139,16 +168,15 @@
     </div>
 </div>
 
-@if($isSelfBill)
 {{-- Import Modal --}}
 <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
             <div class="modal-header">
-                <h5 class="modal-title fw-bold">Import Self-Bill CSV</h5>
+                <h5 class="modal-title fw-bold">Import {{ $isSelfBill ? 'Self-Bill' : 'Invoice' }} CSV</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form action="{{ route('self_invoice.import') }}" method="POST" enctype="multipart/form-data">
+            <form action="{{ $importRoute }}" method="POST" enctype="multipart/form-data">
                 @csrf
                 <div class="modal-body">
                     <div class="alert alert-info py-2 small">
@@ -159,7 +187,7 @@
                         <input type="file" name="csv_file" class="form-control" accept=".csv" required>
                     </div>
                     <div class="text-center">
-                        <a href="{{ route('self_invoice.download_template') }}" class="text-decoration-none small fw-bold">
+                        <a href="{{ $templateRoute }}" class="text-decoration-none small fw-bold">
                             <i class="ph ph-download-simple me-1"></i> Download Template CSV
                         </a>
                     </div>
@@ -172,35 +200,175 @@
         </div>
     </div>
 </div>
-@endif
 
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
 $(document).ready(function () {
+    // ==========================================================
+    // NEW: Catch Laravel Flash Messages and show via SweetAlert
+    // ==========================================================
+    @if(session('success'))
+        Swal.fire({ 
+            icon: 'success', 
+            title: 'Success', 
+            text: "{!! session('success') !!}" 
+        });
+    @endif
+
+    @if(session('warning'))
+        Swal.fire({ 
+            icon: 'warning', 
+            title: 'Attention', 
+            html: "{!! session('warning') !!}" 
+        });
+    @endif
+
+    @if(session('error'))
+        Swal.fire({ 
+            icon: 'error', 
+            title: 'Error', 
+            html: "{!! session('error') !!}" 
+        });
+    @endif
+    // ==========================================================
+
+    let invoiceTypes = @json($invoiceTypes);
+    let exportRoute = "{{ $exportRoute }}";
+    
+    // 1. Core Export Logic Function (Only used for specific selections now)
+    function executeBackendExport(idsArray) {
+        let url = new URL(exportRoute);
+        let typeVal = $('input[name="type"]').val();
+        if (typeVal) url.searchParams.append('type', typeVal);
+        url.searchParams.append('ids', idsArray.join(','));
+        window.location.href = url.toString();
+    }
+
+    // 2. Build Dropdown Buttons Array
+    let dropdownButtons = [
+        {
+            text: '<i class="ph ph-check-square me-2 text-primary"></i> Export Selected',
+            className: 'dropdown-item py-2 fw-semibold',
+            action: function (e, dt, node, config) {
+                let selected = [];
+                // DataTables API loops through ALL pages, not just visible DOM
+                dt.rows({ search: 'applied' }).every(function() {
+                    let rowNode = this.node();
+                    let checkbox = $(rowNode).find('input.select-item');
+                    if (checkbox.prop('checked')) {
+                        selected.push(checkbox.val());
+                    }
+                });
+                
+                if (selected.length === 0) {
+                    return Swal.fire("Oops", "Please select at least one document.", "warning");
+                }
+                executeBackendExport(selected);
+            }
+        },
+        // Divider
+        {
+            text: '<span class="text-muted small fw-bold mt-2 d-block px-3">EXPORT CURRENT SEARCH</span>',
+            className: 'dropdown-item disabled',
+            action: function(e, dt, node, config) { return false; }
+        },
+        // Native DataTable Exporter (Looks at table, respects filters, ignores pagination limits)
+        {
+            extend: 'csvHtml5',
+            text: '<i class="ph ph-file-csv me-2 text-info"></i> All Filtered Data (CSV)',
+            className: 'dropdown-item py-2 fw-semibold',
+            exportOptions: { 
+                columns: [1, 2, 3, 4, 5], 
+                modifier: { search: 'applied' } // Explicitly targets current search across all pages
+            }
+        },
+        // Native DataTable Exporter
+        {
+            extend: 'excelHtml5',
+            text: '<i class="ph ph-file-xls me-2 text-warning"></i> All Filtered Data (Excel)',
+            className: 'dropdown-item py-2 fw-semibold',
+            exportOptions: { 
+                columns: [1, 2, 3, 4, 5],
+                modifier: { search: 'applied' }
+            }
+        },
+        // Divider
+        {
+            text: '<span class="text-muted small fw-bold mt-2 d-block px-3">EXPORT SPECIFIC TYPE</span>',
+            className: 'dropdown-item disabled',
+            action: function(e, dt, node, config) { return false; }
+        }
+    ];
+
+    // 3. Append Specific Types to Dropdown Menu (Uses Backend)
+    let specificTypeButtons = invoiceTypes.map(function(type) {
+        return {
+            text: '<i class="ph ph-file-text me-2 text-secondary"></i> All ' + type.description + 's',
+            className: 'dropdown-item py-2',
+            action: function (e, dt, node, config) {
+                let url = new URL(exportRoute);
+                url.searchParams.append('invoice_type_code', type.code);
+                
+                let typeVal = $('input[name="type"]').val();
+                if (typeVal) url.searchParams.append('type', typeVal);
+                
+                // Append form filters
+                let startDate = $('input[name="start_date"]').val();
+                let endDate = $('input[name="end_date"]').val();
+                let status = $('select[name="status"]').val();
+                if (startDate) url.searchParams.append('start_date', startDate);
+                if (endDate) url.searchParams.append('end_date', endDate);
+                if (status) url.searchParams.append('status', status);
+
+                window.location.href = url.toString();
+            }
+        };
+    });
+
+    dropdownButtons = dropdownButtons.concat(specificTypeButtons);
+
+    // 4. Initialize DataTables
     var table = $('#invoice-table').DataTable({
         pageLength: 30,
         ordering: true,
-        columnDefs: [{ orderable: false, targets: 0 }]
+        columnDefs: [{ orderable: false, targets: 0 }],
+        dom: '<"d-flex justify-content-between align-items-center mb-3"<"dt-buttons-container"B><"dt-search-container"f>>rt<"d-flex justify-content-between mt-3"ip>',
+        buttons: [
+            {
+                extend: 'collection',
+                text: '<button class="btn btn-light border shadow-sm dropdown-toggle"><i class="ph ph-file-arrow-down me-2"></i> Export Data</button>',
+                buttons: dropdownButtons
+            }
+        ]
     });
 
+    // 5. Select All Logic (Loops through ALL pages of filtered view)
     $('#selectAll').on('click', function() {
-        var rows = table.rows({ 'search': 'applied' }).nodes();
-        $('input.select-item', rows).prop('checked', this.checked);
+        var isChecked = this.checked;
+        table.rows({ 'search': 'applied' }).every(function() {
+            let rowNode = this.node();
+            $(rowNode).find('input.select-item').prop('checked', isChecked);
+        });
     });
 
-    $('#btnExportSelected').on('click', function() {
-        let selected = [];
-        table.$('input.select-item:checked').each(function() { selected.push($(this).val()); });
-        if (selected.length === 0) return Swal.fire("Oops", "Please select at least one document.", "warning");
-        window.location.href = "{{ route('self_invoice.export') }}?ids=" + selected.join(',');
-    });
-
+    // 6. Submit Selected Logic (Also fixed for pagination)
     $('#submitSelectedBtn').on('click', function() {
         let selected = [];
-        table.$('input.select-item:checked').each(function() { selected.push($(this).val()); });
+        table.rows({ search: 'applied' }).every(function() {
+            let rowNode = this.node();
+            let checkbox = $(rowNode).find('input.select-item');
+            if (checkbox.prop('checked')) {
+                selected.push(checkbox.val());
+            }
+        });
 
         if (selected.length === 0) return Swal.fire("Selection Empty", "Please select at least one invoice.", "warning");
 
@@ -234,11 +402,9 @@ $(document).ready(function () {
         });
     });
 
-    // --- UPDATED CANCELLATION LOGIC (Matching Developer Layout) ---
+    // 7. Cancellation Logic
     $(document).on('click', '.cancel-link', function (e) {
         e.preventDefault();
-        
-        // Extract unique_id from the href URL
         const urlParts = this.href.split('/');
         const uniqueId = urlParts[urlParts.length - 1];
 
@@ -265,23 +431,12 @@ $(document).ready(function () {
                 $.ajax({
                     url: "{{ url('/api/myinvois/cancelDocument') }}/" + uniqueId,
                     method: "POST",
-                    data: {
-                        _token: "{{ csrf_token() }}",
-                        reason: result.value
-                    },
+                    data: { _token: "{{ csrf_token() }}", reason: result.value },
                     beforeSend: function() {
-                        Swal.fire({
-                            title: 'Connecting to MyInvois...',
-                            didOpen: () => Swal.showLoading(),
-                            allowOutsideClick: false
-                        });
+                        Swal.fire({ title: 'Connecting to MyInvois...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
                     },
                     success: function(response) {
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Success',
-                            text: response.message || 'Invoice cancelled successfully.',
-                        }).then(() => location.reload());
+                        Swal.fire({ icon: 'success', title: 'Success', text: response.message || 'Invoice cancelled successfully.' }).then(() => location.reload());
                     },
                     error: function(xhr) {
                         let errorMsg = xhr.responseJSON?.message || "LHDN rejected the cancellation.";
@@ -292,6 +447,7 @@ $(document).ready(function () {
         });
     });
 
+    // 8. Delete Logic
     window.confirmDelete = function(id) {
         Swal.fire({
             title: 'Delete Invoice?',

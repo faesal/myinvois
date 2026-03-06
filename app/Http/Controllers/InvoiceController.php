@@ -769,159 +769,160 @@ public function test4()
     }
 
 public function store_create(Request $request)
-{
-    // 1. Retrieve connection and supplier info from Session (Dynamic)
-    $connection_integrate = session('connection_integrate');
-    $id_supplier = session('id_supplier');
+    {
+        // 1. Retrieve connection and supplier info from Session (Dynamic)
+        $connection_integrate = session('connection_integrate');
+        $id_supplier = session('id_supplier');
 
-    if (!$connection_integrate || !$id_supplier) {
-        return response()->json([
-            'success' => false, 
-            'message' => 'Session expired or missing connection info. Please re-login.'
-        ], 401);
-    }
+        if (!$connection_integrate || !$id_supplier) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Session expired or missing connection info. Please re-login.'
+            ], 401);
+        }
 
-    // 2. Detect Invoice Type
-    $invoiceType = $request->input('invoice_type');
-    if (!$invoiceType) {
-        $invoiceType = ($request->input('is_self_bill') == '1' || $request->query('type') === 'self_bill') ? '11' : '01';
-    }
+        // 2. Detect Invoice Type
+        $invoiceType = $request->input('invoice_type');
+        if (!$invoiceType) {
+            $invoiceType = ($request->input('is_self_bill') == '1' || $request->query('type') === 'self_bill') ? '11' : '01';
+        }
 
-    DB::beginTransaction();
+        DB::beginTransaction();
 
-    try {
-        $uniqueId = (string) \Str::uuid();
+        try {
+            $uniqueId = (string) \Str::uuid();
 
-        // --- Step 1: Customer / Supplier Logic ---
-        if ($request->buyer_type === 'new') {
-            $customer_id = DB::table('customer')->insertGetId([
-                'registration_name'      => $request->company_name,
-                'tin_no'                 => $request->tin_number,
-                'connection_integrate'   => $connection_integrate,
-                'identification_no'      => $request->registration_number,
-                'email'                  => $request->email,
-                'phone'                  => $request->phone,
-                'city_name'              => $request->city_name,
-                'postal_zone'            => $request->postal_zone,
-                'identification_type'    => $request->identification_type,
-                'country_subentity_code' => $request->country_subentity_code,
-                'country_code'           => 'MYS',
-                'address_line_1'         => $request->address1 ?? 'NA',
-                'address_line_2'         => $request->address2,
-                'address_line_3'         => $request->address3,
-                'created_at'             => now(),
-                'updated_at'             => now(),
+            // --- Step 1: Customer / Supplier Logic ---
+            if ($request->buyer_type === 'new') {
+                $customer_id = DB::table('customer')->insertGetId([
+                    'registration_name'      => $request->company_name,
+                    'tin_no'                 => $request->tin_number,
+                    'connection_integrate'   => $connection_integrate,
+                    'identification_no'      => $request->registration_number,
+                    'email'                  => $request->email,
+                    'phone'                  => $request->phone,
+                    'city_name'              => $request->city_name,
+                    'postal_zone'            => $request->postal_zone,
+                    'identification_type'    => $request->identification_type,
+                    'country_subentity_code' => $request->country_subentity_code,
+                    'country_code'           => 'MYS',
+                    'address_line_1'         => $request->address1 ?? 'NA',
+                    'address_line_2'         => $request->address2,
+                    'address_line_3'         => $request->address3,
+                    'created_at'             => now(),
+                    'updated_at'             => now(),
+                ]);
+            } else {
+                $customer_id = ($invoiceType === '11' || in_array($invoiceType, ['12', '13', '14'])) 
+                               ? $request->id_supplier 
+                               : $request->customer_id;
+            }
+
+            // --- Step 2: Create Invoice Header ---
+            
+            // Combine Input Date with Current Time to avoid 00:00:00
+            if ($request->filled('issue_date')) {
+                $issueDate = \Carbon\Carbon::parse($request->issue_date . ' ' . now()->format('H:i:s'));
+            } else {
+                $issueDate = now();
+            }
+
+            $invoiceId = DB::table('invoice')->insertGetId([
+                'invoice_no'           => $request->invoice_no,
+                'connection_integrate' => $connection_integrate,
+                'id_customer'          => $customer_id,
+                'id_supplier'          => $id_supplier,
+                'invoice_type_code'    => $invoiceType, 
+                'tax_category_id'      => '01', 
+                'tax_scheme_id'        => 'OTH',
+                'issue_date'           => $issueDate,
+                'payment_note_term'    => 'CASH',
+                'created_at'           => now(),
+                'updated_at'           => now(),
+                'unique_id'            => $uniqueId,
+                'invoice_status'       => 'Manual', 
+                'submission_status'    => 'Pending',
+                // Init totals to 0
+                'price'                => 0,
+                'tax_amount'           => 0,
+                'taxable_amount'       => 0,
+                'total_price_discount' => 0
             ]);
-        } else {
-            $customer_id = ($invoiceType === '11' || in_array($invoiceType, ['12', '13', '14'])) 
-                           ? $request->id_supplier 
-                           : $request->customer_id;
-        }
 
-        // --- Step 2: Create Invoice Header ---
-        
-        // Combine Input Date with Current Time to avoid 00:00:00
-        if ($request->filled('issue_date')) {
-            $issueDate = \Carbon\Carbon::parse($request->issue_date . ' ' . now()->format('H:i:s'));
-        } else {
-            $issueDate = now();
-        }
+            // --- Step 3: Process Items ---
+            $totalLineExtension = 0; // Gross accumulator
+            $totalNet           = 0; // Net accumulator
+            $totalTaxAmount     = 0; // Tax accumulator
+            $totalPriceDiscount = 0; // Discount accumulator
 
-        $invoiceId = DB::table('invoice')->insertGetId([
-            'invoice_no'           => $request->invoice_no,
-            'connection_integrate' => $connection_integrate,
-            'id_customer'          => $customer_id,
-            'id_supplier'          => $id_supplier,
-            'invoice_type_code'    => $invoiceType, 
-            'tax_category_id'      => '01', 
-            'tax_scheme_id'        => 'OTH',
-            'issue_date'           => $issueDate,
-            'payment_note_term'    => 'CASH',
-            'created_at'           => now(),
-            'updated_at'           => now(),
-            'unique_id'            => $uniqueId,
-            'invoice_status'       => 'Manual', 
-            'submission_status'    => 'Pending',
-            // Init totals to 0
-            'price'                => 0,
-            'tax_amount'           => 0,
-            'taxable_amount'       => 0,
-            'total_price_discount' => 0
-        ]);
-
-        // --- Step 3: Process Items ---
-        $totalLineExtension = 0; // Gross accumulator
-        $totalNet           = 0; // Net accumulator
-        $totalTaxAmount     = 0; // Tax accumulator
-        $totalPriceDiscount = 0; // Discount accumulator
-
-        foreach ($request->items as $item) {
-            $qty = floatval($item['qty']);
-            $unitPrice = floatval($item['unit_price']);
-            $taxRate = floatval($item['tax_rate']);
-            $discount = floatval($item['discount'] ?? 0); 
-            
-            // 1. Gross Amount (Qty * Unit Price)
-            $lineExtension = round($qty * $unitPrice, 2);
-
-            // 2. Net Amount (Gross - Discount)
-            $netAmount = $lineExtension - $discount;
-            
-            // 3. Tax Amount (Tax on Net)
-            $taxAmount = round($netAmount * ($taxRate / 100), 2);
-
-            DB::table('invoice_item')->insert([
-                'connection_integrate'     => $connection_integrate,
-                'unique_id'                => $uniqueId,
-                'id_customer'              => $customer_id,
-                'id_invoice'               => $invoiceId,
-                'item_description'         => $item['description'],
-                'invoiced_quantity'        => $qty,
-                'price_amount'             => number_format($unitPrice, 2, '.', ''),
-                'price_discount'           => number_format($discount, 2, '.', ''), 
-                'tax'                      => number_format($taxRate, 2, '.', ''),
+            foreach ($request->items as $item) {
+                $qty = floatval($item['qty']);
+                $unitPrice = floatval($item['unit_price']);
+                $discount = floatval($item['discount'] ?? 0); 
                 
-                // --- CORRECT MAPPINGS ---
-                'line_extension_amount'    => number_format($lineExtension, 2, '.', ''), // Gross
-                'price_extension_amount'   => number_format($netAmount, 2, '.', ''),     // Net
-                // ------------------------
+            
+                $taxAmount = floatval($item['tax_amount'] ?? 0);
+                
+                // 1. Gross Amount (Qty * Unit Price)
+                $lineExtension = round($qty * $unitPrice, 2);
 
-                'created_at'               => now(),
-                'updated_at'               => now(),
-                'item_clasification_value' => '022'
+                // 2. Net Amount (Gross - Discount)
+                $netAmount = $lineExtension - $discount;
+
+                DB::table('invoice_item')->insert([
+                    'connection_integrate'     => $connection_integrate,
+                    'unique_id'                => $uniqueId,
+                    'id_customer'              => $customer_id,
+                    'id_invoice'               => $invoiceId,
+                    'item_description'         => $item['description'],
+                    'invoiced_quantity'        => $qty,
+                    'price_amount'             => number_format($unitPrice, 2, '.', ''),
+                    'price_discount'           => number_format($discount, 2, '.', ''), 
+                    
+                    // Save the exact RM amount to the tax column
+                    'tax'                      => number_format($taxAmount, 2, '.', ''),
+                    
+                    // --- MAPPINGS ---
+                    'line_extension_amount'    => number_format($lineExtension, 2, '.', ''), // Gross
+                    'price_extension_amount'   => number_format($netAmount, 2, '.', ''),     // Net
+                    // ----------------
+
+                    'created_at'               => now(),
+                    'updated_at'               => now(),
+                    'item_clasification_value' => '022'
+                ]);
+
+                $totalLineExtension += $lineExtension;
+                $totalNet           += $netAmount;
+                $totalTaxAmount     += $taxAmount;
+                $totalPriceDiscount += $discount;
+            }
+
+            // --- Step 4: Final Totals Update ---
+            // Payable = Total Net + Total Tax
+            $payableAmount = $totalNet + $totalTaxAmount;
+
+            DB::table('invoice')->where('id_invoice', $invoiceId)->update([
+                'price'                => number_format($payableAmount, 2, '.', ''), // Final Payable
+                'tax_amount'           => number_format($totalTaxAmount, 2, '.', ''),
+                'taxable_amount'       => number_format($totalNet, 2, '.', ''),      // Total Net
+                'total_price_discount' => number_format($totalPriceDiscount, 2, '.', ''), 
+                'updated_at'           => now()
             ]);
 
-            $totalLineExtension += $lineExtension;
-            $totalNet           += $netAmount;
-            $totalTaxAmount     += $taxAmount;
-            $totalPriceDiscount += $discount;
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invoice created locally. You can submit it to LHDN later.',
+                'invoice_id' => $invoiceId
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
-
-        // --- Step 4: Final Totals Update ---
-        // Payable = Total Net + Total Tax
-        $payableAmount = $totalNet + $totalTaxAmount;
-
-        DB::table('invoice')->where('id_invoice', $invoiceId)->update([
-            'price'                => number_format($payableAmount, 2, '.', ''), // Final Payable
-            'tax_amount'           => number_format($totalTaxAmount, 2, '.', ''),
-            'taxable_amount'       => number_format($totalNet, 2, '.', ''),      // Total Net
-            'total_price_discount' => number_format($totalPriceDiscount, 2, '.', ''), 
-            'updated_at'           => now()
-        ]);
-
-        DB::commit();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Invoice created locally. You can submit it to LHDN later.',
-            'invoice_id' => $invoiceId
-        ]);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
     }
-}
 
 public function qr_link($unique_id)
 {
@@ -1407,7 +1408,7 @@ public function apiResubmit($unique_id)
             $query->where('connection_integrate', $selectedConnection);
         }
 
-        $query->whereNull('submition_status');
+        $query->whereNull('submission_status');
         $items = $query->orderBy('issue_date')->get();
 
         $availableConnectionsQuery = DB::table('consolidate_invoice_item')
@@ -1515,7 +1516,7 @@ public function submitSelected(Request $request)
         DB::table('consolidate_invoice_item')
             ->whereIn('id_invoice_item', $chunk->pluck('id_invoice_item'))
             ->update([
-                'submition_status' => 'submitted',
+                'submission_status' => 'submitted',
                 'is_invoice' => 1,
                 'updated_at' => now()
             ]);
@@ -2009,7 +2010,7 @@ public function deleteInvoice($id)
         // 1. If it was a consolidated invoice, reset the original items
         // so they show up again in the "Consolidate" list
         DB::table('consolidate_invoice_item')
-            ->where('submition_status', 'submitted')
+            ->where('submission_status', 'submitted')
             ->whereExists(function ($query) use ($id) {
                 $query->select(DB::raw(1) )
                       ->from('invoice_item')
@@ -2017,7 +2018,7 @@ public function deleteInvoice($id)
                       ->where('invoice_item.id_invoice', $id);
             })
             ->update([
-                'submition_status' => null,
+                'submission_status' => null,
                 'is_invoice' => null,
                 'updated_at' => now()
             ]);
@@ -2033,4 +2034,126 @@ public function deleteInvoice($id)
         return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
     }
 }
+/**
+     * Fetch Submission Data for DataTables AJAX
+     */
+public function getSubmissionData(Request $request)
+    {
+        $developerId = auth()->user()->id;
+        $type = $request->input('type');
+        $isSelfBill = ($type === 'self_bill');
+
+        $query = DB::table('invoice AS i');
+
+        // ✅ FIX 1: Robust Developer Check
+        // Matches the logged-in user, OR 0, OR NULL (for imported/shared connection data)
+        $query->where(function ($q) use ($developerId) {
+            $q->where('i.id_developer', $developerId)
+              ->orWhere('i.id_developer', 0)
+              ->orWhereNull('i.id_developer');
+        });
+
+        // ✅ FIX 2: Robust Invoice Type Check
+        // Uses arrays instead of "LIKE '0%'" because CSV imports often strip the '0' (e.g., '01' becomes '1')
+        if ($isSelfBill) {
+            $query->whereIn('i.invoice_type_code', ['11', '12', '13', '14']);
+            $query->leftJoin('customer AS c', 'i.id_supplier', '=', 'c.id_customer');
+        } else {
+            $query->whereIn('i.invoice_type_code', ['01', '02', '03', '04', '1', '2', '3', '4']);
+            $query->leftJoin('customer AS c', 'i.id_customer', '=', 'c.id_customer');
+        }
+
+        // --- Apply Filters ---
+        if ($request->filled('start_date')) {
+            $query->whereDate('i.issue_date', '>=', $request->start_date);
+        }
+        if ($request->filled('end_date')) {
+            $query->whereDate('i.issue_date', '<=', $request->end_date);
+        }
+        if ($request->filled('invoice_type_code')) {
+            // Ensure if they filter by "01", we also check for "1"
+            $code = $request->invoice_type_code;
+            $strippedCode = ltrim($code, '0');
+            $query->whereIn('i.invoice_type_code', [$code, $strippedCode]);
+        }
+        if ($request->filled('status')) {
+            $query->where('i.submission_status', $request->status);
+        }
+
+        // 1. Get Total Records (Before Search)
+        $totalRecords = $query->count();
+
+        // --- Apply Search ---
+        if ($request->filled('search.value')) {
+            $search = $request->input('search.value');
+            $query->where(function($q) use ($search) {
+                $q->where('i.invoice_no', 'like', "%{$search}%")
+                  ->orWhere('c.registration_name', 'like', "%{$search}%");
+            });
+        }
+
+        // 2. Get Filtered Records (After Search)
+        $filteredRecords = $query->count();
+
+        // 3. APPLY SELECT CLAUSE HERE (After counts are safely finished)
+        $query->select(
+            'i.id_invoice',
+            'i.unique_id',
+            'i.invoice_no',
+            'i.price',
+            'i.issue_date',
+            'i.submission_status',
+            'i.uuid',
+            'c.registration_name as party_name'
+        );
+
+        // --- Apply Sorting ---
+        $orderColumnIndex = $request->input('order.0.column');
+        $orderDir = $request->input('order.0.dir', 'desc');
+        
+        // Map DT column index to database columns
+        $columns = [
+            1 => 'i.invoice_no',
+            2 => 'c.registration_name',
+            3 => 'i.price',
+            4 => 'i.issue_date',
+            5 => 'i.submission_status',
+        ];
+
+        if (isset($columns[$orderColumnIndex])) {
+            $query->orderBy($columns[$orderColumnIndex], $orderDir);
+        } else {
+            $query->orderBy('i.issue_date', 'desc');
+        }
+
+        // --- Apply Pagination ---
+        if ($request->input('length') != -1) {
+            $query->offset($request->input('start', 0))->limit($request->input('length', 30));
+        }
+
+        // 4. Fetch the final data set
+        $invoices = $query->get();
+
+        // --- Format Data for Frontend ---
+        $data = [];
+        foreach ($invoices as $invoice) {
+            $data[] = [
+                'id_invoice' => $invoice->id_invoice,
+                'unique_id' => $invoice->unique_id,
+                'invoice_no' => $invoice->invoice_no ?? '-',
+                'party_name' => $invoice->party_name ?? '-',
+                'price' => (float) $invoice->price,
+                'issue_date' => $invoice->issue_date ? \Carbon\Carbon::parse($invoice->issue_date)->format('d-m-Y H:i') : '-',
+                'submission_status' => strtolower($invoice->submission_status ?? 'pending'),
+                'uuid' => $invoice->uuid
+            ];
+        }
+
+        return response()->json([
+            "draw" => intval($request->input('draw')),
+            "recordsTotal" => $totalRecords,
+            "recordsFiltered" => $filteredRecords,
+            "data" => $data
+        ]);
+    }
 }

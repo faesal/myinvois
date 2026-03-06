@@ -15,312 +15,353 @@ class ConsolidateImportController extends Controller
     /**
      * Display the import interface
      */
-public function index()
-{
-    // 1. Determine the layout based on the user's role
-    // If developer, use 'layouts.developerLayout', otherwise use 'layouts.app'
-    $layout = (auth()->check() && auth()->user()->role === 'developer') 
-                ? 'layouts.developerLayout' 
-                : 'layouts.app';
+ public function index(Request $request)
+    {
+        // 1. Determine the layout based on the user's role
+        $isDeveloper = (auth()->check() && auth()->user()->role === 'developer');
+        $layout = $isDeveloper ? 'layouts.developerLayout' : 'layouts.app';
 
-    // 2. Fetch the data (Your original logic)
-    $consolidations = DB::table('consolidate_invoice as ci')
-        ->select('ci.*')
-        ->addSelect(DB::raw('(SELECT COUNT(*) FROM invoice_item WHERE id_consolidate_invoice = ci.id_invoice) as is_processed'))
-        ->where('ci.invoice_status', 'consolidated')
-        ->where('ci.is_import', 1)
-        // Optional: Ensure users only see their own data if needed
-        // ->where('ci.user_id', auth()->id()) 
-        ->orderBy('ci.created_at', 'desc')
-        ->paginate(10);
+        $connections = [];
+        $selectedConnection = $request->query('connection_integrate');
 
-    // 3. Pass both the $layout and $consolidations variables to the view
-    return view('consolidate.index', compact('layout', 'consolidations'));
-}
+        // 2. Fetch Connections ONLY if Developer
+        if ($isDeveloper) {
+            $connections = DB::table('customer')
+                ->select('connection_integrate', 'registration_name')
+                ->where('id_developer', auth()->id())
+                ->where('customer_type', 'SUPPLIER') // Ensures only the main account (not buyers) is fetched
+                ->where('is_deleted', 0)
+                ->whereNotNull('connection_integrate')
+                ->groupBy('connection_integrate', 'registration_name')
+                ->get();
+        }
+
+        // 3. Base Query (Your original logic)
+        $query = DB::table('consolidate_invoice as ci')
+            ->select('ci.*')
+            ->addSelect(DB::raw('(SELECT COUNT(*) FROM invoice_item WHERE id_consolidate_invoice = ci.id_invoice) as is_processed'))
+            ->where('ci.invoice_status', 'consolidated')
+            ->where('ci.is_import', 1);
+
+        // 4. Apply Filters
+        if ($isDeveloper && $selectedConnection) {
+            $query->where('ci.connection_integrate', $selectedConnection);
+        } elseif (!$isDeveloper) {
+            // Optional fallback: enforce session connection for normal users to prevent data leakage
+            $query->where('ci.connection_integrate', session('connection_integrate'));
+        }
+
+        $consolidations = $query->orderBy('ci.created_at', 'desc')->paginate(10);
+
+        // 5. Pass variables to the view
+        return view('consolidate.index', compact('layout', 'consolidations', 'isDeveloper', 'connections', 'selectedConnection'));
+    }
 
     /**
      * Handle the CSV Batch Import (UPDATED)
-     * - Checks column 7 for "Invoice No"
-     * - Overwrites the auto-generated number if found
+     * - Maps 8-column structure including company_name lookup
+     * - Catches Developer connection dropdown input
      */
-public function importBatch(Request $request)
-{
-    $request->validate([
-        'file' => 'required|file|mimes:csv,txt|max:10240',
-    ]);
-
-    $selected_connection = session('connection_integrate');
-    $id_developer = session('id_developer');
-
-    if (!$selected_connection) {
-        return redirect()->back()->with('error', 'No active connection found.');
-    }
-
-    $file = $request->file('file');
-    if (($handle = fopen($file->getRealPath(), 'r')) === false) {
-        return redirect()->back()->with('error', 'Could not open the file.');
-    }
-
-    $batchUniqueId = (string) Str::uuid();
-    $currentDate = Carbon::now();
-    $invoiceNoToSave = 'CONSO-' . $currentDate->format('YmdHis');
-
-    // 1. Create Header (Initialized)
-    $invoiceId = DB::table('consolidate_invoice')->insertGetId([
-        'unique_id' => $batchUniqueId,
-        'invoice_no' => $invoiceNoToSave,
-        'connection_integrate' => $selected_connection,
-        'id_developer' => $id_developer,
-        'id_customer' => 6,
-        'invoice_status' => 'consolidated',
-        'is_import' => 1,
-        'tax_category_id' => '01', 
-        'tax_scheme_id' => 'OTH',   
-        'created_at' => $currentDate,
-        'updated_at' => $currentDate,
-        // Default values
-        'price' => 0,
-        'tax_amount' => 0,
-        'taxable_amount' => 0,
-        'consolidate_complete_total' => 0,
-        'consolidate_total_amount_before' => 0,
-        'consolidate_total_item' => 0,
-    ]);
-
-    // Accumulators
-    $totalItems = 0; 
-    $totalGross = 0; // Accumulates Gross (Before Disc)
-    $totalNet = 0;   // Accumulates Net (After Disc)
-    $totalTax = 0;
-    $totalGrand = 0;
-
-    $itemIds = []; 
-    $rowIndex = 0;
-    $customInvoiceNoFound = false;
-
-    while (($row = fgetcsv($handle, 1000, ",")) !== false) {
-        $rowIndex++;
-        if ($rowIndex == 1 || empty($row[0])) continue; 
-
-        $qty = (float)($row[1] ?? 0);
-        $unitPrice = (float)($row[2] ?? 0);
-        $desc = $row[3] ?? 'Imported Item';
-        $discAmt = (float)($row[4] ?? 0); 
-        $taxRate = (float)($row[5] ?? 0); 
-        
-        $csvInvoiceNo = isset($row[6]) ? trim($row[6]) : ''; 
-
-        if (!empty($csvInvoiceNo) && !$customInvoiceNoFound) {
-            $invoiceNoToSave = $csvInvoiceNo;
-            $customInvoiceNoFound = true; 
-            DB::table('consolidate_invoice')->where('id_invoice', $invoiceId)->update(['invoice_no' => $invoiceNoToSave]);
-        }
-
-        // --- CALCULATION LOGIC ---
-        
-        // 1. Gross Amount (Total Before Discount)
-        $grossAmount = $qty * $unitPrice;
-
-        // 2. Net Amount (Total After Discount)
-        $netAmount = $grossAmount - $discAmt;
-        if ($netAmount < 0) $netAmount = 0; 
-
-        // 3. Tax Amount (Calculated on Net but NOT added to total per instruction)
-        $taxAmount = round($netAmount * ($taxRate / 100), 2);
-
-        // 4. Line Total (Per instruction: "before discount and tax")
-        // Therefore, Line Total is strictly the Gross Amount.
-        $lineTotal = $grossAmount;
-
-        // -------------------------
-
-        try {
-            $issueDate = !empty($row[0]) ? Carbon::parse($row[0])->format('Y-m-d') : $currentDate->format('Y-m-d');
-        } catch (\Exception $e) {
-            $issueDate = $currentDate->format('Y-m-d'); 
-        }
-
-        // 2. Create Items
-        $itemId = DB::table('consolidate_invoice_item')->insertGetId([
-            'unique_id' => (string) Str::uuid(),
-            'id_consolidate_invoice' => $invoiceId,
-            'connection_integrate' => $selected_connection,
-            'id_developer' => $id_developer,
-            'id_customer' => 6,
-            'line_id' => $totalItems + 1,
-            'is_import' => 1,
-            'issue_date' => $issueDate,
-            'invoiced_quantity' => $qty,
-            'price_amount' => $unitPrice,
-            'price_discount' => $discAmt, 
-            'tax' => $taxAmount, 
-            
-            // --- MAPPING based on Schema + Instruction ---
-            'line_extension_amount' => $grossAmount,  // "Total Before price discount"
-            'price_extension_amount' => $netAmount,   // "Total After price discount"
-            // -------------------------------------------
-
-            'item_description' => $desc,
-            'item_clasification_value' => '004',
-            'created_at' => $currentDate,
+    public function importBatch(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt|max:10240',
         ]);
 
-        $totalItems++;
-        $totalGross += $grossAmount;
-        $totalNet += $netAmount;
-        $totalTax += $taxAmount;
-        $totalGrand += $lineTotal; // Accumulates Gross Amount
-        $itemIds[] = $itemId;
+        $isDeveloper = (auth()->check() && auth()->user()->role === 'developer');
+        
+        // Use dropdown for Developer, fallback to Session for Normal User
+        $selected_connection = $isDeveloper ? $request->input('connection_integrate') : session('connection_integrate');
+        $id_developer = $isDeveloper ? auth()->id() : session('id_developer');
+
+        if (!$selected_connection) {
+            return redirect()->back()->with('error', 'No active connection found. Please select a LHDN account.');
+        }
+
+        $file = $request->file('file');
+        if (($handle = fopen($file->getRealPath(), 'r')) === false) {
+            return redirect()->back()->with('error', 'Could not open the file.');
+        }
+
+        $batchUniqueId = (string) Str::uuid();
+        $currentDate = Carbon::now();
+        $invoiceNoToSave = 'CONSO-' . $currentDate->format('YmdHis');
+
+        // 1. Create Header (Initialized)
+        $invoiceId = DB::table('consolidate_invoice')->insertGetId([
+            'unique_id' => $batchUniqueId,
+            'invoice_no' => $invoiceNoToSave,
+            'connection_integrate' => $selected_connection,
+            'id_developer' => $id_developer,
+            'id_customer' => 6, // Default, will update if company_name matches
+            'invoice_status' => 'consolidated',
+            'is_import' => 1,
+            'tax_category_id' => '01', 
+            'tax_scheme_id' => 'OTH',   
+            'created_at' => $currentDate,
+            'updated_at' => $currentDate,
+            'price' => 0,
+            'tax_amount' => 0,
+            'taxable_amount' => 0,
+            'consolidate_complete_total' => 0,
+            'consolidate_total_amount_before' => 0,
+            'consolidate_total_item' => 0,
+        ]);
+
+        // Accumulators
+        $totalItems = 0; 
+        $totalGross = 0; // Accumulates Gross (Before Disc)
+        $totalNet = 0;   // Accumulates Net (After Disc)
+        $totalTax = 0;
+        $totalGrand = 0;
+
+        $itemIds = []; 
+        $rowIndex = 0;
+        $customInvoiceNoFound = false;
+        $headerCustomerUpdated = false;
+
+        while (($row = fgetcsv($handle, 1000, ",")) !== false) {
+            $rowIndex++;
+            if ($rowIndex == 1 || empty($row[0])) continue; 
+
+            // CSV Mapping based on standard 8-column format
+            // 0: invoice_no, 1: company_name, 2: issue_date, 3: description, 4: qty, 5: unit_price, 6: discount_amount, 7: tax_rate
+            $csvInvoiceNo = trim($row[0] ?? '');
+            $companyName  = trim($row[1] ?? '');
+            $csvIssueDate = trim($row[2] ?? '');
+            $desc         = $row[3] ?? 'Imported Item';
+            $qty          = (float)($row[4] ?? 0);
+            $unitPrice    = (float)($row[5] ?? 0);
+            $discAmt      = (float)($row[6] ?? 0); 
+            $taxRate      = (float)($row[7] ?? 0); 
+
+            // Handle Invoice No Override
+            if (!empty($csvInvoiceNo) && !$customInvoiceNoFound) {
+                $invoiceNoToSave = $csvInvoiceNo;
+                $customInvoiceNoFound = true; 
+                DB::table('consolidate_invoice')->where('id_invoice', $invoiceId)->update(['invoice_no' => $invoiceNoToSave]);
+            }
+
+            // Lookup Customer ID by Company Name (Mapping)
+            $customerId = 6; // Default fallback
+            if (!empty($companyName)) {
+                $party = DB::table('customer')
+                    ->where('connection_integrate', $selected_connection)
+                    ->where('registration_name', $companyName)
+                    ->where('is_deleted', 0)
+                    ->first();
+                
+                if ($party) {
+                    $customerId = $party->id_customer;
+                    // Update header customer ID on first match
+                    if (!$headerCustomerUpdated) {
+                        DB::table('consolidate_invoice')->where('id_invoice', $invoiceId)->update(['id_customer' => $customerId]);
+                        $headerCustomerUpdated = true;
+                    }
+                }
+            }
+
+            // --- CALCULATION LOGIC ---
+            // 1. Gross Amount (Total Before Discount)
+            $grossAmount = $qty * $unitPrice;
+
+            // 2. Net Amount (Total After Discount)
+            $netAmount = $grossAmount - $discAmt;
+            if ($netAmount < 0) $netAmount = 0; 
+
+            // 3. Tax Amount (Calculated on Net)
+            $taxAmount = round($netAmount * ($taxRate / 100), 2);
+
+            // 4. Line Total (Net + Tax)
+            $lineTotal = $netAmount + $taxAmount;
+            // -------------------------
+
+            try {
+                $issueDate = !empty($csvIssueDate) ? Carbon::parse($csvIssueDate)->format('Y-m-d') : $currentDate->format('Y-m-d');
+            } catch (\Exception $e) {
+                $issueDate = $currentDate->format('Y-m-d'); 
+            }
+
+            // 2. Create Items
+            $itemId = DB::table('consolidate_invoice_item')->insertGetId([
+                'unique_id' => (string) Str::uuid(),
+                'id_consolidate_invoice' => $invoiceId,
+                'connection_integrate' => $selected_connection,
+                'id_developer' => $id_developer,
+                'id_customer' => $customerId, // Mapped from CSV
+                'line_id' => $totalItems + 1,
+                'is_import' => 1,
+                'issue_date' => $issueDate,
+                'invoiced_quantity' => $qty,
+                'price_amount' => $unitPrice,
+                'price_discount' => $discAmt, 
+                'tax' => $taxAmount, 
+                
+                // --- MAPPING ---
+                'line_extension_amount' => $grossAmount,  // Gross
+                'price_extension_amount' => $netAmount,   // Net
+                
+                'item_description' => $desc,
+                'item_clasification_value' => '004',
+                'created_at' => $currentDate,
+            ]);
+
+            $totalItems++;
+            $totalGross += $grossAmount;
+            $totalNet += $netAmount;
+            $totalTax += $taxAmount;
+            $totalGrand += $lineTotal; 
+            $itemIds[] = $itemId;
+        }
+        fclose($handle);
+
+        // Update Header Totals
+        DB::table('consolidate_invoice')->where('id_invoice', $invoiceId)->update([
+            'consolidate_total_item' => $totalItems,
+            'consolidate_list_sale_item_id' => implode(',', $itemIds),
+            
+            // FIXED MAPPINGS:
+            'price' => round($totalGrand, 2),                            // Payable Grand Total
+            'taxable_amount' => round($totalNet, 2),                     // Net (After Discount)
+            'consolidate_total_amount_before' => round($totalNet, 2),    // Subtotal Excl. Tax
+            'tax_amount' => round($totalTax, 2),                         // Total Tax
+            'consolidate_complete_total' => round($totalGrand, 2),       // Grand Total
+            
+            'updated_at' => now()
+        ]);
+
+        return redirect()->back()->with('success', "Batch imported successfully!");
     }
-    fclose($handle);
 
-    // Update Header Totals
-    DB::table('consolidate_invoice')->where('id_invoice', $invoiceId)->update([
-        'consolidate_total_item' => $totalItems,
-        'consolidate_list_sale_item_id' => implode(',', $itemIds),
-        
-        // MAPPING:
-        'price' => round($totalGross, 2),            // Gross (Before Discount)
-        'taxable_amount' => round($totalNet, 2),     // Net (After Discount)
-        
-        // Header Totals
-        'consolidate_total_amount_before' => round($totalNet, 2), // Standard Taxable Amount
-        'tax_amount' => round($totalTax, 2),
-        
-        // "Line Total" Sum (Which is Gross per instruction)
-        'consolidate_complete_total' => round($totalGrand, 2), 
-        
-        'updated_at' => now()
-    ]);
-
-    return redirect()->back()->with('success', "Batch imported successfully!");
-}
-     /**
-     * Download Template (UPDATED)
+    /**
+     * Download Template
      * - Removed 'Total Price'
-     * - Added 'Invoice No'
+     * - Added 'Invoice No' & 'Company Name'
      */
     public function downloadTemplate()
     {
         $headers = [
             "Content-type" => "text/csv",
-            "Content-Disposition" => "attachment; filename=lhdn_template.csv",
+            "Content-Disposition" => "attachment; filename=consolidate_template.csv",
         ];
 
         $columns = [
-            'Issue Date', 
-            'Qty', 
-            'Unit Price', 
-            'Description', 
-            'Discount Amount', 
-            'Tax Rate (%)', 
-            'Invoice No (Mandatory)' 
+            'invoice_no',      // maps to consolidate_invoice.invoice_no
+            'company_name',    // maps to customer.registration_name
+            'issue_date', 
+            'description',     // maps to consolidate_invoice_item.item_description
+            'qty', 
+            'unit_price', 
+            'discount_amount', 
+            'tax_rate'
         ];
 
         $example = [
+            'INV-CON-001',
+            'Waja Global Services',
             date('Y-m-d'), 
+            'Vehicle Shipping Fee', 
             '1', 
-            '100.00', 
-            'Service Item', 
-            '10.00', 
-            '6', 
-            'INV-2024-001' 
+            '1500.00', 
+            '0.00', 
+            '0'
         ];
 
-        $callback = function() use($columns, $example) {
+        return response()->stream(function() use ($columns, $example) {
             $file = fopen('php://output', 'w');
             fputcsv($file, $columns);
             fputcsv($file, $example);
             fclose($file);
-        };
-
-        return response()->stream($callback, 200, $headers);
+        }, 200, $headers);
     }
 
     /**
      * SUBMIT SELECTED BATCHES TO LISTING INVOICES
-     * (Conversion logic only - No API call)
      */
-/**
-     * SUBMIT SELECTED BATCHES TO LISTING INVOICES
-     */
-public function consolidateSubmitSelected(Request $request)
-{
-    $selectedIds = $request->input('ids', []);
-    if (empty($selectedIds)) {
-        return response()->json(['success' => false, 'message' => 'No batches selected.'], 400);
-    }
-
-    $alreadySubmitted = DB::table('invoice_item')->whereIn('id_consolidate_invoice', $selectedIds)->exists();
-    if ($alreadySubmitted) {
-        return response()->json(['success' => false, 'message' => 'Batches already submitted.'], 400);
-    }
-
-    $invoiceBaseNo = 'CONSOLIDATE-' . now()->format('Ymd-His');
-    $version = 1;
-
-    foreach ($selectedIds as $batchId) {
-        $items = DB::table('consolidate_invoice_item')->where('id_consolidate_invoice', $batchId)->get();
-        if ($items->isEmpty()) continue;
-
-        $targetConnection = $items->first()->connection_integrate;
-        $supplier = DB::table('customer')->where('connection_integrate', $targetConnection)->where('customer_type', 'SUPPLIER')->first();
-        if (!$supplier) continue;
-
-        $chunks = collect($items)->chunk(25);
-        foreach ($chunks as $chunk) {
-            $uniqueId = Str::uuid();
-            $invoiceNo = $invoiceBaseNo . '-V' . $version;
-
-            $invoiceId = DB::table('invoice')->insertGetId([
-                'unique_id' => $uniqueId,
-                'connection_integrate' => $supplier->connection_integrate,
-                'invoice_status' => 'manual',
-                'id_customer' => 6,
-                'id_supplier' => $supplier->id_customer,
-                'invoice_no' => $invoiceNo,
-                'invoice_type_code' => '01',
-                'issue_date' => now(),
-                'tax_category_id' => '01',
-                'tax_scheme_id' => 'OTH',
-                'price' => round($chunk->sum('line_extension_amount') + $chunk->sum('tax'), 2),
-                'taxable_amount' => round($chunk->sum('line_extension_amount'), 2), // FIXED: Tax should be based on Net (Line Extension)
-                'tax_amount' => round($chunk->sum('tax'), 2),
-                'is_import' => 1,
-                'created_at' => now(),
-            ]);
-
-            foreach ($chunk as $index => $item) {
-                DB::table('invoice_item')->insert([
-                    'unique_id' => $uniqueId,
-                    'id_consolidate_invoice' => $item->id_consolidate_invoice,
-                    'id_developer' => $item->id_developer,
-                    'issue_date' => $item->issue_date,
-                    'connection_integrate' => $item->connection_integrate,
-                    'line_id' => $index + 1,
-                    'id_invoice' => $invoiceId,
-                    'invoiced_quantity' => $item->invoiced_quantity,
-                    'line_extension_amount' => round($item->line_extension_amount, 2),
-                    'item_description' => $item->item_description,
-                    'price_amount' => $item->price_amount,
-                    'price_discount' => $item->price_discount,
-                    'price_extension_amount' => $item->price_extension_amount,
-                    'tax' => round($item->tax, 2),
-                    'item_clasification_value' => '004', 
-                    'is_import' => 1,
-                    'created_at' => now()
-                ]);
-            }
-
-            DB::table('consolidate_invoice_item')
-                ->whereIn('id_invoice_item', $chunk->pluck('id_invoice_item'))
-                ->update(['submition_status' => 'submitted', 'updated_at' => now()]);
-
-            $version++;
+    public function consolidateSubmitSelected(Request $request)
+    {
+        $selectedIds = $request->input('ids', []);
+        if (empty($selectedIds)) {
+            return response()->json(['success' => false, 'message' => 'No batches selected.'], 400);
         }
+
+        $alreadySubmitted = DB::table('invoice_item')->whereIn('id_consolidate_invoice', $selectedIds)->exists();
+        if ($alreadySubmitted) {
+            return response()->json(['success' => false, 'message' => 'Batches already submitted.'], 400);
+        }
+
+        $invoiceBaseNo = 'CONSOLIDATE-' . now()->format('Ymd-His');
+        $version = 1;
+
+        foreach ($selectedIds as $batchId) {
+            $items = DB::table('consolidate_invoice_item')->where('id_consolidate_invoice', $batchId)->get();
+            if ($items->isEmpty()) continue;
+
+            $targetConnection = $items->first()->connection_integrate;
+            $supplier = DB::table('customer')->where('connection_integrate', $targetConnection)->where('customer_type', 'SUPPLIER')->first();
+            if (!$supplier) continue;
+
+            $chunks = collect($items)->chunk(25);
+            foreach ($chunks as $chunk) {
+                $uniqueId = Str::uuid();
+                $invoiceNo = $invoiceBaseNo . '-V' . $version;
+
+                // --- HEADER CALCULATION UPDATE ---
+                // We use 'price_extension_amount' (Net) instead of 'line_extension_amount' (Gross)
+                // so that the discount is properly reflected in the total invoice amount.
+                $invoiceId = DB::table('invoice')->insertGetId([
+                    'unique_id' => $uniqueId,
+                    'connection_integrate' => $supplier->connection_integrate,
+                    'invoice_status' => 'manual',
+                    'id_customer' => 6,
+                    'id_supplier' => $supplier->id_customer,
+                    'invoice_no' => $invoiceNo,
+                    'invoice_type_code' => '01',
+                    'issue_date' => now(),
+                    'tax_category_id' => '01',
+                    'tax_scheme_id' => 'OTH',
+                    
+                    // FIXED: Taxable amount is the Net Amount (price_extension_amount)
+                    // Price (Payable) is Net Amount + Tax
+                    'price' => round($chunk->sum('price_extension_amount') + $chunk->sum('tax'), 2),
+                    'taxable_amount' => round($chunk->sum('price_extension_amount'), 2), 
+                    'tax_amount' => round($chunk->sum('tax'), 2),
+                    
+                    'is_import' => 1,
+                    'created_at' => now(),
+                ]);
+
+                foreach ($chunk as $index => $item) {
+                    DB::table('invoice_item')->insert([
+                        'unique_id' => $uniqueId,
+                        'id_consolidate_invoice' => $item->id_consolidate_invoice,
+                        'id_developer' => $item->id_developer,
+                        'issue_date' => $item->issue_date,
+                        'connection_integrate' => $item->connection_integrate,
+                        'line_id' => $index + 1,
+                        'id_invoice' => $invoiceId,
+                        'invoiced_quantity' => $item->invoiced_quantity,
+                        'line_extension_amount' => round($item->line_extension_amount, 2), // Gross
+                        'item_description' => $item->item_description,
+                        'price_amount' => $item->price_amount,
+                        'price_discount' => $item->price_discount,
+                        'price_extension_amount' => $item->price_extension_amount,       // Net
+                        'tax' => round($item->tax, 2),
+                        'item_clasification_value' => '004', 
+                        'is_import' => 1,
+                        'created_at' => now()
+                    ]);
+                }
+
+                DB::table('consolidate_invoice_item')
+                    ->whereIn('id_invoice_item', $chunk->pluck('id_invoice_item'))
+                    ->update(['submission_status' => 'submitted', 'updated_at' => now()]);
+
+                $version++;
+            }
+        }
+        return response()->json(['success' => true]);
     }
-    return response()->json(['success' => true]);
-}
     
     public function view($id)
     {
@@ -329,39 +370,47 @@ public function consolidateSubmitSelected(Request $request)
         return view('consolidate.view', compact('invoice', 'items'));
     }
 
-public function updateItem(Request $request, $id)
-{
-    try {
-        $qty = (float) $request->qty;
-        $unitPrice = (float) $request->price;
-        $discount = (float) $request->discount;
-        $taxRate = (float) $request->tax_rate;
+    public function updateItem(Request $request, $id)
+    {
+        try {
+            $qty = (float) $request->qty;
+            $unitPrice = (float) $request->price;
+            $discount = (float) $request->discount;
+            $taxRate = (float) $request->tax_rate;
 
-        $priceExt = $qty * $unitPrice;
-        $lineExt = $priceExt - $discount;
-        if ($lineExt < 0) $lineExt = 0;
+            // 1. Calculate Gross (Before Discount)
+            $grossAmount = $qty * $unitPrice;
+            
+            // 2. Calculate Net (After Discount)
+            $netAmount = $grossAmount - $discount;
+            if ($netAmount < 0) $netAmount = 0;
 
-        // ROUNDING HERE FIXES THE 8.8634 PROBLEM
-        $taxRM = round($lineExt * ($taxRate / 100), 2);
+            // 3. Tax is calculated on Net
+            $taxRM = round($netAmount * ($taxRate / 100), 2);
 
-        DB::table('consolidate_invoice_item')->where('id_invoice_item', $id)->update([
-            'item_description' => $request->description,
-            'invoiced_quantity' => $qty,
-            'price_amount' => $unitPrice,
-            'price_discount' => $discount,
-            'tax' => $taxRM, 
-            'price_extension_amount' => $priceExt,
-            'line_extension_amount' => $lineExt,
-            'updated_at' => now()
-        ]);
+            DB::table('consolidate_invoice_item')->where('id_invoice_item', $id)->update([
+                'item_description' => $request->description,
+                'invoiced_quantity' => $qty,
+                'price_amount' => $unitPrice,
+                'price_discount' => $discount,
+                'tax' => $taxRM, 
+                
+                // --- THE FIX: CORRECTED MAPPING ---
+                'line_extension_amount' => $grossAmount,  // Gross amount
+                'price_extension_amount' => $netAmount,   // Net amount (Discount applied)
+                // ----------------------------------
+                
+                'updated_at' => now()
+            ]);
 
-        $item = DB::table('consolidate_invoice_item')->where('id_invoice_item', $id)->first();
-        return $this->recalculateParent($item->id_consolidate_invoice);
+            $item = DB::table('consolidate_invoice_item')->where('id_invoice_item', $id)->first();
+            return $this->recalculateParent($item->id_consolidate_invoice);
 
-    } catch (\Exception $e) {
-        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
-}
+
     public function exportCSV(Request $request)
     {
         $ids = explode(',', $request->ids);
@@ -409,34 +458,38 @@ public function updateItem(Request $request, $id)
         return redirect()->back()->with('error', 'PDF Library not found. Please install DomPDF.');
     }
 
-private function recalculateParent($parentId)
-{
-    $items = DB::table('consolidate_invoice_item')->where('id_consolidate_invoice', $parentId)->get();
-    $totalBeforeTax = 0; 
-    $totalTax = 0; 
-    $grandTotal = 0;
+    private function recalculateParent($parentId)
+    {
+        $items = DB::table('consolidate_invoice_item')->where('id_consolidate_invoice', $parentId)->get();
+        $totalBeforeTax = 0; 
+        $totalTax = 0; 
+        $grandTotal = 0;
 
-    foreach($items as $i) {
-        $totalBeforeTax += (float)$i->line_extension_amount; // Sum of Net amounts
-        $totalTax += (float)$i->tax; 
-        $grandTotal += ((float)$i->line_extension_amount + (float)$i->tax);
+        foreach($items as $i) {
+            // FIXED: Use 'price_extension_amount' (Net) instead of 'line_extension_amount' (Gross)
+            $totalBeforeTax += (float)$i->price_extension_amount; 
+            $totalTax += (float)$i->tax; 
+            
+            // Grand total is now Net + Tax
+            $grandTotal += ((float)$i->price_extension_amount + (float)$i->tax);
+        }
+
+        DB::table('consolidate_invoice')->where('id_invoice', $parentId)->update([
+            'consolidate_total_amount_before' => $totalBeforeTax,
+            'tax_amount' => $totalTax,
+            'consolidate_complete_total' => $grandTotal,
+            'price' => $grandTotal,
+            'updated_at' => now()
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'new_subtotal' => number_format($totalBeforeTax, 2),
+            'new_tax' => number_format($totalTax, 2),
+            'new_total' => number_format($grandTotal, 2)
+        ]);
     }
 
-    DB::table('consolidate_invoice')->where('id_invoice', $parentId)->update([
-        'consolidate_total_amount_before' => $totalBeforeTax,
-        'tax_amount' => $totalTax,
-        'consolidate_complete_total' => $grandTotal,
-        'price' => $grandTotal,
-        'updated_at' => now()
-    ]);
-
-    return response()->json([
-        'success' => true,
-        'new_subtotal' => number_format($totalBeforeTax, 2),
-        'new_tax' => number_format($totalTax, 2),
-        'new_total' => number_format($grandTotal, 2)
-    ]);
-}
     public function addItem($invoice_id)
     {
         try {

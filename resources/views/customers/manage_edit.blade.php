@@ -87,11 +87,10 @@
                                 <label class="form-check-label fw-medium" for="selfBillSwitch">Self-bill Supplier</label>
                             </div>
                         </div>
+                        {{-- UPDATED: SST Registration is now a text input --}}
                         <div class="col-md-6">
-                            <div class="form-check form-switch mt-2">
-                                <input class="form-check-input" type="checkbox" name="sst_registration" value="1" id="sstSwitch" {{ $customer->sst_registration == 1 ? 'checked' : '' }}>
-                                <label class="form-check-label fw-medium" for="sstSwitch">SST Registered</label>
-                            </div>
+                            <label class="form-label small fw-semibold">SST Registration No.</label>
+                            <input type="text" name="sst_registration" class="form-control" value="{{ $customer->sst_registration }}" placeholder="Enter SST Number (if applicable)">
                         </div>
                     </div>
                 </div>

@@ -254,9 +254,11 @@ class ClientController extends Controller
     // -------------------------------------------
     // AJAX: UPDATE API VERSION
     // -------------------------------------------
+// -------------------------------------------
+    // AJAX: UPDATE API VERSION
+    // -------------------------------------------
     public function updateApiVersion(Request $request, $id)
     {
-        // 1. Validate Input
         $validator = Validator::make($request->all(), [
             'version' => 'required|in:1.0,1.1'
         ]);
@@ -266,7 +268,7 @@ class ClientController extends Controller
         }
 
         try {
-            // 2. Update Database
+            // 1. Update the version in the database
             DB::table('customer')
                 ->where('id_customer', $id)
                 ->update([
@@ -274,8 +276,31 @@ class ClientController extends Controller
                     'updated_at' => now()
                 ]);
 
-            return response()->json(['success' => true, 'message' => 'API Version Updated']);
+            // 2. Fetch the specific customer record to get their actual details
+            $customer = DB::table('customer')->where('id_customer', $id)->first();
 
+            if (!$customer) {
+                return response()->json(['success' => false, 'message' => 'Customer not found.'], 404);
+            }
+
+            // 3. Assign the actual database values to the variables
+            $intermediaryName = $customer->registration_name;
+            $intermediaryTin  = $customer->tin_no;
+            
+            // Assuming BRN (Business Registration Number) is stored in identification_no
+            $intermediaryBrn  = $customer->identification_no; 
+
+            // 4. Return the dynamic data in the JSON response
+            return response()->json([
+                'success' => true, 
+                'message' => 'API Version Updated',
+                'intermediary' => [
+                    'name' => $intermediaryName,
+                    'tin'  => $intermediaryTin,
+                    'brn'  => $intermediaryBrn
+                ]
+            ]);
+            
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }

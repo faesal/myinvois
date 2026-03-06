@@ -222,109 +222,255 @@ class SelfInvoiceController extends Controller
     /**
      * 6. EXPORT CSV
      */
-    public function export(Request $request)
+ public function export(Request $request)
     {
+        $isSelfBill = $request->query('type') === 'self_bill';
+        $typeCodes = $isSelfBill ? ['11', '12', '13', '14'] : ['01', '02', '03', '04'];
+        
         $query = DB::table('invoice')
-            ->leftJoin('customer as s', 'invoice.id_supplier', '=', 's.id_customer')
-            ->whereIn('invoice.invoice_type_code', ['11', '12', '13', '14'])
-            ->select('invoice.invoice_no', 'invoice.invoice_type_code', 's.registration_name', 's.tin_no', 'invoice.issue_date', 'invoice.price');
+            ->leftJoin('customer as c', 'invoice.id_customer', '=', 'c.id_customer') // Customer for Normal
+            ->leftJoin('customer as s', 'invoice.id_supplier', '=', 's.id_customer') // Supplier for Self-Bill
+            ->whereIn('invoice.invoice_type_code', $typeCodes);
 
+        // Filter by Selected IDs
         if ($request->filled('ids')) {
             $ids = explode(',', $request->ids);
             $query->whereIn('invoice.id_invoice', $ids);
+        } else {
+            // Apply Search Filters (Date, Status, Type Code)
+            if ($request->filled('start_date')) $query->where('invoice.issue_date', '>=', $request->start_date);
+            if ($request->filled('end_date')) $query->where('invoice.issue_date', '<=', $request->end_date);
+            if ($request->filled('status')) $query->where('invoice.submission_status', $request->status);
+            if ($request->filled('invoice_type_code')) $query->where('invoice.invoice_type_code', $request->invoice_type_code);
         }
 
-        $results = $query->get();
-        $filename = "SelfBill_Export_" . date('Ymd_His') . ".csv";
+        $results = $query->select(
+            'invoice.invoice_no', 
+            'invoice.invoice_type_code', 
+            $isSelfBill ? 's.registration_name as party_name' : 'c.registration_name as party_name',
+            $isSelfBill ? 's.tin_no as party_tin' : 'c.tin_no as party_tin',
+            'invoice.issue_date', 
+            'invoice.price'
+        )->get();
 
-        $headers = [
-            "Content-Type" => "text/csv",
-            "Content-Disposition" => "attachment; filename=\"$filename\"",
-        ];
+        $prefix = $isSelfBill ? "SelfBill" : "Invoice";
+        $filename = "{$prefix}_Export_" . date('Ymd_His') . ".csv";
 
-        $callback = function() use ($results) {
+        return response()->stream(function() use ($results, $isSelfBill) {
             $file = fopen('php://output', 'w');
-            fputcsv($file, ['Invoice No', 'Type Code', 'Supplier Name', 'TIN', 'Date', 'Total Price']);
+            fputs($file, "\xEF\xBB\xBF"); // BOM for Excel
+            fputcsv($file, ['Invoice No', 'Type Code', $isSelfBill ? 'Supplier Name' : 'Customer Name', 'TIN', 'Date', 'Total Price']);
 
             foreach ($results as $row) {
-                fputcsv($file, [
-                    $row->invoice_no, 
-                    $row->invoice_type_code, 
-                    $row->registration_name, 
-                    $row->tin_no, 
-                    $row->issue_date, 
-                    $row->price
-                ]);
+                fputcsv($file, [$row->invoice_no, $row->invoice_type_code, $row->party_name, $row->party_tin, $row->issue_date, $row->price]);
             }
             fclose($file);
-        };
-
-        return response()->stream($callback, 200, $headers);
+        }, 200, [
+            "Content-Type" => "text/csv",
+            "Content-Disposition" => "attachment; filename=\"$filename\"",
+        ]);
     }
 
-    /**
+ /**
      * 7. IMPORT CSV
      */
     public function import(Request $request)
     {
         $file = $request->file('csv_file');
-        if (!$file) return back()->with('error', 'Please upload a valid CSV file.');
+        
+        if (!$file) {
+            return back()->with('error', 'Please upload a valid CSV file.');
+        }
+
+        // Get the current connection context
+        $connection = $request->connection_integrate ?? session('connection_integrate');
+
+        if (empty($connection)) {
+            return back()->with('error', 'No connection found. Please select an integration connection before importing.');
+        }
+
+        // Fetch the Owner LHDN Account (The main company issuing these invoices)
+        $ownerAccount = DB::table('customer')
+            ->where('connection_integrate', $connection)
+            ->where('customer_type', 'SUPPLIER') // This identifies the owner account
+            ->where('is_deleted', 0)
+            ->first();
+
+        // Fallback to null if not found
+        $ownerId = $ownerAccount ? $ownerAccount->id_customer : null;
 
         if (($handle = fopen($file->getRealPath(), 'r')) !== false) {
             fgetcsv($handle); // Skip header row
             $count = 0;
+            $errors = [];
 
-            while (($row = fgetcsv($handle, 1000, ',')) !== false) {
-                // Find supplier by TIN
-                $supplier = DB::table('customer')
-                    ->where('tin_no', trim($row[1]))
-                    ->where('is_selfbill_supplier', 1)
-                    ->first();
+            // Begin Transaction to ensure data integrity
+            DB::beginTransaction();
+            try {
+                while (($row = fgetcsv($handle, 1000, ',')) !== false) {
+                    
+                    // Skip completely empty rows at the bottom of CSVs
+                    if (empty(array_filter($row))) {
+                        continue;
+                    }
 
-                // Only insert if supplier found
-                if ($supplier) {
-                    DB::table('invoice')->insert([
-                        'invoice_no' => $row[0],
-                        'id_supplier' => $supplier->id_customer,
-                        'invoice_type_code' => '11',
-                        'issue_date' => $row[3],
-                        'price' => $row[4],
-                        'submission_status' => 'Submitted',
-                        'connection_integrate' => session('connection_integrate'),
+                    $invoiceNo   = trim($row[0] ?? '');
+                    $companyName = trim($row[1] ?? '');
+                    $issueDate   = trim($row[2] ?? '');
+                    $description = trim($row[3] ?? '');
+                    $qty         = floatval(trim($row[4] ?? 0));
+                    $unitPrice   = floatval(trim($row[5] ?? 0));
+                    $discount    = floatval(trim($row[6] ?? 0));
+                    $taxRate     = floatval(trim($row[7] ?? 0));
+
+                    if (empty($invoiceNo) || empty($companyName)) {
+                        $errors[] = "A row was skipped: Missing Invoice Number or Company Name.";
+                        continue;
+                    }
+
+                    // 1. Find Party by Company Name & Connection
+                    $party = DB::table('customer')
+                        ->where('registration_name', $companyName)
+                        ->where('connection_integrate', $connection)
+                        ->where('is_deleted', 0)
+                        ->first();
+
+                    if (!$party) {
+                        $errors[] = "Row '$invoiceNo' skipped: Company '$companyName' is not registered in this connection.";
+                        continue;
+                    }
+
+                    // 2. Dynamic check: Is this row a Self-Bill or a Normal Invoice?
+                    $rowIsSelfBill = ($party->is_selfbill_supplier == 1);
+
+                    // 3. Calculate Totals
+                    $lineExtensionAmount = $qty * $unitPrice;
+                    $taxAmount = $lineExtensionAmount * ($taxRate / 100);
+                    $totalPrice = $lineExtensionAmount + $taxAmount - $discount;
+
+                    // 4. Insert into 'invoice' table (Header)
+                    $invoiceId = DB::table('invoice')->insertGetId([
+                        'invoice_no' => $invoiceNo,
+                        'unique_id' => bin2hex(random_bytes(16)),
+                        'id_developer' => auth()->id() ?? 0, // Fallback to 0
+                        'connection_integrate' => $connection,
+                        
+                        // Self-Bill: CSV Company = Supplier | Owner = Customer
+                        // Normal:    Owner = Supplier | CSV Company = Customer
+                        'id_supplier' => $rowIsSelfBill ? $party->id_customer : $ownerId,
+                        'id_customer' => $rowIsSelfBill ? $ownerId : $party->id_customer,
+                        
+                        // Assign correct LHDN Type Code
+                        'invoice_type_code' => $rowIsSelfBill ? '11' : '01',
+                        
+                        'issue_date' => $issueDate ?: now(),
+                        'price' => $lineExtensionAmount, 
+                        'taxable_amount' => $lineExtensionAmount - $discount,
+                        'tax_amount' => $taxAmount,
+                        
+                        'invoice_status' => 'Pending',
+                        'submission_status' => 'Pending',
+                        'is_import' => 1,
+                        
+                        // LHDN Defaults
+                        'tax_category_id' => '01', 
+                        'tax_scheme_id' => 'OTH',   
+                        'payment_note_term' => 'CASH',
+
                         'created_at' => now(),
+                        'updated_at' => now(),
                     ]);
+
+                    // 5. Insert into 'invoice_item' table (Details)
+                    DB::table('invoice_item')->insert([
+                        'id_invoice' => $invoiceId,
+                        'id_developer' => auth()->id() ?? 0,
+                        'connection_integrate' => $connection,
+                        'item_description' => $description,
+                        'invoiced_quantity' => $qty,
+                        'price_amount' => $unitPrice,
+                        'line_extension_amount' => $lineExtensionAmount,
+                        'price_discount' => $discount,
+                        'tax' => $taxAmount,
+                        'is_import' => 1,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
                     $count++;
                 }
-            }
-            fclose($handle);
-            return back()->with('success', "Successfully imported $count invoices.");
-        }
-        return back()->with('error', 'Could not read file.');
-    }
+                
+                DB::commit();
+                fclose($handle);
 
+                // --- RETURN RESPONSES ---
+                
+                // If 0 records were imported, throw a hard error.
+                if ($count === 0 && count($errors) > 0) {
+                    $errorSummary = implode('<br>', array_slice($errors, 0, 5));
+                    if (count($errors) > 5) $errorSummary .= "<br>...(and more)";
+                    return back()->with('error', "Import Failed. 0 records were imported.<br><br>Reasons:<br>" . $errorSummary);
+                }
+
+                // If some imported, but some skipped
+                if (count($errors) > 0) {
+                    $errorSummary = implode('<br>', array_slice($errors, 0, 5));
+                    if (count($errors) > 5) $errorSummary .= "<br>...(and more)";
+                    return back()->with('warning', "Imported $count records with some skips.<br><br>Errors:<br>" . $errorSummary);
+                }
+
+                // Perfect Import
+                return back()->with('success', "Successfully imported $count records.");
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                fclose($handle);
+                \Log::error("CSV Import Error: " . $e->getMessage());
+                return back()->with('error', 'System Error during import: ' . $e->getMessage());
+            }
+        }
+
+        return back()->with('error', 'Could not read the uploaded file.');
+    }
     /**
      * 8. DOWNLOAD TEMPLATE
      */
-    public function downloadTemplate()
-    {
-        $filename = "SelfBill_Template.csv";
-        $headers = [
-            "Content-Type" => "text/csv",
-            "Content-Disposition" => "attachment; filename=\"$filename\"",
-        ];
+public function downloadTemplate(Request $request)
+{
+    $isSelfBill = $request->query('type') === 'self_bill';
+    $filename = $isSelfBill ? "SelfBill_Template.csv" : "Invoice_Template.csv";
+    
+    // Unified columns matching ConsolidateImport
+    $columns = [
+        'invoice_no',      // maps to invoice.invoice_no
+        'company_name',    // maps to customer.registration_name
+        'issue_date', 
+        'description',     // maps to invoice_item.item_description
+        'qty', 
+        'unit_price', 
+        'discount_amount', 
+        'tax_rate'
+    ];
 
-        $callback = function() {
-            $file = fopen('php://output', 'w');
-            fputcsv($file, ['invoice_no', 'supplier_tin', 'type_code', 'issue_date', 'price']);
-            fputcsv($file, ['SB-10001', 'C1234567890', '11', '2026-01-26', '500.00']);
-            fclose($file);
-        };
+    $example = [
+        $isSelfBill ? 'SB-1001' : 'INV-1001',
+        'Acme Corporation',
+        date('Y-m-d'), 
+        'Professional Services', 
+        '1', 
+        '500.00', 
+        '0.00', 
+        '6'
+    ];
 
-        return response()->stream($callback, 200, $headers);
-    }
-
-    // Helper for Layout
-    private function getLayout($role) {
-        return ($role === 'admin') ? 'layouts.adminLayout' : (($role === 'developer') ? 'layouts.developerLayout' : 'layouts.app');
-    }
+    return response()->stream(function() use ($columns, $example) {
+        $file = fopen('php://output', 'w');
+        fputcsv($file, $columns);
+        fputcsv($file, $example);
+        fclose($file);
+    }, 200, [
+        "Content-Type" => "text/csv",
+        "Content-Disposition" => "attachment; filename=\"$filename\"",
+    ]);
+}
 }

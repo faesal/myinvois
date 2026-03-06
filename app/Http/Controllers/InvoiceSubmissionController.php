@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail; 
 use Illuminate\Support\Facades\Log;
-
+use Illuminate\Support\Facades\Cache;
 class InvoiceSubmissionController extends Controller
 {
     /**
@@ -181,181 +181,273 @@ class InvoiceSubmissionController extends Controller
         ));
     }
 
-public function consolidate(Request $request)
-{
-    $developerId = auth()->user()->id;
-
-    $start = $request->input('start_date', now()->startOfMonth()->toDateString());
-    $end = $request->input('end_date', now()->endOfMonth()->toDateString());
-
-    session(['consolidate_start' => $start]);
-    session(['consolidate_end' => $end]);
-
-    $selectedConnection = $request->input('connection');
-
-    // ---------------------------------------------------
-    // Query Consolidate Invoice Items
-    // ---------------------------------------------------
-    $query = DB::table('consolidate_invoice_item AS cii')
-        ->leftJoin('consolidate_invoice AS ci', 'cii.unique_id', '=', 'ci.unique_id')
-        ->select(
-            'cii.*', 
-            'ci.invoice_no' 
-        )
-        ->whereBetween('cii.issue_date', [$start, $end]);
-
-    // ✅ NEW FILTER: Only show items that are NOT "set" (New Data Only)
-    $query->where(function ($q) {
-        $q->where('cii.is_sent_invoice', 0)
-          ->orWhereNull('cii.is_sent_invoice');
-    });
-
-    // ✅ STATUS CHECK: Only show items that are NOT submitted yet
-    $query->whereNull('cii.submission_status');
-
-    // Apply Connection Filters
-    if ($selectedConnection) {
-        $query->where('cii.connection_integrate', $selectedConnection);
-    } else {
-        $query->where('cii.id_developer', $developerId);
-    }
-
-    $items = $query->orderBy('cii.issue_date')->get();
-
-    // ---------------------------------------------------
-    // Available Connections for dropdown
-    // ---------------------------------------------------
-    $availableConnections = DB::table('customer AS c')
-        ->leftJoin('connection_integrate AS ci', 'c.connection_integrate', '=', 'ci.code')
-        ->select(
-            'c.id_customer',
-            'c.registration_name',
-            'c.connection_integrate',
-            'ci.name AS connection_name',
-            'ci.id_connection'
-        )
-        ->where('c.id_developer', $developerId)
-        ->where('ci.id_developer', $developerId)
-        ->where('c.customer_type', 'SUPPLIER')
-        ->orderBy('c.registration_name', 'ASC')
-        ->get();
-
-    return view('developer.consolidate', compact('items', 'start', 'end', 'availableConnections', 'selectedConnection'));
-}
-
-public function ConsolidateSelected(Request $request)
-{
-    $developerId = auth()->user()->id;
-    $selectedIds = $request->input('selected_items', []);
-    $selected_connection = $request->input('connection');
-
-    if (empty($selectedIds)) {
-        return response()->json(['success' => false, 'message' => 'No items selected.'], 400);
-    }
-
-    // Fetch items
-    $items = DB::table('consolidate_invoice_item')->whereIn('id_invoice_item', $selectedIds)->get();
-
-    if ($items->isEmpty()) {
-        return response()->json(['success' => false, 'message' => 'No items found.'], 400);
-    }
-
-    // Fetch supplier info
-    $customer = DB::table('customer')
-        ->where('connection_integrate', $selected_connection)
-        ->where('customer_type', 'SUPPLIER')
-        ->whereNull('deleted')
-        ->first();
-
-    if (!$customer) {
-        return response()->json(['success' => false, 'message' => 'Supplier connection not found.'], 400);
-    }
-
-    $chunks = collect($items)->chunk(25);
-    $invoiceBaseNo = 'CONSO-' . now()->format('Ymd-His');
-    $version = 1;
+    public function consolidate(Request $request)
+    {
+        $developerId = auth()->user()->id;
+        
+        $start = $request->input('start_date', now()->startOfMonth()->toDateString());
+        $end = $request->input('end_date', now()->endOfMonth()->toDateString());
     
-    $totalProcessedAmount = 0; 
-
-    foreach ($chunks as $chunk) {
-        $uniqueId = (string) Str::uuid();
-        $invoiceNo = $invoiceBaseNo . '-V' . $version;
-
-        // --- CALCULATION LOGIC ---
-        $taxTotal = $chunk->sum('tax');
-        $subtotal = $chunk->sum(function($item) {
-            return ($item->price_amount * $item->invoiced_quantity) - $item->price_discount;
+        session(['consolidate_start' => $start]);
+        session(['consolidate_end' => $end]);
+    
+        $selectedConnection = $request->input('connection');
+    
+        // ---------------------------------------------------
+        // 🚀 CACHE KEY
+        // ---------------------------------------------------
+        $cacheKey = "consolidate_items_{$developerId}_" . md5($start . $end . $selectedConnection);
+    
+        // ---------------------------------------------------
+        // FETCH ITEMS (CACHE 5 MINUTES)
+        // ---------------------------------------------------
+        $items = Cache::remember($cacheKey, 300, function () use ($start, $end, $selectedConnection, $developerId) {
+    
+            $query = DB::table('consolidate_invoice_item AS cii')
+                ->leftJoin('consolidate_invoice AS ci', 'cii.unique_id', '=', 'ci.unique_id')
+                ->select(
+                    'cii.*',
+                    'ci.invoice_no'
+                )
+    
+                // FIX: Detect both DATE and DATETIME
+                ->whereBetween(DB::raw('DATE(cii.issue_date)'), [$start, $end])
+    
+                // Only show items not yet sent
+                ->where(function ($q) {
+                    $q->where('cii.is_sent_invoice', 0)
+                      ->orWhereNull('cii.is_sent_invoice');
+                })
+    
+                // Only show items not submitted
+                ->whereNull('cii.submission_status');
+    
+            // ---------------------------------------------------
+            // FILTER BY CONNECTION OR DEVELOPER
+            // ---------------------------------------------------
+            if ($selectedConnection) {
+                $query->where('cii.connection_integrate', $selectedConnection);
+            } else {
+                $query->where('cii.id_developer', $developerId);
+            }
+    
+            return $query->orderBy('cii.issue_date', 'ASC')->get();
         });
-        $grandTotal = $subtotal + $taxTotal;
-        $totalProcessedAmount += $grandTotal;
+    
+        // ---------------------------------------------------
+        // AVAILABLE CONNECTIONS (CACHE 1 HOUR)
+        // ---------------------------------------------------
+        $connCacheKey = "avail_connections_{$developerId}";
+    
+        $availableConnections = Cache::remember($connCacheKey, 3600, function () use ($developerId) {
+    
+            return DB::table('customer AS c')
+                ->leftJoin('connection_integrate AS ci', 'c.connection_integrate', '=', 'ci.code')
+                ->select(
+                    'c.id_customer',
+                    'c.registration_name',
+                    'c.connection_integrate',
+                    'ci.name AS connection_name',
+                    'ci.id_connection'
+                )
+                ->where('c.id_developer', $developerId)
+                ->where('ci.id_developer', $developerId)
+                ->where('c.customer_type', 'SUPPLIER')
+                ->orderBy('c.registration_name', 'ASC')
+                ->get();
+    
+        });
+    
+        return view(
+            'developer.consolidate',
+            compact(
+                'items',
+                'start',
+                'end',
+                'availableConnections',
+                'selectedConnection'
+            )
+        );
+    }
+public function ConsolidateSelected(Request $request)
+    {
+        $developerId = auth()->user()->id;
+        
+        // FIX 1: Bypass PHP max_input_vars limit by decoding JSON string from frontend
+        $rawItems = $request->input('selected_items');
+        $selectedIds = is_string($rawItems) ? json_decode($rawItems, true) : (array) $rawItems;
 
-        // 1. Create Invoice Header
-        $invoiceId = DB::table('invoice')->insertGetId([
-            'unique_id' => $uniqueId,
-            'connection_integrate' => $selected_connection,
-            'invoice_status' => 'manual',
-            'id_developer' => $developerId,
-            'id_customer' => 6, 
-            'id_supplier' => $customer->id_customer,
-            'invoice_no' => $invoiceNo,
-            'invoice_type_code' => '01',
-            'issue_date' => now(),
-            'tax_scheme_id' => 'OTH',
-            'tax_category_id'=> '01',
-            'price' => $grandTotal,
-            'taxable_amount' => $subtotal,
-            'tax_amount' => $taxTotal,
-            'payment_note_term' => 'CASH',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $selected_connection = $request->input('connection');
 
-        // 2. Create Invoice Items
-        foreach ($chunk as $index => $item) {
-            $lineNetAmount = ($item->price_amount * $item->invoiced_quantity) - $item->price_discount;
-
-            DB::table('invoice_item')->insert([
-                'id_developer' => $developerId,
-                'unique_id' => $uniqueId, 
-                'id_invoice' => $invoiceId, 
-                'issue_date' => $item->issue_date,
-                'connection_integrate' => $item->connection_integrate,
-                'sale_id_integrate' => $item->sale_id_integrate,
-                'id_consolidate_invoice' => $item->id_consolidate_invoice,
-                'line_id' => $index + 1,
-                'id_customer' => $customer->id_customer,
-                'invoiced_quantity' => $item->invoiced_quantity,
-                'line_extension_amount' => $lineNetAmount, 
-                'item_description' => $item->item_description,
-                'price_amount' => $item->price_amount,
-                'price_discount' => $item->price_discount,
-                'price_extension_amount' => $item->price_extension_amount,
-                'tax' => $item->tax, 
-                'item_clasification_value' => '004',
-                'created_at' => now(),
-            ]);
+        if (empty($selectedIds)) {
+            return response()->json(['success' => false, 'message' => 'No items selected.'], 400);
         }
 
-        // 3. Update Status (Mark as SET)
-        DB::table('consolidate_invoice_item')
-            ->whereIn('id_invoice_item', $chunk->pluck('id_invoice_item'))
-            ->update([
-                'submission_status' => 'submitted', 
-                'is_sent_invoice' => 1, // ✅ New Flag
-                'updated_at' => now()
+        // Fetch items
+        $items = DB::table('consolidate_invoice_item')->whereIn('id_invoice_item', $selectedIds)->get();
+
+        if ($items->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'No items found.'], 400);
+        }
+
+        // FIX 3: Catch connection_integrate if the frontend dropdown is somehow empty
+        if (empty($selected_connection)) {
+            $selected_connection = $items->first()->connection_integrate;
+        }
+
+        // Fetch supplier info
+        $customer = DB::table('customer')
+            ->where('connection_integrate', $selected_connection)
+            ->where('customer_type', 'SUPPLIER')
+            ->whereNull('deleted')
+            ->first();
+
+        if (!$customer) {
+            return response()->json(['success' => false, 'message' => 'Supplier connection not found.'], 400);
+        }
+
+        // Chunking (with fallback if env is missing)
+        $chunks = collect($items)->chunk(env('MYINVOIS_INVOICE_CHUNK', 50));
+        $invoiceBaseNo = 'CONSO-' . now()->format('Ymd-His');
+        $version = 1;
+        
+        $totalProcessedAmount = 0; 
+        
+        // NEW: Track counts for the response message
+        $totalBatches = $chunks->count();
+        $totalItemsSubmitted = $items->count();
+        
+        // FIX 4a: Array to collect exceptions during loop
+        $submissionErrors = [];
+
+        foreach ($chunks as $chunk) {
+            $uniqueId = (string) Str::uuid();
+            $invoiceNo = $invoiceBaseNo . '-V' . $version;
+
+            $taxTotal = $chunk->sum('tax');
+            
+            $subtotal = $chunk->sum(function($item) {
+                $calc = ($item->price_amount * $item->invoiced_quantity) - $item->price_discount;
+                return $calc > 0 ? $calc : (float) $item->line_extension_amount;
+            });
+            
+            $grandTotal = $subtotal + $taxTotal;
+            $totalProcessedAmount += $grandTotal;
+
+            // 1. Create Invoice Header
+            $invoiceId = DB::table('invoice')->insertGetId([
+                'unique_id' => $uniqueId,
+                'connection_integrate' => $selected_connection,
+                'invoice_status' => 'manual',
+                'submission_status' => 'Pending', 
+                'is_failed' => 0,
+                'id_developer' => $developerId,
+                'id_customer' => 6, 
+                'id_supplier' => $customer->id_customer,
+                'invoice_no' => $invoiceNo,
+                'invoice_type_code' => '01',
+                'issue_date' => now(),
+                'tax_scheme_id' => 'OTH',
+                'tax_category_id'=> '01',
+                'price' => number_format((float)$grandTotal, 2, '.', ''), 
+                'taxable_amount' => number_format((float)$subtotal, 2, '.', ''),
+                'tax_amount' => number_format((float)$taxTotal, 2, '.', ''),
+                'payment_note_term' => 'ELECTRONIC TRANSFER',
+                
+                // FIX 2: Create sale_id_integrate mapping in the parent invoice table
+                'sale_id_integrate' => $chunk->first()->sale_id_integrate,
+                
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
 
-        $version++;
-    }
+            // 2. Create Invoice Items
+            foreach ($chunk as $index => $item) {
+                $calcNet = ($item->price_amount * $item->invoiced_quantity) - $item->price_discount;
+                $lineNetAmount = $calcNet > 0 ? $calcNet : (float) $item->line_extension_amount;
+                
+                $qty = $item->invoiced_quantity > 0 ? $item->invoiced_quantity : 1;
+                $priceAmt = $item->price_amount > 0 ? $item->price_amount : $lineNetAmount;
 
-    $formattedTotal = number_format($totalProcessedAmount, 2);
+                DB::table('invoice_item')->insert([
+                    'id_developer' => $developerId,
+                    'unique_id' => $uniqueId, 
+                    'id_invoice' => $invoiceId, 
+                    'issue_date' => $item->issue_date,
+                    'connection_integrate' => $item->connection_integrate,
+                    'sale_id_integrate' => $item->sale_id_integrate,
+                    'id_consolidate_invoice' => $item->id_consolidate_invoice,
+                    'line_id' => $index + 1,
+                    'id_customer' => $customer->id_customer,
+                    'invoiced_quantity' => $qty,
+                    'line_extension_amount' => number_format((float)$lineNetAmount, 2, '.', ''), 
+                    'item_description' => $item->item_description ?: 'Consolidated Item',
+                    'price_amount' => number_format((float)$priceAmt, 2, '.', ''),
+                    'price_discount' => number_format((float)$item->price_discount, 2, '.', ''),
+                    'price_extension_amount' => number_format((float)$lineNetAmount, 2, '.', ''),
+                    'tax' => number_format((float)$item->tax, 2, '.', ''), 
+                    'item_clasification_value' => '004',
+                    'created_at' => now(),
+                ]);
+            }
 
-    return response()->json([
-        'success' => true, 
-        'message' => "Consolidation successful! Total Amount: RM {$formattedTotal}"
-    ]);
-}
-    public function view($id_invoice)
+            // 3. Update Status (Mark as SET)
+            DB::table('consolidate_invoice_item')
+                ->whereIn('id_invoice_item', $chunk->pluck('id_invoice_item'))
+                ->update([
+                    'submission_status' => 'submitted', 
+                    'is_sent_invoice' => 1, 
+                    'updated_at' => now()
+                ]);
+
+            // 4. LHDN SUBMISSION LOGIC
+            try {
+                //session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'invoice_type_code', 'is_selfbilled']);
+                //session(['consolidate_status' => '1']); 
+                //session(['invoice_unique_id' => $uniqueId, 'invoice_type_code' => '01']);
+                
+                //$model = new \App\Models\eInvoisModel($selected_connection);
+                //$model->submit($invoiceId);
+
+                /*DB::table('invoice')->where('id_invoice', $invoiceId)->update([
+                    'submission_status' => 'Submitted',
+                    'updated_at' => now()
+                ]);*/
+            } catch (\Exception $e) {
+                \Log::error("Failed to submit Manual-Consolidate Inv #{$invoiceNo}: " . $e->getMessage());
+                DB::table('invoice')->where('id_invoice', $invoiceId)->update([
+                    'submission_status' => 'Failed',
+                    'is_failed' => 1,
+                    'updated_at' => now()
+                ]);
+                
+                // FIX 4b: Catch the actual LHDN exception message for the popup
+                $submissionErrors[] = "Invoice {$invoiceNo}: " . $e->getMessage();
+            }
+
+            $version++;
+        }
+
+        $formattedTotal = number_format($totalProcessedAmount, 2);
+
+        // FIX 4c: If any items failed, return a 500 error to trigger the SweetAlert popup
+        if (count($submissionErrors) > 0) {
+            // Limit to showing the first 3 errors so the popup doesn't overflow the screen
+            $errorSummary = implode("<br>", array_slice($submissionErrors, 0, 3));
+            if (count($submissionErrors) > 3) $errorSummary .= "<br>...(and more)";
+            
+            return response()->json([
+                'success' => false, 
+                'message' => "Items saved, but LHDN rejected some:<br><br>" . $errorSummary
+            ], 500); 
+        }
+
+        // NEW: Updated Success Response
+        return response()->json([
+            'success' => true, 
+            'message' => "Consolidation successful! \n\nCreated {$totalBatches} batches containing {$totalItemsSubmitted} items.\nTotal Amount: RM {$formattedTotal}"
+        ]);
+    }    public function view($id_invoice)
     {
         return "Invoice detailed page coming soon. ID: " . $id_invoice;
     }
@@ -663,10 +755,10 @@ public function autoConsolidate(Request $request)
         return response()->json(['success' => true, 'message' => 'No scheduled consolidations or retries due.']);
     }
 
-    // 250 items / 5 items per invoice = 50 Invoices handled per Cron (+10 Retries)
-    // This guarantees the cron finishes safely under the 60-second limit.
-    $batchSize = 250; 
-    $itemsPerInvoice = 25;
+    // Dynamic configuration from .env
+    $itemsPerInvoice = env('MYINVOIS_INVOICE_CHUNK');
+    // Batch size for processing (e.g., pulling enough items to fill roughly 2.5 invoices)
+    $batchSize = $itemsPerInvoice * 2.5; 
 
     foreach ($candidates as $candidate) {
         $developerId = $candidate->id_developer;
@@ -714,6 +806,7 @@ public function autoConsolidate(Request $request)
             if ($supplier) {
                 \Session::put('connection_integrate', $connection);
                 
+                // Chunking items based on .env value
                 $chunks = $itemsToProcess->chunk($itemsPerInvoice); 
                 $invoiceBaseNo = 'AUTO-' . now()->format('Ymd-His');
                 
@@ -727,13 +820,11 @@ public function autoConsolidate(Request $request)
                     // --- 1. CALCULATE HEADER TOTALS ---
                     $totalTax = $chunk->sum('tax');
                     
-                    // Calculate Total Net Amount (Sum of: Gross - Discount)
                     $totalNet = $chunk->sum(function($item) {
                         $gross = $item->price_amount * $item->invoiced_quantity;
                         return $gross - $item->price_discount;
                     });
                     
-                    // Calculate Payable Amount (Net + Tax)
                     $payableAmount = $totalNet + $totalTax;
 
                     // --- 2. INSERT INVOICE HEADER ---
@@ -752,9 +843,8 @@ public function autoConsolidate(Request $request)
                         'tax_scheme_id' => 'OTH',
                         'tax_category_id'=> '01',
                         
-                        // MAPPED TOTALS:
-                        'price' => number_format((float)$payableAmount, 2, '.', ''), // Final Payable
-                        'taxable_amount' => number_format((float)$totalNet, 2, '.', ''), // Net Total
+                        'price' => number_format((float)$payableAmount, 2, '.', ''), 
+                        'taxable_amount' => number_format((float)$totalNet, 2, '.', ''), 
                         'tax_amount' => number_format((float)$totalTax, 2, '.', ''),
                         
                         'payment_note_term' => 'CASH',
@@ -779,9 +869,8 @@ public function autoConsolidate(Request $request)
                             'id_customer' => $supplier->id_customer,
                             'invoiced_quantity' => $item->invoiced_quantity,
                             
-                            // ITEM MAPPINGS:
-                            'line_extension_amount' => number_format((float)$grossAmount, 2, '.', ''), // Gross
-                            'price_extension_amount' => number_format((float)$netAmount, 2, '.', ''), // Net
+                            'line_extension_amount' => number_format((float)$grossAmount, 2, '.', ''), 
+                            'price_extension_amount' => number_format((float)$netAmount, 2, '.', ''), 
                             
                             'item_description' => $item->item_description,
                             'price_amount' => number_format((float)$item->price_amount, 2, '.', ''),
@@ -814,7 +903,6 @@ public function autoConsolidate(Request $request)
                     } catch (\Exception $e) {
                         \Log::error("Failed to submit Auto-Consolidate Inv #{$invoiceNo}: " . $e->getMessage());
                         
-                        // IF NEW INVOICE FAILS: Mark is_failed = 1 so the retry loop above grabs it next time!
                         \DB::table('invoice')->where('id_invoice', $invoiceId)->update([
                             'submission_status' => 'Failed',
                             'is_failed' => 1,
@@ -848,8 +936,7 @@ public function autoConsolidate(Request $request)
         'success' => true,
         'message' => "Cycle complete. Retried {$processedRetries} failed invoices. Processed {$processedBatches} new batches."
     ]);
-}
-    // Helper to Check Remaining Items
+}    // Helper to Check Remaining Items
     private function checkAndFinalize($developerId, $connection) {
         $remainingCount = \DB::table('consolidate_invoice_item')
             ->where('id_developer', $developerId)
@@ -923,4 +1010,263 @@ public function autoConsolidate(Request $request)
                 ->update(['last_consolidate' => now(), 'next_consolidate' => $nextDate]);
         }
     }
+
+    /**
+     * Export Unified Invoices (Normal & Self Bill)
+     */
+    public function export(Request $request)
+    {
+        $developerId = auth()->user()->id;
+
+        $query = DB::table('invoice AS i')
+            ->leftJoin('customer AS c', 'i.id_supplier', '=', 'c.id_customer')
+            ->leftJoin('invoice_type AS it', 'i.invoice_type_code', '=', 'it.code') // 👉 ADDED: Join to get the Type Name
+            ->where('c.id_developer', $developerId)
+            ->where('c.customer_type', 'SUPPLIER');
+
+        // Filter by Selected IDs
+        if ($request->filled('ids')) {
+            $ids = explode(',', $request->ids);
+            $query->whereIn('i.id_invoice', $ids);
+        } else {
+            // Apply Search Filters (Date, Status, Connection)
+            if ($request->filled('start_date')) $query->whereDate('i.issue_date', '>=', $request->start_date);
+            if ($request->filled('end_date')) $query->whereDate('i.issue_date', '<=', $request->end_date);
+            if ($request->filled('status') && $request->status !== 'ALL') $query->where('i.submission_status', $request->status);
+            if ($request->filled('connection_integrate') && $request->connection_integrate !== 'ALL') $query->where('i.connection_integrate', $request->connection_integrate);
+            
+            // 👉 ADDED: Handle Specific Export Type (e.g., from an Export Dropdown) or Main Filter
+            if ($request->filled('invoice_type_code')) {
+                $query->where('i.invoice_type_code', $request->invoice_type_code);
+            } elseif ($request->filled('invoice_type') && $request->invoice_type !== 'ALL') {
+                $query->where('i.invoice_type_code', $request->invoice_type);
+            }
+        }
+
+        $results = $query->select(
+            'i.invoice_no', 
+            'i.invoice_type_code', 
+            'it.description as invoice_type_name', // 👉 ADDED: Select Type Description
+            'c.registration_name as supplier_name',
+            'c.tin_no as supplier_tin',
+            'i.submission_status',
+            'i.issue_date', 
+            'i.price'
+        )->orderBy('i.issue_date', 'desc')->get();
+
+        $filename = "Invoices_Export_" . date('Ymd_His') . ".csv";
+
+        return response()->stream(function() use ($results) {
+            $file = fopen('php://output', 'w');
+            fputs($file, "\xEF\xBB\xBF"); // BOM for Excel
+            
+            // 👉 ADDED 'Type Description' column to the CSV headers
+            fputcsv($file, ['Invoice No', 'Type Code', 'Type Description', 'Status', 'Supplier Name', 'TIN', 'Date', 'Total Price']);
+
+            foreach ($results as $row) {
+                fputcsv($file, [
+                    $row->invoice_no, 
+                    $row->invoice_type_code, 
+                    $row->invoice_type_name, // 👉 ADDED: Output Type Name in CSV
+                    $row->submission_status,
+                    $row->supplier_name, 
+                    $row->supplier_tin, 
+                    $row->issue_date, 
+                    $row->price
+                ]);
+            }
+            fclose($file);
+        }, 200, [
+            "Content-Type" => "text/csv",
+            "Content-Disposition" => "attachment; filename=\"$filename\"",
+        ]);
+    }
+    /**
+     * Export Consolidated Items (Selected & All)
+     */
+    public function exportConsolidate(Request $request)
+    {
+        $developerId = auth()->user()->id;
+
+        $start = $request->input('start_date');
+        $end = $request->input('end_date');
+        $selectedConnection = $request->input('connection');
+
+        $query = DB::table('consolidate_invoice_item AS cii')
+            ->leftJoin('consolidate_invoice AS ci', 'cii.unique_id', '=', 'ci.unique_id')
+            ->select(
+                'ci.invoice_no', // ✅ FIXED: Changed from cii.invoice_no to ci.invoice_no
+                'cii.sale_id_integrate',
+                'cii.item_description',
+                'cii.invoiced_quantity',
+                'cii.tax',
+                'cii.line_extension_amount',
+                'cii.connection_integrate',
+                'cii.issue_date'
+            );
+
+        // ✅ ADDED: Export Selected Logic
+        if ($request->filled('ids')) {
+            $ids = explode(',', $request->ids);
+            $query->whereIn('cii.id_invoice_item', $ids);
+        } else {
+            // Export All (Current Search) Logic
+            if ($start && $end) {
+                $query->whereBetween('cii.issue_date', [$start, $end]);
+            }
+
+            $query->where(function ($q) {
+                $q->where('cii.is_sent_invoice', 0)
+                  ->orWhereNull('cii.is_sent_invoice');
+            });
+            $query->whereNull('cii.submission_status');
+
+            if ($selectedConnection) {
+                $query->where('cii.connection_integrate', $selectedConnection);
+            } else {
+                $query->where('cii.id_developer', $developerId);
+            }
+        }
+
+        $results = $query->orderBy('cii.issue_date')->get();
+        $filename = "Consolidate_Items_Export_" . date('Ymd_His') . ".csv";
+
+        return response()->stream(function() use ($results) {
+            $file = fopen('php://output', 'w');
+            fputs($file, "\xEF\xBB\xBF"); // BOM for Excel
+
+            fputcsv($file, ['Invoice No.', 'Sale ID', 'Item Name', 'Quantity', 'Tax (RM)', 'Total (RM)', 'Connection', 'Date']);
+
+            foreach ($results as $row) {
+                fputcsv($file, [
+                    $row->invoice_no ?? '-',
+                    $row->sale_id_integrate,
+                    $row->item_description,
+                    $row->invoiced_quantity,
+                    number_format((float)$row->tax, 2, '.', ''),
+                    number_format((float)$row->line_extension_amount, 2, '.', ''),
+                    $row->connection_integrate,
+                    \Carbon\Carbon::parse($row->issue_date)->format('d-m-Y H:i:s')
+                ]);
+            }
+            fclose($file);
+        }, 200, [
+            "Content-Type" => "text/csv",
+            "Content-Disposition" => "attachment; filename=\"$filename\"",
+        ]);
+    }
+    /**
+     * Fetch Consolidated Data for DataTables AJAX
+     */
+/**
+     * Fetch Consolidated Data for DataTables AJAX
+     */
+    public function getConsolidateData(Request $request)
+    {
+        $developerId = auth()->user()->id;
+
+        $start_date = $request->input('start_date');
+        $end_date = $request->input('end_date');
+        $selectedConnection = $request->input('connection');
+
+        $query = DB::table('consolidate_invoice_item AS cii')
+            ->leftJoin('consolidate_invoice AS ci', 'cii.unique_id', '=', 'ci.unique_id')
+            ->select('cii.*', 'ci.invoice_no');
+
+        if ($start_date && $end_date) {
+            $queryStart = \Carbon\Carbon::parse($start_date)->startOfDay()->format('Y-m-d H:i:s');
+            $queryEnd = \Carbon\Carbon::parse($end_date)->endOfDay()->format('Y-m-d H:i:s');
+            $query->whereBetween('cii.issue_date', [$queryStart, $queryEnd]);
+        }
+
+        $query->where(function ($q) {
+            $q->where('cii.is_sent_invoice', 0)
+              ->orWhereNull('cii.is_sent_invoice');
+        });
+
+        $query->where(function ($q) {
+            $q->whereNull('cii.submission_status')
+              ->orWhere('cii.submission_status', '');
+        });
+
+        if (!empty($selectedConnection)) {
+            $query->where('cii.connection_integrate', $selectedConnection);
+        } else {
+            $query->where('cii.id_developer', $developerId);
+        }
+
+        $totalRecords = $query->count();
+
+        $searchValue = $request->input('search.value');
+        if (!empty($searchValue)) {
+            $query->where(function($q) use ($searchValue) {
+                $q->where('ci.invoice_no', 'like', "%{$searchValue}%")
+                  ->orWhere('cii.sale_id_integrate', 'like', "%{$searchValue}%")
+                  ->orWhere('cii.item_description', 'like', "%{$searchValue}%")
+                  ->orWhere('cii.connection_integrate', 'like', "%{$searchValue}%");
+            });
+        }
+
+        $filteredRecords = $query->count();
+
+        // 👉 Calculate totals across all filtered pages BEFORE pagination is applied
+        $totalsQuery = clone $query;
+        $totalTaxSum = (float) $totalsQuery->sum('cii.tax');
+        $totalAmountSum = (float) $totalsQuery->sum('cii.line_extension_amount');
+
+        // Handle Sorting
+        $orderColumnIndex = $request->input('order.0.column');
+        $orderDir = $request->input('order.0.dir', 'asc');
+        
+        $columns = [
+            1 => 'ci.invoice_no',
+            2 => 'cii.sale_id_integrate',
+            3 => 'cii.item_description',
+            4 => 'cii.invoiced_quantity',
+            5 => 'cii.tax',
+            6 => 'cii.line_extension_amount',
+            7 => 'cii.connection_integrate',
+            8 => 'cii.issue_date',
+        ];
+
+        if (isset($columns[$orderColumnIndex])) {
+            $query->orderBy($columns[$orderColumnIndex], $orderDir);
+        } else {
+            $query->orderBy('cii.issue_date', 'desc'); 
+        }
+
+        // Handle Pagination
+        $start_offset = $request->input('start', 0);
+        $length = $request->input('length', 30);
+        if ($length != -1) { 
+            $query->offset($start_offset)->limit($length);
+        }
+
+        $items = $query->get();
+
+        $data = [];
+        foreach ($items as $item) {
+            $data[] = [
+                'id_invoice_item' => $item->id_invoice_item, 
+                'invoice_no' => $item->invoice_no,
+                'sale_id_integrate' => $item->sale_id_integrate,
+                'item_description' => $item->item_description,
+                'invoiced_quantity' => $item->invoiced_quantity,
+                'tax' => $item->tax,
+                'line_extension_amount' => $item->line_extension_amount,
+                'connection_integrate' => $item->connection_integrate,
+                'issue_date' => $item->issue_date ? \Carbon\Carbon::parse($item->issue_date)->format('d-m-Y H:i:s') : '-',
+            ];
+        }
+
+        return response()->json([
+            "draw" => intval($request->input('draw')),
+            "recordsTotal" => $totalRecords,
+            "recordsFiltered" => $filteredRecords,
+            "totalTaxSum" => $totalTaxSum,       // Sent to frontend
+            "totalAmountSum" => $totalAmountSum, // Sent to frontend
+            "data" => $data
+        ]);
+    }
 }
+

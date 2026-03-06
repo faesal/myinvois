@@ -80,10 +80,25 @@
                 </div>
 
                 <div class="{{ Auth::user()->role === 'subscriber' ? 'col-md-12' : 'col-md-9' }} d-flex justify-content-end gap-2 flex-wrap">
-                    {{-- Export Data Button (Triggers Checkbox Form via POST) --}}
-                    <button type="button" class="btn btn-light border shadow-sm btn-sm px-3" onclick="submitExportForm()">
-                        <i class="ph ph-file-arrow-down me-1"></i> Export Data
-                    </button>
+                    
+                    {{-- Export Data Dropdown --}}
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-light border shadow-sm btn-sm px-3 dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="ph ph-file-arrow-down me-1"></i> Export Data
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size: 0.85rem;">
+                            <li>
+                                <a class="dropdown-item py-2" href="#" onclick="submitExportForm('selected'); return false;">
+                                    <i class="ph ph-check-square me-2 text-primary"></i> Export Selected (Current Page)
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item py-2" href="#" onclick="submitExportForm('all'); return false;">
+                                    <i class="ph ph-database me-2 text-success"></i> Export ALL Matching Search
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
 
                     <button type="button" class="btn btn-light border shadow-sm btn-sm px-3" data-bs-toggle="modal" data-bs-target="#importModal">
                         <i class="ph ph-file-arrow-up me-1"></i> Import
@@ -122,7 +137,7 @@
                                 <th>Registration Name</th>
                                 <th>ID No</th>
                                 <th>Type</th>
-                                <th>SST</th>
+                                <th>SST No</th>
                                 <th>Phone</th>
                                 <th>Email</th>
                                 <th class="text-center" style="width: 100px;">Actions</th>
@@ -147,8 +162,8 @@
                                 <td>{{ $customer->identification_no ?? '-' }}</td>
                                 <td class="text-uppercase text-muted small">{{ $customer->identification_type ?? '-' }}</td>
                                 <td>
-                                    @if($customer->sst_registration == 1)
-                                        <i class="ph ph-check-circle text-success fs-5"></i>
+                                    @if(!empty($customer->sst_registration) && $customer->sst_registration != '0')
+                                        <span class="fw-medium text-dark">{{ $customer->sst_registration == '1' ? 'Yes' : $customer->sst_registration }}</span>
                                     @else
                                         <i class="ph ph-minus text-muted opacity-50"></i>
                                     @endif
@@ -210,8 +225,23 @@
             </div>
             <form action="{{ route('manage_customer.import') }}" method="POST" enctype="multipart/form-data">
                 @csrf
-                <input type="hidden" name="lhdn_cust_id" value="{{ request('lhdn_cust_id') }}">
                 <div class="modal-body px-4">
+
+                    {{-- Dropdown to assign LHDN Account for Import --}}
+                    @if(Auth::user()->role !== 'subscriber')
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted">TARGET LHDN ACCOUNT</label>
+                        <select name="import_connection_code" class="form-select" required>
+                            <option value="">-- Select Account --</option>
+                            @foreach($lhdnAccounts as $acc)
+                                <option value="{{ $acc->code }}">
+                                    {{ strtoupper($acc->supplier_name ?? $acc->connection_name ?? $acc->code) }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @endif
+
                     <div class="mb-4">
                         <label class="form-label fw-bold small text-muted">CSV FILE</label>
                         <input type="file" name="csv_file" class="form-control" accept=".csv" required>
@@ -225,7 +255,7 @@
                                 <p class="mb-0 text-muted extra-small">Ensure headers match exactly</p>
                             </div>
                         </div>
-                        <a href="{{ route('manage_customer.download_template') }}" class="btn btn-white btn-sm border shadow-sm px-3 text-nowrap">
+                        <a href="{{ route('manage_customer.download_template') }}" class="btn btn-white btn-sm border shadow-sm px-3 text-nowrap bg-white">
                             <i class="ph ph-download-simple me-1"></i> Download
                         </a>
                     </div>
@@ -245,21 +275,45 @@
 </div>
 
 <script>
-    // Checkbox "Select All" Logic
+    // Checkbox "Select All" Logic (Selects current page only)
     document.getElementById('selectAll').addEventListener('change', function() {
         const checkboxes = document.querySelectorAll('.row-checkbox');
         checkboxes.forEach(cb => cb.checked = this.checked);
     });
 
-    // Helper to submit export form
-    function submitExportForm() {
-        const selected = document.querySelectorAll('.row-checkbox:checked');
-        if (selected.length === 0) {
-            if (!confirm('No customers selected. Export all matching search/filter results?')) {
-                return;
+    // Smart Export Logic
+    function submitExportForm(mode) {
+        const exportForm = document.getElementById('exportForm');
+        
+        // Clean up any old hidden inputs
+        exportForm.querySelectorAll('.dynamic-filter').forEach(el => el.remove());
+
+        if (mode === 'selected') {
+            // Scenario 1: Export only what is checked on the screen
+            const selected = document.querySelectorAll('.row-checkbox:checked');
+            if (selected.length === 0) {
+                alert('Please select at least one customer to export.');
+                return; // Stop form submission
             }
+        } 
+        else if (mode === 'all') {
+            // Scenario 2: Export EVERYTHING matching current filters
+            // Uncheck all boxes first so the backend ignores selected_ids
+            document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
+            document.getElementById('selectAll').checked = false;
+            
+            // Grab the current search and dropdown filters
+            const lhdnCustId = document.querySelector('select[name="lhdn_cust_id"]')?.value || 
+                               document.querySelector('input[name="lhdn_cust_id"]')?.value || '';
+            const searchVal = document.querySelector('input[name="search"]')?.value || '';
+            
+            // Attach them to the form
+            if (lhdnCustId) exportForm.insertAdjacentHTML('beforeend', `<input type="hidden" name="lhdn_cust_id" value="${lhdnCustId}" class="dynamic-filter">`);
+            if (searchVal) exportForm.insertAdjacentHTML('beforeend', `<input type="hidden" name="search" value="${searchVal}" class="dynamic-filter">`);
         }
-        document.getElementById('exportForm').submit();
+
+        // Submit the form
+        exportForm.submit();
     }
 
     // Helper to delete customer

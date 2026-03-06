@@ -109,8 +109,9 @@
                         @foreach($items as $item)
                         @php
                             $calculatedRate = 0;
-                            if($item->line_extension_amount > 0 && $item->tax > 0) {
-                                $calculatedRate = round(($item->tax / $item->line_extension_amount) * 100, 2);
+                            // FIXED: Changed line_extension_amount to price_extension_amount (Net Amount)
+                            if($item->price_extension_amount > 0 && $item->tax > 0) {
+                                $calculatedRate = round(($item->tax / $item->price_extension_amount) * 100, 2);
                             }
                         @endphp
                         <tr id="row-{{ $item->id_invoice_item }}" class="item-row">
@@ -136,7 +137,8 @@
                                 RM <span id="tax-rm-{{ $item->id_invoice_item }}">{{ number_format($item->tax ?? 0, 2) }}</span>
                             </td>
                             <td class="text-end fw-bold text-dark" style="font-size: 0.9rem;">
-                                RM <span id="line-total-{{ $item->id_invoice_item }}">{{ number_format($item->line_extension_amount + $item->tax, 2) }}</span>
+                                {{-- FIXED: Changed line_extension_amount to price_extension_amount (Net Amount) --}}
+                                RM <span id="line-total-{{ $item->id_invoice_item }}">{{ number_format($item->price_extension_amount + $item->tax, 2) }}</span>
                             </td>
                             <td class="text-center">
                                 <div class="d-flex justify-content-center gap-2 align-items-center">

@@ -257,9 +257,9 @@
                             </td>
 
                                 <td>
-                                    <a href="{{ route('developer.companies.show', $c->id_customer) }}" class="btn btn-sm btn-secondary">
-                                        View
-                                    </a>
+<a href="{{ route('developer.client.edit', $c->id_customer) }}" class="btn btn-sm btn-info">
+    <i class="fa-solid fa-eye me-1"></i> View
+</a>
 
                                     <a href="#" class="btn btn-sm btn-warning">Pay</a>
 

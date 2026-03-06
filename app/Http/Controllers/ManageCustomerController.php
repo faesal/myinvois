@@ -18,7 +18,7 @@ class ManageCustomerController extends Controller
         $user = Auth::user();
         $query = DB::table('customer');
 
-        // 1. Role-Based Account List
+        // 1. Role-Based Account List (For Dropdown)
         $accountQuery = DB::table('connection_integrate')
             ->join('customer', 'connection_integrate.code', '=', 'customer.connection_integrate')
             ->where('customer.customer_type', '=', 'SUPPLIER')
@@ -37,8 +37,18 @@ class ManageCustomerController extends Controller
             $lhdnAccounts = [];
         }
 
-        // 2. Base Data Filtering
-        if ($user->role !== 'admin' && $user->role !== 'developer') {
+        // 2. Base Data Filtering (SECURITY FIX: Restrict Developer visibility)
+        if ($user->role === 'developer') {
+            // Get all connection codes belonging to this developer
+            $developerConnections = DB::table('connection_integrate')
+                ->where('id_developer', $user->id)
+                ->pluck('code');
+            
+            // Restrict query to only their own connections
+            $query->whereIn('connection_integrate', $developerConnections);
+            
+        } elseif ($user->role !== 'admin') {
+            // Subscriber or standard user
             $targetConnectionId = $request->get('connection_id', session('active_connection_id', 1));
             $connection = DB::table('connection_integrate')->where('id_connection', $targetConnectionId)->first();
 
@@ -46,11 +56,11 @@ class ManageCustomerController extends Controller
                 $query->where('connection_integrate', $connection->code);
                 session(['active_connection_id' => $targetConnectionId]);
             } else {
-                $query->whereRaw('1 = 0');
+                $query->whereRaw('1 = 0'); // Block access
             }
         }
 
-        // 3. Dropdown Filter
+        // 3. Dropdown Filter (Specific LHDN Account)
         if ($request->filled('lhdn_cust_id')) {
             $selectedAccount = DB::table('customer')->where('id_customer', $request->lhdn_cust_id)->first();
             if ($selectedAccount) {
@@ -83,14 +93,50 @@ class ManageCustomerController extends Controller
      */
     public function export(Request $request)
     {
+        $user = Auth::user();
         $ids = $request->input('selected_ids');
         
         $query = DB::table('customer')->where('customer_type', 'CUSTOMER');
 
-        if (!empty($ids)) {
-            $query->whereIn('id_customer', $ids);
+        // SECURITY FIX: Apply the same role-based restrictions to Export!
+        if ($user->role === 'developer') {
+            $developerConnections = DB::table('connection_integrate')->where('id_developer', $user->id)->pluck('code');
+            $query->whereIn('connection_integrate', $developerConnections);
+        } elseif ($user->role !== 'admin') {
+            $targetConnectionId = session('active_connection_id', 1);
+            $connection = DB::table('connection_integrate')->where('id_connection', $targetConnectionId)->first();
+            if ($connection) {
+                $query->where('connection_integrate', $connection->code);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
 
+        // SCENARIO 1: User checked specific boxes (Export ONLY those)
+        if (!empty($ids)) {
+            $query->whereIn('id_customer', $ids);
+        } 
+        // SCENARIO 2: No boxes checked (Export ALL matching filters, no pagination)
+        else {
+            // Filter by LHDN Account dropdown
+            if ($request->filled('lhdn_cust_id')) {
+                $query->where('connection_integrate', $request->input('lhdn_cust_id'));
+            }
+
+            // Filter by Search bar
+            if ($request->filled('search')) {
+                $search = $request->input('search');
+                $query->where(function($q) use ($search) {
+                    $q->where('registration_name', 'like', "%{$search}%")
+                      ->orWhere('tin_no', 'like', "%{$search}%")
+                      ->orWhere('identification_no', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%")
+                      ->orWhere('phone', 'like', "%{$search}%");
+                });
+            }
+        }
+
+        // Execute the query to grab all matching records
         $customers = $query->get();
 
         $filename = "customers_export_" . now()->format('YmdHi') . ".csv";
@@ -105,26 +151,58 @@ class ManageCustomerController extends Controller
 
         $columns = [
             'Self Bill', 'Description', 'TIN No', 'Registration Name', 
-            'ID No', 'SST Registration', 'Complete Address', 'Phone Number', 'Email'
+            'ID No', 'SST Registration No', 'Complete Address', 'Phone Number', 'Email'
         ];
 
-        $callback = function() use($customers, $columns) {
+        // LHDN State Code Mapping
+        $states = [
+            '01' => 'Johor',
+            '02' => 'Kedah',
+            '03' => 'Kelantan',
+            '04' => 'Melaka',
+            '05' => 'Negeri Sembilan',
+            '06' => 'Pahang',
+            '07' => 'Pulau Pinang',
+            '08' => 'Perak',
+            '09' => 'Perlis',
+            '10' => 'Selangor',
+            '11' => 'Terengganu',
+            '12' => 'Sabah',
+            '13' => 'Sarawak',
+            '14' => 'W.P. Kuala Lumpur',
+            '15' => 'W.P. Labuan',
+            '16' => 'W.P. Putrajaya',
+            '17' => 'Not Applicable'
+        ];
+
+        $callback = function() use($customers, $columns, $states) {
             $file = fopen('php://output', 'w');
             fputs($file, "\xEF\xBB\xBF"); // BOM for Excel
             fputcsv($file, $columns);
 
             foreach ($customers as $row) {
-                // Build complete address
+                // Determine State Name
+                $stateCodeRaw = $row->country_subentity_code;
+                $formattedStateCode = str_pad($stateCodeRaw, 2, '0', STR_PAD_LEFT);
+                $stateName = $states[$formattedStateCode] ?? $stateCodeRaw;
+
+                // Build complete address with State Name instead of code
                 $addressParts = array_filter([
                     $row->address_line_1,
                     $row->address_line_2,
                     $row->address_line_3,
                     $row->city_name,
                     $row->postal_zone,
-                    $row->country_subentity_code,
+                    $stateName,
                     $row->country_code
                 ]);
                 $completeAddress = implode(', ', $addressParts);
+
+                // Handle SST value (Fallback for older boolean data)
+                $sstDisplay = '-';
+                if (!empty($row->sst_registration) && $row->sst_registration !== '0') {
+                    $sstDisplay = $row->sst_registration === '1' ? 'Yes' : $row->sst_registration;
+                }
 
                 fputcsv($file, [
                     $row->is_selfbill_supplier == 1 ? 'Yes' : 'No',
@@ -132,7 +210,7 @@ class ManageCustomerController extends Controller
                     $row->tin_no,
                     $row->registration_name,
                     $row->identification_no,
-                    $row->sst_registration == 1 ? 'Yes' : 'No',
+                    $sstDisplay,
                     $completeAddress,
                     $row->phone,
                     $row->email,
@@ -143,7 +221,7 @@ class ManageCustomerController extends Controller
 
         return response()->stream($callback, 200, $headers);
     }
-
+    
     public function create(Request $request) 
     { 
         $user = Auth::user();
@@ -186,7 +264,8 @@ class ManageCustomerController extends Controller
                 'identification_type'    => $request->identification_type,
                 'business_description'   => $request->business_description,
                 'is_selfbill_supplier'   => $request->has('is_selfbill_supplier') ? 1 : 0,
-                'sst_registration'       => $request->has('sst_registration') ? 1 : 0,
+                // Make sure to accept the string from standard form submissions as well if you updated that form too
+                'sst_registration'       => $request->sst_registration ?? '0', 
                 'address_line_1'         => $request->address_line_1,
                 'address_line_2'         => $request->address_line_2,
                 'address_line_3'         => $request->address_line_3,
@@ -228,7 +307,7 @@ class ManageCustomerController extends Controller
                 'identification_type'  => $request->identification_type,
                 'business_description' => $request->business_description,
                 'is_selfbill_supplier' => $request->has('is_selfbill_supplier') ? 1 : 0,
-                'sst_registration'     => $request->has('sst_registration') ? 1 : 0,
+                'sst_registration'     => $request->sst_registration ?? '0',
                 'address_line_1'       => $request->address_line_1,
                 'city_name'            => $request->city_name,
                 'updated_at'           => now(),
@@ -256,10 +335,9 @@ class ManageCustomerController extends Controller
             return back()->with('error', 'Invalid file type.');
         }
 
-        $connectionCode = null;
-        if ($request->filled('lhdn_cust_id')) {
-            $connectionCode = DB::table('customer')->where('id_customer', $request->lhdn_cust_id)->value('connection_integrate');
-        }
+        // Get from modal dropdown first, then fallback
+        $connectionCode = $request->input('import_connection_code');
+        
         if (!$connectionCode) {
             $connectionCode = $request->get('connection_integrate') ?? 
                               DB::table('connection_integrate')->where('id_connection', session('active_connection_id', 1))->value('code');
@@ -290,7 +368,8 @@ class ManageCustomerController extends Controller
                     'identification_type'    => $rowData['identification_type'] ?? 'NRIC',
                     'business_description'   => $rowData['business_description'] ?? null,
                     'is_selfbill_supplier'   => (int)($rowData['is_selfbill_supplier'] ?? 0),
-                    'sst_registration'       => (string)($rowData['sst_registration'] ?? '0'),
+                    // Removed the int cast so it accepts the string SST number
+                    'sst_registration'       => trim($rowData['sst_registration'] ?? '0'), 
                     'address_line_1'         => $rowData['address_line_1'] ?? null,
                     'address_line_2'         => $rowData['address_line_2'] ?? null,
                     'address_line_3'         => $rowData['address_line_3'] ?? null,
@@ -330,9 +409,10 @@ class ManageCustomerController extends Controller
             $file = fopen('php://output', 'w');
             fputs($file, "\xEF\xBB\xBF");
             fputcsv($file, $columns);
+            // Modified sample data to show a string for SST instead of '1'
             fputcsv($file, [
                 'ABC Sdn Bhd', 'C1234567890', 'BRN', '202401000001', 
-                'email@example.com', '0123456789', 'General Goods', '1', '0',
+                'email@example.com', '0123456789', 'General Goods', 'W10-2401-32000111', '0',
                 'No 123 Jalan Test', 'Taman Test', '', 'Kuala Lumpur', '50000', '14', 'MYS'
             ]);
             fclose($file);

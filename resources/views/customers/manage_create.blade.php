@@ -113,16 +113,15 @@
                             <div class="form-text mt-1 small">Maximum 500 characters</div>
                         </div>
                         <div class="col-md-6">
-                            <div class="form-check form-switch mt-2">
+                            <div class="form-check form-switch mt-2 pt-1">
                                 <input class="form-check-input" type="checkbox" name="is_selfbill_supplier" value="1" id="selfBillSwitch" {{ old('is_selfbill_supplier') ? 'checked' : '' }}>
                                 <label class="form-check-label fw-medium" for="selfBillSwitch">Self-bill Supplier</label>
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <div class="form-check form-switch mt-2">
-                                <input class="form-check-input" type="checkbox" name="sst_registration" value="1" id="sstSwitch" {{ old('sst_registration') ? 'checked' : '' }}>
-                                <label class="form-check-label fw-medium" for="sstSwitch">SST Registered</label>
-                            </div>
+                            <label class="form-label small fw-semibold">SST Registration No.</label>
+                            <input type="text" name="sst_registration" class="form-control" placeholder="e.g. W10-1234-5678" value="{{ old('sst_registration') }}">
+                            <div class="form-text mt-1 small">Leave blank if not applicable</div>
                         </div>
                     </div>
                 </div>

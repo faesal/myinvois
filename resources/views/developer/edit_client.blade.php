@@ -412,12 +412,20 @@
 @endsection
 
 @section('scripts')
-@section('scripts')
 <script>
 $(document).ready(function() {
 
     // 1. Setup Variables
     const clientId = "{{ $client->id_customer }}";
+
+    // 🌟 SEMAK ENVIRONMENT .ENV DI SINI 🌟
+    @php
+        $myinvoisEnv = env('MYINVOIS_ENVIROMENT'); // Default ke preprod jika kosong
+        $myinvoisUrl = $myinvoisEnv === 'prod' 
+            ? env('MYINVOIS_PROD_MYTAX') 
+            : env('MYINVOIS_PREPROD_MYTAX');
+    @endphp
+    const myInvoisLink = "{{ $myinvoisUrl }}";
 
     // Common SweetAlert Toast Configuration
     const Toast = Swal.mixin({
@@ -427,6 +435,82 @@ $(document).ready(function() {
         timer: 1500,
         timerProgressBar: true
     });
+
+    // ---------------------------------------------------------
+    // DYNAMIC BOOTSTRAP MODAL SETUP FOR VERSION 1.1
+    // ---------------------------------------------------------
+    // We inject a standard Bootstrap Modal into the body so it doesn't 
+    // conflict with SweetAlert Toasts closing each other.
+    if ($('#version11Modal').length === 0) {
+        const modalHtml = `
+            <div class="modal fade" id="version11Modal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered" style="max-width: 550px;">
+                    <div class="modal-content">
+                        <div class="modal-header border-bottom pb-3">
+                            <h5 class="modal-title d-flex align-items-center fs-5 text-dark fw-bold">
+                                <i class="fa-solid fa-circle-info text-secondary me-2"></i> MySynctax Intermediary Details
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body pt-4" style="text-align: left; font-size: 13px;">
+                            
+                            <div class="bg-primary bg-opacity-10 border rounded p-3 mb-4">
+                                <div class="d-flex align-items-start mb-3">
+                                    <div class="bg-secondary bg-opacity-25 p-2 rounded text-secondary me-3" style="min-width: 35px; text-align: center;">
+                                        <i class="fa-solid fa-lock"></i>
+                                    </div>
+                                    <div>
+                                        <strong class="d-block text-dark fw-bold">Please add below information into MyInvois (LHDN) intermediary.</strong>
+                                        <a href="${myInvoisLink}" target="_blank" class="text-primary text-decoration-none">${myInvoisLink}</a>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-center">
+                                    <div class="bg-secondary bg-opacity-25 p-2 rounded text-secondary me-3" style="min-width: 35px; text-align: center;">
+                                        <i class="fa-regular fa-file-pdf"></i>
+                                    </div>
+                                    <a href="{{ asset('assets/pdf/manual_intermidiary_mysynctax.pdf') }}" target="_blank" class="text-primary text-decoration-none fw-bold">Click here (Manual Guidance to add intermediary)</a>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="text-muted small fw-bold text-uppercase mb-1" style="font-size: 11px;">Intermediary TIN</label>
+                                <div class="border rounded p-2 d-flex align-items-center bg-white shadow-sm">
+                                    <i class="fa-regular fa-id-card text-secondary mx-2"></i>
+                                    <span class="ms-2 text-dark">{{ env('INTERMEDIARY_TIN') }}</span>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="text-muted small fw-bold text-uppercase mb-1" style="font-size: 11px;">Intermediary BRN</label>
+                                <div class="border rounded p-2 d-flex align-items-center bg-white shadow-sm">
+                                    <i class="fa-solid fa-building text-secondary mx-2"></i>
+                                    <span class="ms-2 text-dark">{{ env('INTERMEDIARY_BRN') }}</span>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="text-muted small fw-bold text-uppercase mb-1" style="font-size: 11px;">Intermediary Taxpayer</label>
+                                <div class="border rounded p-2 d-flex align-items-center bg-white shadow-sm">
+                                    <i class="fa-solid fa-user-tie text-secondary mx-2"></i>
+                                    <span class="ms-2 text-dark">{{ env('INTERMEDIARY_TAXPAYER') }}</span>
+                                </div>
+                            </div>
+
+                            <div class="d-flex" style="color: #e74c3c; font-size: 12px;">
+                                <i class="fa-solid fa-triangle-exclamation mt-1 me-2" style="color: #f39c12;"></i>
+                                <span>This intermediary is authorized to perform e-Invoice submissions on behalf of the taxpayer under the MyInvois 1.1 framework.</span>
+                            </div>
+
+                        </div>
+                        <div class="modal-footer border-top-0 pt-0">
+                            <button type="button" class="btn text-white px-4" style="background-color: #3b4351;" data-bs-dismiss="modal">OK</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        $('body').append(modalHtml);
+    }
 
     // ---------------------------------------------------------
     // HELPER FUNCTION: Handle Visual & Logic Toggle
@@ -447,7 +531,7 @@ $(document).ready(function() {
         } else {
             if(isInit) {
                 $wrapper.hide();
-            } else {
+            } else { 
                 $wrapper.slideUp();
             }
             $inputs.prop('disabled', true);
@@ -459,11 +543,17 @@ $(document).ready(function() {
     updateToggleState('#toggleIpWhitelist', '#ipWhitelistWrapper', true);
 
     // ---------------------------------------------------------
-    // API VERSION AUTO-SAVE (NEW)
+    // API VERSION AUTO-SAVE & POPUP
     // ---------------------------------------------------------
     $('.api-version-radio').on('change', function() {
         let version = $(this).val();
 
+        // 1. Show the Bootstrap Guideline Popup if Version 1.1 is selected
+        if (version === '1.1') {
+            $('#version11Modal').modal('show');
+        }
+
+        // 2. Perform the auto-save in the background
         $.ajax({
             url: "{{ route('client.settings.update_version', '') }}/" + clientId,
             method: "POST",
@@ -472,14 +562,24 @@ $(document).ready(function() {
                 version: version
             },
             success: function(response) {
+                // Background save successful
+                // We can safely fire the toast for ALL versions now, 
+                // because SweetAlert will no longer close our Bootstrap Modal!
                 Toast.fire({
                     icon: 'success',
-                    title: 'API Version Updated'
+                    title: 'API Version Updated to ' + version
                 });
             },
             error: function(xhr) {
                 let msg = xhr.responseJSON ? xhr.responseJSON.message : 'Failed to update version';
                 Swal.fire('Error', msg, 'error');
+                
+                // Revert radio button visually if it failed
+                if (version === '1.0') {
+                    $('#ver_1_1').prop('checked', true);
+                } else {
+                    $('#ver_1_0').prop('checked', true);
+                }
             }
         });
     });
@@ -509,12 +609,6 @@ $(document).ready(function() {
                     icon: 'success', 
                     title: 'Settings Saved' 
                 });
-                
-                // Optional: Update UI text if backend returns next run date
-                if(response.next_run) {
-                    // You can add a span with id="nextRunPreview" in your blade if you want to show this
-                    // $('#nextRunPreview').text(response.next_run);
-                }
             },
             error: function(xhr) {
                 let msg = xhr.responseJSON ? xhr.responseJSON.message : 'Failed to save settings';
@@ -548,7 +642,6 @@ $(document).ready(function() {
     $('#email_notif').on('change', function() {
         saveConsolidationSettings();
     });
-
 
     // ---------------------------------------------------------
     // IP WHITELIST LOGIC
@@ -680,5 +773,4 @@ $(document).ready(function() {
     });
 });
 </script>
-@endsection
 @endsection

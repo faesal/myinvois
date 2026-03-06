@@ -6,9 +6,9 @@
 
     $title = match($noteType) {
         'credit' => 'Credit Notes',
-        'debit' => 'Debit Notes',
+        'debit'  => 'Debit Notes',
         'refund' => 'Refund Notes',
-        default => 'Notes'
+        default  => 'Notes'
     };
 
     // ✅ UPDATED: Use custom route if provided (for Self-Bill), otherwise use default
@@ -16,6 +16,9 @@
     
     $labelNew = 'New ' . rtrim($title, 's');
 @endphp
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
 
 <div class="container">
     <h2 class="mb-4 fw-bold">{{ $title }}</h2>
@@ -33,9 +36,9 @@
         </div>
     @endif
 
-    <div class="alert alert-success alert-dismissible">
+    <div class="alert alert-success alert-dismissible shadow-sm border-0">
         <div class="alert-heading fw-semibold">Note</div>
-        <p class="text-muted">Manage and track all {{ strtolower($title) }} in the system</p>
+        <p class="text-muted mb-0">Manage and track all {{ strtolower($title) }} in the system</p>
     </div>
 
     <div class="card shadow-sm border-0">
@@ -83,6 +86,10 @@
                     <table class="table table-hover table-bordered align-middle" id="datatable-items">
                         <thead class="table-light">
                             <tr>
+                                {{-- Added Checkbox Header --}}
+                                <th width="40" class="text-center">
+                                    <input type="checkbox" class="form-check-input" id="selectAll">
+                                </th>
                                 <th>{{ ucfirst($noteType) }} Note #</th>
                                 <th>Company</th>
                                 <th>Customer</th>
@@ -95,6 +102,10 @@
                         <tbody>
                             @foreach ($notes as $note)
                             <tr>
+                                {{-- Added Checkbox Column --}}
+                                <td class="text-center">
+                                    <input type="checkbox" class="select-item form-check-input" value="{{ $note->id_invoice }}">
+                                </td>
                                 <td>
                                     <span class="text-primary fw-bold">{{ $note->invoice_no }}</span><br>
                                     <small class="text-muted">UUID: {{ $note->uuid ?: 'Not Generated' }}</small>
@@ -152,17 +163,114 @@
     </section>
 </div>
 
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+
 <script>
 $(document).ready(function () {
+    // Build Dynamic Export Dropdown
+    let exportDropdownButtons = [
+        {
+            text: '<span class="text-muted small fw-bold mt-2 d-block px-3">EXPORT SELECTED</span>',
+            className: 'dropdown-item disabled',
+            action: function(e, dt, node, config) { return false; }
+        },
+        {
+            extend: 'csvHtml5',
+            text: '<i class="bi bi-filetype-csv me-2 text-primary"></i> Selected Data (CSV)',
+            className: 'dropdown-item py-2 fw-semibold',
+            exportOptions: {
+                columns: [1, 2, 3, 4, 5, 6], // Excludes Checkbox (0) and Actions (7)
+                // This custom function tells DataTables to only export rows where the checkbox is ticked
+                rows: function (idx, data, node) {
+                    return $(node).find('input.select-item').prop('checked');
+                }
+            },
+            action: function(e, dt, node, config) {
+                // Check if any row is actually selected before running export
+                let count = 0;
+                dt.rows().every(function() {
+                    if ($(this.node()).find('input.select-item').prop('checked')) count++;
+                });
+                if (count === 0) return Swal.fire("Oops", "Please select at least one document.", "warning");
+                $.fn.dataTable.ext.buttons.csvHtml5.action.call(this, e, dt, node, config);
+            }
+        },
+        {
+            extend: 'excelHtml5',
+            text: '<i class="bi bi-file-earmark-spreadsheet me-2 text-primary"></i> Selected Data (Excel)',
+            className: 'dropdown-item py-2 fw-semibold',
+            exportOptions: {
+                columns: [1, 2, 3, 4, 5, 6],
+                rows: function (idx, data, node) {
+                    return $(node).find('input.select-item').prop('checked');
+                }
+            },
+            action: function(e, dt, node, config) {
+                let count = 0;
+                dt.rows().every(function() {
+                    if ($(this.node()).find('input.select-item').prop('checked')) count++;
+                });
+                if (count === 0) return Swal.fire("Oops", "Please select at least one document.", "warning");
+                $.fn.dataTable.ext.buttons.excelHtml5.action.call(this, e, dt, node, config);
+            }
+        },
+        {
+            text: '<span class="text-muted small fw-bold mt-2 d-block px-3">EXPORT CURRENT SEARCH (ALL PAGES)</span>',
+            className: 'dropdown-item disabled',
+            action: function(e, dt, node, config) { return false; }
+        },
+        {
+            extend: 'csvHtml5',
+            text: '<i class="bi bi-filetype-csv me-2 text-info"></i> All Filtered Data (CSV)',
+            className: 'dropdown-item py-2',
+            exportOptions: {
+                columns: [1, 2, 3, 4, 5, 6],
+                modifier: { search: 'applied' } // Exports current search across all data
+            }
+        },
+        {
+            extend: 'excelHtml5',
+            text: '<i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i> All Filtered Data (Excel)',
+            className: 'dropdown-item py-2',
+            exportOptions: {
+                columns: [1, 2, 3, 4, 5, 6],
+                modifier: { search: 'applied' }
+            }
+        }
+    ];
+
     const table = $('#datatable-items').DataTable({
         paging: false, 
         searching: true,
         ordering: true,
         info: false,
+        columnDefs: [{ orderable: false, targets: 0 }], // Disable sorting on checkbox column
+        dom: '<"d-flex justify-content-between align-items-center mb-3"<"dt-buttons-container"B><"dt-search-container"f>>rt<"d-flex justify-content-between mt-3"ip>',
+        buttons: [
+            {
+                extend: 'collection',
+                text: '<button class="btn btn-light border shadow-sm dropdown-toggle"><i class="bi bi-file-arrow-down me-2"></i> Export Data</button>',
+                buttons: exportDropdownButtons
+            }
+        ],
         initComplete: function () {
             $('#datatable-items_length select').addClass('form-select form-select-sm');
         }
+    });
+
+    // Select All Logic (Loops through all pages of filtered view)
+    $('#selectAll').on('click', function() {
+        var isChecked = this.checked;
+        table.rows({ 'search': 'applied' }).every(function() {
+            let rowNode = this.node();
+            $(rowNode).find('input.select-item').prop('checked', isChecked);
+        });
     });
 
     // Custom SweetAlert for Delete
@@ -174,8 +282,8 @@ $(document).ready(function () {
             text: "This action cannot be undone. Original items will be released.",
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
             confirmButtonText: 'Yes, delete it!'
         }).then((result) => {
             if (result.isConfirmed) {
@@ -195,9 +303,9 @@ $(document).ready(function () {
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: 'Yes, Cancel It',
-            confirmButtonColor: '#ef4444',
+            confirmButtonColor: '#dc3545',
             cancelButtonText: 'No',
-            cancelButtonColor: '#6b7280'
+            cancelButtonColor: '#6c757d'
         }).then((result) => {
             if (result.isConfirmed) {
                 $.ajax({
@@ -240,6 +348,16 @@ $(document).ready(function () {
 .table thead th { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; }
 .dataTables_filter { float: right !important; margin-bottom: 1rem; }
 .dataTables_filter input { border-radius: 6px; border: 1px solid #dee2e6; padding: 5px 10px; }
+
+/* Clean up default datatable buttons padding to match bootstrap */
+div.dt-buttons .dt-button {
+    padding: 0;
+    border: none;
+    background: none;
+}
+
+/* Adjust datatables flex layout */
+.dt-buttons-container { flex: 1; display: flex; gap: 0.5rem; }
 
 /* ✅ FIX: Prevent SweetAlert Icon from being too big */
 .swal2-icon {

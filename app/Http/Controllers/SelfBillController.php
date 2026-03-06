@@ -423,16 +423,16 @@ class SelfBillController extends Controller
                  'updated_at'           => now(),
              ]);
      
-         // =====================================================
-         // SUBMIT / RESPONSE (UNCHANGED)
+// =====================================================
+         // SUBMIT / RESPONSE
          // =====================================================
         
-        session([
-            'connection_integrate' =>$connCode,
-            'invoice_unique_id' => $uniqueId,
-            'consolidate_status' => '',
-            'invoice_type_code' => '11'
-        ]);
+         session([
+             'connection_integrate' => $connCode,
+             'invoice_unique_id'    => $uniqueId,
+             'consolidate_status'   => '',
+             'invoice_type_code'    => '11'
+         ]);
        
          $model = new \App\Models\eInvoisModel($connCode);
      
@@ -443,10 +443,11 @@ class SelfBillController extends Controller
              $qr_lhdn = url('/qr_link/' . $uniqueId);
          } else {
              $qr_lhdn = 'No LHDN QR Link Provided';
-             $result  = 'Please manualy submit in system, since isAutoLHDN = 0';
+             $result  = 'Please manually submit in system, since isAutoToLHDN = 0';
          }
         
-         return response()->json([
+         // 1. Assign the JSON response to a variable
+         $response_json = response()->json([
              'status'          => 'ok',
              'invoice_id'      => $idCon,
              'mysynctax_uuid'  => $uniqueId,
@@ -455,7 +456,18 @@ class SelfBillController extends Controller
              'customer_id'     => $customer->id_customer,
              'result'          => $result
          ], 201);
-     }
+
+         // 2. Update the API log in the database
+         DB::table('message_header')
+             ->where('id', session('message_id'))
+             ->update(['response_json' => $response_json->getContent()]);
+
+         // 3. Clear the session
+         session(['message_id' => '']);
+
+         // 4. Return the response back to the API caller
+         return $response_json;
+         }
      
 
         public function note(Request $request, $mode = 'normal')

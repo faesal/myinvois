@@ -711,13 +711,17 @@ public function submit($id_customer)
             'submission_uuid' => @$response['submissionUid'],
             'document_json' => json_encode($invoiceJson, JSON_PRETTY_PRINT),
             'request_json' => json_encode([$document]),
-            'response_json' => json_encode($response),
+            'response_json' => json_encode(response()->json($response)),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+         $session_messageid= session([
+            'message_id' =>$MessageID
+        
+        ]);
         try {
         if (!empty($response['acceptedDocuments'][0]['uuid'])) {
-
+            //print_r($session);
             DB::table('invoice')->where('unique_id', $session)->update([
                 'submission_status' => 'submitted',
                 'uuid' => $response['acceptedDocuments'][0]['uuid'],
@@ -728,25 +732,29 @@ public function submit($id_customer)
             DB::table('consolidate_invoice')->where('unique_id', $session)->update(['is_invoice' => 1]);
             DB::table('consolidate_invoice_item')->where('unique_id', $session)->update(['is_invoice' => 1]);
             //$this->qr_link_lhdn($session);
-            return response()->json($response);
-        }
+            $response_json = response()->json($response);
+                     DB::table('message_header')->where('id', $MessageID)->update(['response_json' => json_encode($response_json)]);
 
-        return response()->json([
+            return $response_json;
+        }
+        $response_json = response()->json([
             'status' => 'error',
             'message' => json_encode($response)
         ], 400);
+         DB::table('message_header')->where('id', $MessageID)->update(['error_message' => json_encode($response_json)]);
+        return $response_json;
        exit();
 
     } catch (\Exception $e) {
 
         \Log::error($e);
-
-        DB::table('message_header')->where('id', $MessageID)->update(['error_message' => $e->getMessage()]);
-
-        return response()->json([
+        $response_json = response()->json([
             'status' => 'error',
             'message' => $e->getMessage()
         ], 400);
+        DB::table('message_header')->where('id', $MessageID)->update(['error_message' => json_encode($response_json)]);
+
+        return $response_json;
     }
 }
 
@@ -1718,7 +1726,7 @@ DB::table('invoice')
         // =====================================================
         // 8. RESPONSE
         // =====================================================
-        return response()->json([
+        $response_json = response()->json([
             'status'          => 'ok',
             'invoice_id'      => $invoiceId,
             'mysynctax_uuid'  => $uniqueId,
@@ -1727,7 +1735,13 @@ DB::table('invoice')
             'qr_lhdn'         => $qr_lhdn,
             'result'          => $result
         ], 201);
-    
+           DB::table('message_header')->where('id', session('message_id'))->update(['response_json' => json_encode($response_json)]);
+            $session= session([
+            'message_id' => ''
+        ]);
+        return $response_json;
+
+
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
@@ -2001,7 +2015,7 @@ DB::table('invoice')
 
             DB::commit();
 
-            return response()->json([
+$response_json = response()->json([
                 'status'         => 'ok',
                 'note_type'      => $noteType,
                 'invoice_id'     => $noteInvoiceId,
@@ -2010,8 +2024,15 @@ DB::table('invoice')
                 'result'         => $result
             ], 201);
 
+            // Update the API log with the exact response
+            DB::table('message_header')
+                ->where('id', session('message_id'))
+                ->update(['response_json' => json_encode($response_json)]);
 
-        
+            // Clear the session
+            session(['message_id' => '']);
+
+            return $response_json;
 
     } catch (\Throwable $e) {
         DB::rollBack();
