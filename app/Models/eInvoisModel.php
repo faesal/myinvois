@@ -27,6 +27,17 @@ class eInvoisModel extends Model
     private $clientSecret;
     private $tinNo;
     private $prodMode;
+    private static $validatedCert = null;
+    private static $validatedKey = null;
+    private static $cachedToken = null;
+    private static $tokenExpiry = null;
+    private static $certPath = null;
+    private static $privatePath = null;
+    
+    private $connection_integrate;
+    private $idNo;
+    private $is_version;
+    private $client;
 
     public function __construct($connection = null)
     {
@@ -437,7 +448,337 @@ public function qr_link($uuid)
     return "{$base}/{$uuid}/share/{$longId}";
 }
 
+  /**
+     * =====================================================
+     * CERTIFICATE VALIDATION (ONCE PER REQUEST LIFECYCLE)
+     * =====================================================
+     */
+    private function getCertificate()
+    {
+        if (self::$validatedCert !== null && self::$validatedKey !== null) {
+            return [self::$validatedCert, self::$validatedKey, self::$certPath, self::$privatePath];
+        }
 
+        self::$certPath = base_path('cert/certificate.crt');
+        self::$privatePath = base_path('cert/private.key');
+
+        if (!file_exists(self::$certPath) || !file_exists(self::$privatePath)) {
+            throw new \Exception("Certificate files not found");
+        }
+
+        if (!is_readable(self::$certPath) || !is_readable(self::$privatePath)) {
+            throw new \Exception("Certificate files are not readable");
+        }
+
+        $cert = openssl_x509_read(file_get_contents(self::$certPath));
+        if (!$cert) {
+            throw new \Exception("Invalid certificate format");
+        }
+
+        $certInfo = openssl_x509_parse($cert);
+        if ($certInfo['validTo_time_t'] < time()) {
+            throw new \Exception("Certificate has expired");
+        }
+
+        $privateKey = openssl_pkey_get_private(
+            file_get_contents(self::$privatePath),
+            env('PKCS12_PASSWORD')
+        );
+
+        if (!$privateKey || !openssl_x509_check_private_key($cert, $privateKey)) {
+            throw new \Exception("Certificate and private key do not match");
+        }
+
+        // Cache for entire request lifecycle
+        self::$validatedCert = $cert;
+        self::$validatedKey = $privateKey;
+
+        return [$cert, $privateKey, self::$certPath, self::$privatePath];
+    }
+
+    /**
+     * =====================================================
+     * TOKEN CACHING (REUSE ACROSS MULTIPLE SUBMISSIONS)
+     * =====================================================
+     */
+    private function getAuthToken()
+    {
+        // Check if token is still valid (typically 1 hour expiry)
+        if (self::$cachedToken && self::$tokenExpiry > time()) {
+            return self::$cachedToken;
+        }
+
+        $client = $this->getClient();
+
+        if ($this->is_version == '1.1') {
+            $client->login($this->tinNo . ':' . $this->idNo);
+        } else {
+            $client->login();
+        }
+
+        $token = $client->getAccessToken();
+
+        // Cache for 50 minutes (assuming 60 min expiry)
+        self::$cachedToken = $token;
+        self::$tokenExpiry = time() + 3000; // 50 minutes
+
+        return $token;
+    }
+
+    /**
+     * =====================================================
+     * BATCH SUBMISSION WITH RETRY LOGIC
+     * =====================================================
+     */
+    public function submitBatch(array $invoicesData)
+    {
+        // Validate certificate ONCE for entire batch
+        [$cert, $privateKey, $certPath, $privatePath] = $this->getCertificate();
+
+        // Login ONCE and reuse token
+        $client = $this->getClient();
+        $token = $this->getAuthToken();
+        $client->setAccessToken($token);
+
+        $documents = [];
+        $invoiceMap = [];
+
+        // Prepare all documents in memory
+        foreach ($invoicesData as $invoiceData) {
+            $isSelfBilled = in_array($invoiceData['invoice_type_code'], ['11', '12', '13', '14']);
+
+            $data = [
+                'id_invoice' => $invoiceData['id_invoice'],
+                'invoice_status' => $invoiceData['invoice_status'],
+                'invoice_no' => $invoiceData['invoice_no'],
+                'invoice_type_code' => $invoiceData['invoice_type_code'],
+                'issue_date' => $invoiceData['issue_date'],
+                'price' => $invoiceData['price'],
+                'total_price_discount' => $invoiceData['total_price_discount'] ?? 0,
+                'taxable_amount' => $invoiceData['taxable_amount'],
+                'tax_amount' => $invoiceData['tax_amount'],
+                'tax_category_id' => $isSelfBilled ? 'OTH' : '01',
+                'tax_scheme_id' => $invoiceData['tax_scheme_id'],
+                'tax_percent' => $isSelfBilled ? 0 : ($invoiceData['tax_percent'] ?? 0),
+                'tax_exemption_reason' => $invoiceData['tax_exemption_reason'] ?? null,
+                'payment_note_term' => $invoiceData['payment_note_term'],
+                'payment_financial_account' => $invoiceData['payment_financial_account'] ?? null,
+                'include_signature' => $invoiceData['include_signature'] ?? true,
+                'uuid' => $invoiceData['uuid'] ?? null,
+                'long_id' => $invoiceData['long_id'] ?? null,
+                'payment_method' => $invoiceData['payment_method'] ?? null,
+                'items' => $invoiceData['items'],
+                'is_version' => $this->is_version,
+            ];
+
+            // ✅ FIX: Use the same class instantiation as your existing submit() method
+            $example = new CreateDocumentExample();
+
+            // ✅ FIX: Use the same constants as your existing submit() method
+            $invoiceTypes = [
+                '01' => InvoiceTypeCodes::INVOICE,
+                '02' => InvoiceTypeCodes::CREDIT_NOTE,
+                '03' => InvoiceTypeCodes::DEBIT_NOTE,
+                '04' => InvoiceTypeCodes::REFUND_NOTE,
+                '11' => InvoiceTypeCodes::SELF_BILLED_INVOICE,
+                '12' => InvoiceTypeCodes::SELF_BILLED_CREDIT_NOTE,
+                '13' => InvoiceTypeCodes::SELF_BILLED_DEBIT_NOTE,
+                '14' => InvoiceTypeCodes::SELF_BILLED_REFUND_NOTE,
+            ];
+
+            if ($this->is_version == '1.1') {
+                $invoiceJson = $example->createXmlDocument(
+                    $invoiceTypes[$invoiceData['invoice_type_code']],
+                    $invoiceData['invoice_no'],
+                    $invoiceData['supplier'],
+                    $invoiceData['customer'],
+                    $invoiceData['delivery'],
+                    true,
+                    $certPath,
+                    $privatePath,
+                    env('PKCS12_PASSWORD'),
+                    ['SigningTime' => date('Y-m-d\TH:i:s\Z')],
+                    $data
+                );
+            } else {
+                $invoiceJson = $example->createJsonDocument(
+                    $invoiceTypes[$invoiceData['invoice_type_code']],
+                    $invoiceData['invoice_no'],
+                    $invoiceData['supplier'],
+                    $invoiceData['customer'],
+                    $invoiceData['delivery'],
+                    true,
+                    $certPath,
+                    $privatePath,
+                    false,
+                    ['SigningTime' => date('Y-m-d\TH:i:s\Z')],
+                    $data
+                );
+            }
+
+            // ✅ FIX: Use the same helper as your existing submit() method
+            $document = MyInvoisHelper::getSubmitDocument(
+                $invoiceData['invoice_no'],
+                $invoiceJson
+            );
+
+            $documents[] = $document;
+            $invoiceMap[] = [
+                'id_invoice' => $invoiceData['id_invoice'],
+                'unique_id' => $invoiceData['unique_id'],
+                'invoice_no' => $invoiceData['invoice_no'],
+                'invoice_type_code' => $invoiceData['invoice_type_code'],
+                'json' => $invoiceJson,
+                'supplier_tin' => $invoiceData['supplier']['tin_no'] ?? null,
+                'customer_tin' => $invoiceData['customer']['tin_no'] ?? null,
+            ];
+        }
+
+        // Submit all documents with retry logic
+        $response = $this->submitWithRetry($documents);
+
+        // Process batch response
+        $this->processBatchResponse($response, $invoiceMap);
+
+        return $response;
+    }
+
+   /**
+ * =====================================================
+ * SMART RETRY WITH RATE LIMIT HANDLING
+ * =====================================================
+ */
+/**
+ * =====================================================
+ * SMART RETRY WITH RATE LIMIT HANDLING
+ * =====================================================
+ */
+private function submitWithRetry(array $documents, $maxRetries = 3)
+{
+    $attempt = 0;
+    
+    // ✅ FIX: Get client instance (it's already set in submitBatch)
+    $client = $this->getClient();
+    $token = $this->getAuthToken();
+    $client->setAccessToken($token);
+
+    while ($attempt < $maxRetries) {
+        try {
+            // ✅ FIX: Use $client instead of $this->client
+            return $client->submitDocument($documents);
+
+        } catch (\Exception $e) {
+            $error = $e->getMessage();
+
+            // Try to get detailed error from response
+            if (method_exists($e, 'getResponse') && $e->getResponse() !== null) {
+                $error = $e->getResponse()->getBody()->getContents();
+            } elseif (method_exists($e, 'response') && $e->response !== null) {
+                $error = $e->response->body();
+            }
+
+            // Detect rate limit
+            if (strpos($error, 'Rate limit') !== false || strpos($error, '429') !== false) {
+                preg_match('/in (\d+) seconds/', $error, $matches);
+                $waitTime = isset($matches[1]) ? (int)$matches[1] + 2 : 60;
+
+                \Log::warning("Rate limited. Waiting {$waitTime}s before retry " . ($attempt + 1) . "/{$maxRetries}");
+                sleep($waitTime);
+                $attempt++;
+                continue;
+            }
+
+            // Non-rate-limit error, throw immediately
+            throw $e;
+        }
+    }
+
+    throw new \Exception("Failed after {$maxRetries} retries due to rate limiting");
+}
+
+    /**
+     * =====================================================
+     * PROCESS BATCH RESPONSE AND UPDATE DATABASE
+     * =====================================================
+     */
+    private function processBatchResponse($response, array $invoiceMap)
+    {
+        $responseArray = json_decode(json_encode($response), true);
+
+        // Handle accepted documents
+        $acceptedDocs = $responseArray['acceptedDocuments'] ?? [];
+        $rejectedDocs = $responseArray['rejectedDocuments'] ?? [];
+        $submissionUid = $responseArray['submissionUid'] ?? null;
+
+        foreach ($acceptedDocs as $index => $acceptedDoc) {
+            if (isset($invoiceMap[$index])) {
+                $invoiceInfo = $invoiceMap[$index];
+
+                // Update invoice table
+                DB::table('invoice')
+                    ->where('id_invoice', $invoiceInfo['id_invoice'])
+                    ->update([
+                        'submission_status' => 'Submitted',
+                        'uuid' => $acceptedDoc['uuid'] ?? null,
+                        'submission_uuid' => $submissionUid,
+                        'updated_at' => now()
+                    ]);
+
+                // Insert message header
+                DB::table('message_header')->insert([
+                    'document_id' => $invoiceInfo['invoice_no'],
+                    'type_submission' => $invoiceInfo['invoice_type_code'],
+                    'id_invoice' => $invoiceInfo['id_invoice'],
+                    'hashing_256' => hash('sha256', json_encode($invoiceInfo['json'], JSON_UNESCAPED_SLASHES)),
+                    'supplier_tin' => $invoiceInfo['supplier_tin'],
+                    'customer_tin' => $invoiceInfo['customer_tin'],
+                    'status_submission' => 'SUBMITTED',
+                    'uuid' => $acceptedDoc['uuid'] ?? null,
+                    'submission_uuid' => $submissionUid,
+                    'document_json' => json_encode($invoiceInfo['json'], JSON_PRETTY_PRINT),
+                    'response_json' => json_encode($acceptedDoc),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                // Update consolidate tables
+                DB::table('consolidate_invoice')
+                    ->where('unique_id', $invoiceInfo['unique_id'])
+                    ->update(['is_invoice' => 1]);
+
+                DB::table('consolidate_invoice_item')
+                    ->where('unique_id', $invoiceInfo['unique_id'])
+                    ->update(['is_invoice' => 1]);
+            }
+        }
+
+        // Handle rejected documents
+        if (!empty($rejectedDocs)) {
+            foreach ($rejectedDocs as $index => $rejectedDoc) {
+                if (isset($invoiceMap[$index])) {
+                    $invoiceInfo = $invoiceMap[$index];
+
+                    DB::table('invoice')
+                        ->where('id_invoice', $invoiceInfo['id_invoice'])
+                        ->update([
+                            'submission_status' => 'Failed',
+                            'is_failed' => 1,
+                            'updated_at' => now()
+                        ]);
+
+                    DB::table('message_header')->updateOrInsert(
+                        ['id_invoice' => $invoiceInfo['id_invoice']],
+                        [
+                            'status_submission' => 'ERROR',
+                            'error_message' => json_encode($rejectedDoc['error'] ?? $rejectedDoc),
+                            'response_json' => json_encode($rejectedDoc),
+                            'updated_at' => now()
+                        ]
+                    );
+                }
+            }
+        }
+    }
 public function submit($id_customer)
 {
 

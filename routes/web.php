@@ -218,6 +218,8 @@ Route::middleware('auth')->group(function () {
         Route::delete('/consolidate/item/delete/{id}', [InvoiceController::class, 'deleteConsolidateItem'])->name('consolidate.item.delete');
 
         Route::post('/invoice/submit-selected-lhdn', [InvoiceController::class, 'submitSelectedLHDN'])->name('invoice.submit_selected_lhdn');
+        
+        Route::get('/invoice/ajax-data', [InvoiceController::class, 'getSubmissionData'])->name('invoice.ajax_data');
 
         Route::get('/delete_invoice/{id}', [InvoiceController::class, 'deleteInvoice'])->name('invoice.delete');
         
@@ -333,6 +335,12 @@ Route::post('/developer/register', [DeveloperController::class, 'register'])->na
 
 Route::get('/developer/cron/consolidate', [InvoiceSubmissionController::class, 'autoConsolidate']);
 
+Route::get('/developer/submit', [InvoiceSubmissionController::class, 'SubmitApi']);
+
+Route::post('/internal/submit-batch-background', [InvoiceSubmissionController::class, 'submitBatchBackground']);
+
+Route::get('/developer/consolidate/status', [InvoiceSubmissionController::class, 'consolidateStatus']);
+
 
 
 // Protected Developer Section (login required)
@@ -343,9 +351,13 @@ Route::middleware(['auth'])->group(function () {
 
     Route::any('/developer/ConsolidateSelected', [InvoiceSubmissionController::class, 'ConsolidateSelected']);
 
+    Route::get('/developer/consolidate/data', [InvoiceSubmissionController::class, 'getConsolidateData'])->name('developer.consolidate.data');
+
     Route::any('/developer/consolidate', [InvoiceSubmissionController::class, 'consolidate']);
 
     Route::delete('/developer/consolidate/delete/{id}', [InvoiceSubmissionController::class, 'destroyConsolidateItem']);
+
+    Route::get('/developer/consolidate/export-search', [InvoiceSubmissionController::class, 'exportConsolidate'])->name('developer.consolidate.export_search');
 
     // Inside the auth middleware group
     Route::post('/developer/consolidate/bulk-delete', [InvoiceSubmissionController::class, 'bulkDeleteConsolidateItems']);
@@ -481,6 +493,10 @@ Route::post('/client/settings/consolidate/{id}', [ClientController::class, 'save
     Route::any('/invoices', [InvoiceSubmissionController::class, 'index'])
 
         ->name('developer.invoices.index');
+
+    Route::get('/developer/invoices/export', [InvoiceSubmissionController::class, 'export'])
+
+        ->name('developer.invoices.export');
 
 
 
@@ -672,9 +688,13 @@ Route::group(['prefix' => 'self_bill', 'as' => 'self_invoice.', 'middleware' => 
     })->name('index');
 
     // 2. Import / Export / Template (MUST match the names used in submission.blade.php)
-    Route::get('/download-template', [SelfInvoiceController::class, 'downloadTemplate'])->name('download_template');
-    Route::get('/export', [SelfInvoiceController::class, 'export'])->name('export');
+
+
+
+// Self-Bill Routes (Already exist, but double check names)
+Route::get('/export', [SelfInvoiceController::class, 'export'])->name('export');
     Route::post('/import', [SelfInvoiceController::class, 'import'])->name('import');
+    Route::get('/download-template', [SelfInvoiceController::class, 'downloadTemplate'])->name('download_template');
 
     // 3. Management
     Route::put('/update/{id}', [SelfInvoiceController::class, 'update'])->name('update');
@@ -683,6 +703,12 @@ Route::group(['prefix' => 'self_bill', 'as' => 'self_invoice.', 'middleware' => 
     // 4. Creation Logic
     Route::get('/create', [SelfInvoiceController::class, 'create'])->name('create');
     Route::post('/store', [SelfInvoiceController::class, 'store'])->name('store');
+});
+Route::middleware(['auth'])->group(function () {
+    // These allow the Blade to find route('invoice.export'), etc.
+    Route::get('/invoice/export', [SelfInvoiceController::class, 'export'])->name('invoice.export');
+    Route::post('/invoice/import', [SelfInvoiceController::class, 'import'])->name('invoice.import');
+    Route::get('/invoice/download-template', [SelfInvoiceController::class, 'downloadTemplate'])->name('invoice.download_template');
 });
 
 // URL: https://www.mysynctax.com/dev/cron/check-expired/synctax-secure-2026

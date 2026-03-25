@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail; 
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
+
 class InvoiceSubmissionController extends Controller
 {
     /**
@@ -82,193 +82,253 @@ class InvoiceSubmissionController extends Controller
         ));
     }
 
-    /**
-     * View Invoice Submissions (Main View)
-     */
-    public function index(Request $request)
-    {
-        $developerId = auth()->user()->id;
+  /**
+ * View Invoice Submissions (Main View)
+ */
+public function index(Request $request)
+{
+    $developerId = auth()->user()->id;
 
-        /*
-        |--------------------------------------------------------------------------
-        | Customers (SUPPLIER) for LHDN Account dropdown
-        |--------------------------------------------------------------------------
-        */
-        $customers = DB::table('customer')
-            ->where('id_developer', $developerId)
-            ->where('customer_type', 'SUPPLIER')
-            ->orderBy('registration_name')
-            ->get();
+    /*
+    |--------------------------------------------------------------------------
+    | Customers (SUPPLIER) for LHDN Account dropdown
+    |--------------------------------------------------------------------------
+    */
+    $customers = DB::table('customer')
+        ->where('id_developer', $developerId)
+        ->where('customer_type', 'SUPPLIER')
+        ->orderBy('registration_name')
+        ->get();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Invoice Types (for filter)
-        |--------------------------------------------------------------------------
-        */
-        $invoiceTypes = DB::table('invoice_type')
-            ->orderBy('code')
-            ->get();
+    /*
+    |--------------------------------------------------------------------------
+    | Invoice Types (for filter)
+    |--------------------------------------------------------------------------
+    */
+    $invoiceTypes = DB::table('invoice_type')
+        ->orderBy('code')
+        ->get();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Invoice Query
-        |--------------------------------------------------------------------------
-        */
-        $query = DB::table('invoice AS i')
-            ->leftJoin('customer AS c', 'i.id_supplier', '=', 'c.id_customer')
-            ->leftJoin('connection_integrate AS ci', 'i.connection_integrate', '=', 'ci.code')
-            ->leftJoin('invoice_type AS itype', 'i.invoice_type_code', '=', 'itype.code')
-            ->leftJoin('invoice_item AS it', function ($join) use ($developerId) {
-                $join->on('it.id_invoice', '=', 'i.id_invoice')
-                     ->where('it.id_developer', '=', $developerId);
-            })
-            ->select(
-                'i.unique_id',
-                'i.id_invoice',
-                'i.invoice_no',
-                'i.issue_date',
-                'i.submission_status',
-                'i.price',
-                'i.taxable_amount',
-                'i.tax_amount',
-                'i.invoice_type_code',
-                'itype.description AS invoice_type_name',
-                'c.registration_name',
-                'i.id_customer',
-                'i.id_supplier',
-                'i.connection_integrate',
-                'ci.name AS connection_name',
-                DB::raw('MIN(it.sale_id_integrate) AS sale_id')
-            )
-            ->where('ci.id_developer', $developerId)
-            ->where('c.id_developer', $developerId)
-            ->where('c.customer_type', 'SUPPLIER')
-            ->groupBy('i.id_invoice');
+    /*
+    |--------------------------------------------------------------------------
+    | Invoice Query
+    |--------------------------------------------------------------------------
+    */
+    $query = DB::table('invoice AS i')
+        ->leftJoin('customer AS c', 'i.id_supplier', '=', 'c.id_customer')
+        ->leftJoin('connection_integrate AS ci', 'i.connection_integrate', '=', 'ci.code')
+        ->leftJoin('invoice_type AS itype', 'i.invoice_type_code', '=', 'itype.code')
+        ->leftJoin('invoice_item AS it', function ($join) use ($developerId) {
+            $join->on('it.id_invoice', '=', 'i.id_invoice')
+                 ->where('it.id_developer', '=', $developerId);
+        })
+        ->select(
+            'i.unique_id',
+            'i.id_invoice',
+            'i.invoice_no',
+            'i.issue_date',
+            'i.submission_status',
+            'i.price',
+            'i.taxable_amount',
+            'i.tax_amount',
+            'i.invoice_type_code',
+            'itype.description AS invoice_type_name',
+            'c.registration_name',
+            'i.id_customer',
+            'i.id_supplier',
+            'i.connection_integrate',
+            'ci.name AS connection_name',
+            DB::raw('MIN(it.sale_id_integrate) AS sale_id')
+        )
+        ->where('ci.id_developer', $developerId)
+        ->where('c.id_developer', $developerId)
+        ->where('c.customer_type', 'SUPPLIER')
+        ->groupBy('i.id_invoice');
 
-        /*
-        |--------------------------------------------------------------------------
-        | Filters
-        |--------------------------------------------------------------------------
-        */
-        if ($request->start_date) {
-            $query->whereDate('i.issue_date', '>=', $request->start_date);
-        }
-
-        if ($request->end_date) {
-            $query->whereDate('i.issue_date', '<=', $request->end_date);
-        }
-
-        if ($request->status && $request->status !== 'ALL') {
-            $query->where('i.submission_status', $request->status);
-        }
-
-        if ($request->connection_integrate && $request->connection_integrate !== 'ALL') {
-            $query->where('i.connection_integrate', $request->connection_integrate);
-        }
-
-        if ($request->invoice_type && $request->invoice_type !== 'ALL') {
-            $query->where('i.invoice_type_code', $request->invoice_type);
-        }
-
-        $invoices = $query
-            ->orderBy('i.issue_date', 'desc')
-            ->get();
-
-        return view('developer.invoice_submissions', compact(
-            'customers',
-            'invoiceTypes',
-            'invoices'
-        ));
+    /*
+    |--------------------------------------------------------------------------
+    | Filters
+    |--------------------------------------------------------------------------
+    */
+    if ($request->start_date) {
+        $query->whereDate('i.issue_date', '>=', $request->start_date);
     }
 
-    public function consolidate(Request $request)
-    {
-        $developerId = auth()->user()->id;
+    if ($request->end_date) {
+        $query->whereDate('i.issue_date', '<=', $request->end_date);
+    }
+
+    if ($request->status && $request->status !== 'ALL') {
+        $query->where('i.submission_status', $request->status);
+    }
+
+    if ($request->connection_integrate && $request->connection_integrate !== 'ALL') {
+        $query->where('i.connection_integrate', $request->connection_integrate);
+    }
+
+    if ($request->invoice_type && $request->invoice_type !== 'ALL') {
+        $query->where('i.invoice_type_code', $request->invoice_type);
+    }
+
+    $invoices = $query
+        ->orderBy('i.issue_date', 'desc')
+        ->get();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Status Counts (for dashboard cards) - SIMPLIFIED APPROACH
+    |--------------------------------------------------------------------------
+    */
+    $statusCounts = [
+        'Submitted' => 0,
+        'Pending' => 0,
+        'Failed' => 0,
+    ];
+
+    // Only calculate counts if a connection is selected
+    if ($request->filled('connection_integrate') && $request->connection_integrate !== 'ALL') {
         
-        $start = $request->input('start_date', now()->startOfMonth()->toDateString());
-        $end = $request->input('end_date', now()->endOfMonth()->toDateString());
-    
-        session(['consolidate_start' => $start]);
-        session(['consolidate_end' => $end]);
-    
-        $selectedConnection = $request->input('connection');
-    
-        // ---------------------------------------------------
-        // 🚀 CACHE KEY
-        // ---------------------------------------------------
-        $cacheKey = "consolidate_items_{$developerId}_" . md5($start . $end . $selectedConnection);
-    
-        // ---------------------------------------------------
-        // FETCH ITEMS (CACHE 5 MINUTES)
-        // ---------------------------------------------------
-        $items = Cache::remember($cacheKey, 300, function () use ($start, $end, $selectedConnection, $developerId) {
-    
-            $query = DB::table('consolidate_invoice_item AS cii')
-                ->leftJoin('consolidate_invoice AS ci', 'cii.unique_id', '=', 'ci.unique_id')
-                ->select(
-                    'cii.*',
-                    'ci.invoice_no'
-                )
-    
-                // FIX: Detect both DATE and DATETIME
-                ->whereBetween(DB::raw('DATE(cii.issue_date)'), [$start, $end])
-    
-                // Only show items not yet sent
-                ->where(function ($q) {
-                    $q->where('cii.is_sent_invoice', 0)
-                      ->orWhereNull('cii.is_sent_invoice');
-                })
-    
-                // Only show items not submitted
-                ->whereNull('cii.submission_status');
-    
-            // ---------------------------------------------------
-            // FILTER BY CONNECTION OR DEVELOPER
-            // ---------------------------------------------------
-            if ($selectedConnection) {
-                $query->where('cii.connection_integrate', $selectedConnection);
-            } else {
-                $query->where('cii.id_developer', $developerId);
-            }
-    
-            return $query->orderBy('cii.issue_date', 'ASC')->get();
-        });
-    
-        // ---------------------------------------------------
-        // AVAILABLE CONNECTIONS (CACHE 1 HOUR)
-        // ---------------------------------------------------
-        $connCacheKey = "avail_connections_{$developerId}";
-    
-        $availableConnections = Cache::remember($connCacheKey, 3600, function () use ($developerId) {
-    
-            return DB::table('customer AS c')
-                ->leftJoin('connection_integrate AS ci', 'c.connection_integrate', '=', 'ci.code')
-                ->select(
-                    'c.id_customer',
-                    'c.registration_name',
-                    'c.connection_integrate',
-                    'ci.name AS connection_name',
-                    'ci.id_connection'
-                )
-                ->where('c.id_developer', $developerId)
-                ->where('ci.id_developer', $developerId)
-                ->where('c.customer_type', 'SUPPLIER')
-                ->orderBy('c.registration_name', 'ASC')
-                ->get();
-    
-        });
-    
-        return view(
-            'developer.consolidate',
-            compact(
-                'items',
-                'start',
-                'end',
-                'availableConnections',
-                'selectedConnection'
+        // Get all invoices for this connection with filters applied
+        $countQuery = DB::table('invoice AS i')
+            ->where('i.id_developer', $developerId)
+            ->where('i.connection_integrate', $request->connection_integrate);
+
+        // Apply date filters
+        if ($request->start_date) {
+            $countQuery->whereDate('i.issue_date', '>=', $request->start_date);
+        }
+        if ($request->end_date) {
+            $countQuery->whereDate('i.issue_date', '<=', $request->end_date);
+        }
+        if ($request->invoice_type && $request->invoice_type !== 'ALL') {
+            $countQuery->where('i.invoice_type_code', $request->invoice_type);
+        }
+
+        // Get raw counts grouped by status
+        $rawCounts = $countQuery
+            ->select(
+                DB::raw('TRIM(UPPER(submission_status)) as status'),
+                DB::raw('COUNT(*) as total')
             )
-        );
+            ->groupBy(DB::raw('TRIM(UPPER(submission_status))'))
+            ->pluck('total', 'status')
+            ->toArray();
+
+        // Map to our status keys
+        $statusCounts['Submitted'] = $rawCounts['SUBMITTED'] ?? 0;
+        $statusCounts['Pending'] = $rawCounts['PENDING'] ?? 0;
+        $statusCounts['Failed'] = $rawCounts['FAILED'] ?? 0;
+
+        // Add any invoices marked as failed via is_failed flag
+        $additionalFailed = DB::table('invoice')
+            ->where('id_developer', $developerId)
+            ->where('connection_integrate', $request->connection_integrate)
+            ->where('is_failed', 1)
+            ->whereRaw('TRIM(UPPER(submission_status)) != ?', ['FAILED']);
+
+        if ($request->start_date) {
+            $additionalFailed->whereDate('issue_date', '>=', $request->start_date);
+        }
+        if ($request->end_date) {
+            $additionalFailed->whereDate('issue_date', '<=', $request->end_date);
+        }
+        if ($request->invoice_type && $request->invoice_type !== 'ALL') {
+            $additionalFailed->where('invoice_type_code', $request->invoice_type);
+        }
+
+        $statusCounts['Failed'] += $additionalFailed->count();
+
+        // Debug log
+        \Log::info('Status Counts Debug', [
+            'connection' => $request->connection_integrate,
+            'raw_counts' => $rawCounts,
+            'final_counts' => $statusCounts
+        ]);
     }
+
+    return view('developer.invoice_submissions', compact(
+        'customers',
+        'invoiceTypes',
+        'invoices',
+        'statusCounts'
+    ));
+}
+
+public function consolidate(Request $request)
+{
+    $developerId = auth()->user()->id;
+
+    $start = $request->input('start_date', now()->startOfMonth()->toDateString());
+    $end = $request->input('end_date', now()->endOfMonth()->toDateString());
+
+    session(['consolidate_start' => $start]);
+    session(['consolidate_end' => $end]);
+
+    // ✅ FIX: Convert standard dates to include full time ranges (00:00:00 to 23:59:59)
+    $queryStart = \Carbon\Carbon::parse($start)->startOfDay();
+    $queryEnd = \Carbon\Carbon::parse($end)->endOfDay();
+
+    $selectedConnection = $request->input('connection');
+
+    // ---------------------------------------------------
+    // 🚀 CACHE LOGIC: Generate a unique key based on inputs
+    // ---------------------------------------------------
+    $cacheKey = "consolidate_items_{$developerId}_" . md5($start . $end . $selectedConnection);
+
+    // Cache the query result for 5 minutes (300 seconds)
+    $items = \Cache::remember($cacheKey, 300, function () use ($queryStart, $queryEnd, $selectedConnection, $developerId) {
+        
+        $query = DB::table('consolidate_invoice_item AS cii')
+            ->leftJoin('consolidate_invoice AS ci', 'cii.unique_id', '=', 'ci.unique_id')
+            ->select(
+                'cii.*', 
+                'ci.invoice_no' 
+            )
+            ->whereBetween('cii.issue_date', [$queryStart, $queryEnd]);
+
+        // Only show items that are NOT "set" (New Data Only)
+        $query->where(function ($q) {
+            $q->where('cii.is_sent_invoice', 0)
+              ->orWhereNull('cii.is_sent_invoice');
+        });
+
+        // Only show items that are NOT submitted yet
+        $query->whereNull('cii.submission_status');
+
+        // Apply Connection Filters
+        if ($selectedConnection) {
+            $query->where('cii.connection_integrate', $selectedConnection);
+        } else {
+            $query->where('cii.id_developer', $developerId);
+        }
+
+        return $query->orderBy('cii.issue_date')->get();
+    });
+
+    // ---------------------------------------------------
+    // Available Connections for dropdown (Cached for 1 hour)
+    // ---------------------------------------------------
+    $connCacheKey = "avail_connections_{$developerId}";
+    
+    $availableConnections = \Cache::remember($connCacheKey, 3600, function () use ($developerId) {
+        return DB::table('customer AS c')
+            ->leftJoin('connection_integrate AS ci', 'c.connection_integrate', '=', 'ci.code')
+            ->select(
+                'c.id_customer',
+                'c.registration_name',
+                'c.connection_integrate',
+                'ci.name AS connection_name',
+                'ci.id_connection'
+            )
+            ->where('c.id_developer', $developerId)
+            ->where('ci.id_developer', $developerId)
+            ->where('c.customer_type', 'SUPPLIER')
+            ->orderBy('c.registration_name', 'ASC')
+            ->get();
+    });
+
+    return view('developer.consolidate', compact('items', 'start', 'end', 'availableConnections', 'selectedConnection'));
+}
 public function ConsolidateSelected(Request $request)
     {
         $developerId = auth()->user()->id;
@@ -307,7 +367,7 @@ public function ConsolidateSelected(Request $request)
         }
 
         // Chunking (with fallback if env is missing)
-        $chunks = collect($items)->chunk(env('MYINVOIS_INVOICE_CHUNK', 50));
+        $chunks = collect($items)->chunk(30);
         $invoiceBaseNo = 'CONSO-' . now()->format('Ymd-His');
         $version = 1;
         
@@ -506,7 +566,7 @@ public function ConsolidateSelected(Request $request)
         ));
     }
     
-    public function submitSelectedInvoices(Request $request)
+public function submitSelectedInvoices(Request $request)
     {
         if (!$request->ajax()) {
             return response()->json(['error' => 'Invalid request type.'], 400);
@@ -514,7 +574,7 @@ public function ConsolidateSelected(Request $request)
 
         $developerId = auth()->user()->id;
 
-        // FIX: receive invoices from AJAX
+        // receive invoices from AJAX
         $selectedIds = $request->input('invoices', []);
 
         if (empty($selectedIds)) {
@@ -539,27 +599,137 @@ public function ConsolidateSelected(Request $request)
         // Save selected connection
         Session::put('connection_integrate', $request->connection_integrate);
 
+        $hasErrors = false;
+        $errorMessages = [];
+
         foreach ($invoices as $inv) {
+            // ==========================================================
+            // GUARD: Check if the invoice is ALREADY submitted
+            // ==========================================================
+            // 👇 CHANGE 1: Use strtolower to match 'submitted' or 'accepted'
+            $currentStatus = strtolower($inv->submission_status ?? '');
+            if (in_array($currentStatus, ['submitted', 'accepted'])) {
+                $hasErrors = true;
+                $errorMessages[] = "Invoice {$inv->invoice_no}: Skipped. This invoice has already been submitted to LHDN.";
+                continue; // Skip the LHDN API call and move to the next invoice
+            }
+
             session([
-                 'invoice_type_code' => $inv->invoice_type_code ,
+                 'invoice_type_code' => $inv->invoice_type_code,
                  'invoice_unique_id' => $inv->unique_id
              ]);
 
             session(['consolidate_status' => '']);
 
-            if(empty($inv->id_customer))
+            if(empty($inv->id_customer)) {
                 session(['consolidate_status' => '1']);
+            }
 
-            DB::table('invoice')
-                ->where('id_invoice', $inv->id_invoice)
-                ->update([
-                    'submission_status' => 'Submitted',
-                    'updated_at' => now()
-                ]);
+            try {
+                // 1. Submit to LHDN
+                $model = new \App\Models\eInvoisModel;
+                $response = $model->submit($inv->id_invoice);
 
-            // your submission model
-            $model = new \App\Models\eInvoisModel;
-            $model->submit($inv->id_invoice);
+                // 2. Safely parse the response to an array
+                $resArray = [];
+                if ($response instanceof \Illuminate\Http\JsonResponse) {
+                    $resArray = $response->getData(true);
+                } elseif (is_string($response)) {
+                    $resArray = json_decode($response, true);
+                } elseif (is_array($response)) {
+                    $resArray = $response;
+                } elseif (is_object($response)) {
+                    $resArray = json_decode(json_encode($response), true);
+                }
+
+                $isRejected = false;
+                $isError = false;
+                $errMsg = "Unknown error occurred.";
+
+                // 3. Evaluate LHDN Response
+                if (isset($resArray['original']['rejectedDocuments']) && count($resArray['original']['rejectedDocuments']) > 0) {
+                    $isRejected = true;
+                    $errMsg = $resArray['original']['rejectedDocuments'][0]['error']['message'] ?? 'Rejected by LHDN API.';
+                } elseif (isset($resArray['rejectedDocuments']) && count($resArray['rejectedDocuments']) > 0) {
+                    $isRejected = true;
+                    $errMsg = $resArray['rejectedDocuments'][0]['error']['message'] ?? 'Rejected by LHDN API.';
+                } elseif (isset($resArray['error']) || isset($resArray['original']['error'])) {
+                    $isError = true; 
+                    $errMsg = $resArray['error']['message'] ?? $resArray['original']['error']['message'] ?? 'LHDN System Error.';
+                }
+
+                // ==========================================================
+                // NEW GUARD: Verify UUID was actually generated and saved
+                // ==========================================================
+                // We fetch the latest state of this invoice from the database
+                $checkInv = DB::table('invoice')
+                    ->select('uuid', 'submission_uuid')
+                    ->where('id_invoice', $inv->id_invoice)
+                    ->first();
+
+                // If it wasn't already caught as an error, but UUID is missing, force an error!
+                if (!$isRejected && !$isError && (empty($checkInv->uuid) && empty($checkInv->submission_uuid))) {
+                    $isError = true;
+                    $errMsg = "Failed to retrieve UUID from LHDN. The API connection may have dropped.";
+                }
+
+                // 4. Apply the strict ENUM statuses
+                if ($isRejected) {
+                    $hasErrors = true;
+                    $errorMessages[] = "Invoice {$inv->invoice_no}: {$errMsg}";
+
+                    DB::table('invoice')
+                        ->where('id_invoice', $inv->id_invoice)
+                        ->update([
+                            'submission_status' => 'Failed', // 👇 CHANGE 2: Was 'REJECTED'
+                            'is_failed' => 1,
+                            'updated_at' => now()
+                        ]);
+                } elseif ($isError) {
+                    $hasErrors = true;
+                    $errorMessages[] = "Invoice {$inv->invoice_no}: {$errMsg}";
+
+                    DB::table('invoice')
+                        ->where('id_invoice', $inv->id_invoice)
+                        ->update([
+                            'submission_status' => 'Failed', // 👇 CHANGE 3: Was 'ERROR'
+                            'is_failed' => 1,
+                            'updated_at' => now()
+                        ]);
+                } else {
+                    // Success! 
+                    DB::table('invoice')
+                        ->where('id_invoice', $inv->id_invoice)
+                        ->update([
+                            'submission_status' => 'submitted', // 👇 CHANGE 4: Was 'SUBMITTED'
+                            'is_failed' => 0,
+                            'updated_at' => now()
+                        ]);
+                }
+
+            } catch (\Exception $e) {
+                // Hard crash (e.g. database timeout, LHDN server down, or missing invoice items)
+                $hasErrors = true;
+                $errorMessages[] = "Invoice {$inv->invoice_no}: System Exception - " . $e->getMessage();
+
+                DB::table('invoice')
+                    ->where('id_invoice', $inv->id_invoice)
+                    ->update([
+                        'submission_status' => 'Failed', // 👇 CHANGE 5: Was 'ERROR'
+                        'is_failed' => 1,
+                        'updated_at' => now()
+                    ]);
+            }
+        }
+
+        // 5. Return detailed response back to your SweetAlert JS
+        if ($hasErrors) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Processing complete, but some errors occurred.',
+                'errors' => $errorMessages, 
+                'connection_integrate' => session('connection_integrate')
+            ], 200);
         }
 
         return response()->json([
@@ -568,7 +738,6 @@ public function ConsolidateSelected(Request $request)
             'connection_integrate' => session('connection_integrate')
         ], 200);
     }
-
     /**
      * Delete Invoice (Only if Pending or Failed)
      */
@@ -653,95 +822,710 @@ public function deleteInvoice($id)
         return response()->json(['success' => true, 'message' => count($ids) . ' items deleted successfully.']);
     }
 
-
-public function autoConsolidate(Request $request)
+/**
+ * Background batch submission (called by async HTTP requests)
+ */
+public function submitBatchBackground(Request $request)
 {
-    $processedRetries = 0;
-    $processedBatches = 0;
-
-    // ====================================================================
-    // PHASE 1: RESUBMIT FAILED INVOICES (Background Sweep)
-    // ====================================================================
-    // Grab up to 10 failed invoices per cron to prevent timeout
-    $failedInvoices = null;
+    set_time_limit(0);
+    ini_set('memory_limit', '-1');
     
-    \DB::transaction(function () use (&$failedInvoices) {
-        $failedInvoices = \DB::table('invoice')
+    $batchData = $request->input('batch');
+    $connection = $request->input('connection');
+    
+    if (empty($batchData) || empty($connection)) {
+        return response()->json(['error' => 'Missing batch data'], 400);
+    }
+    
+    try {
+        $model = new \App\Models\eInvoisModel($connection);
+        $response = $model->submitBatch($batchData);
+        
+        $responseArray = json_decode(json_encode($response), true);
+        $rejectedDocs = $responseArray['original']['rejectedDocuments'] ?? $responseArray['rejectedDocuments'] ?? [];
+        
+        if (!empty($rejectedDocs)) {
+            \Log::error("Batch submission had rejections", ['rejected' => $rejectedDocs]);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'processed' => count($batchData),
+            'rejected' => count($rejectedDocs)
+        ]);
+        
+    } catch (\Exception $e) {
+        $errorMsg = $e->getMessage();
+        
+        // Handle 413 - split and retry
+        if ((strpos($errorMsg, '413') !== false || strpos($errorMsg, 'Too Large') !== false) && count($batchData) > 1) {
+            $halfSize = (int) ceil(count($batchData) / 2);
+            $firstHalf = array_slice($batchData, 0, $halfSize);
+            $secondHalf = array_slice($batchData, $halfSize);
+            
+            \Log::info("413 error - splitting batch", ['original' => count($batchData), 'split_to' => $halfSize]);
+            
+            // Recursively call with smaller batches
+            $this->sendAsyncRequest('/internal/submit-batch-background', [
+                'batch' => $firstHalf,
+                'connection' => $connection
+            ]);
+            
+            $this->sendAsyncRequest('/internal/submit-batch-background', [
+                'batch' => $secondHalf,
+                'connection' => $connection
+            ]);
+            
+            return response()->json(['success' => true, 'split' => true]);
+        }
+        
+        // Mark all as failed
+        foreach ($batchData as $inv) {
+            \DB::table('invoice')->where('id_invoice', $inv['id_invoice'])->update([
+                'submission_status' => 'Failed',
+                'is_failed' => 1,
+                'updated_at' => now()
+            ]);
+            
+            \DB::table('message_header')->updateOrInsert(
+                ['id_invoice' => $inv['id_invoice']],
+                [
+                    'status_submission' => 'ERROR',
+                    'error_message' => substr($errorMsg, 0, 500),
+                    'response_json' => json_encode(['error' => $errorMsg]),
+                    'updated_at' => now()
+                ]
+            );
+        }
+        
+        \Log::error("Batch submission failed", ['error' => $errorMsg, 'count' => count($batchData)]);
+        
+        return response()->json(['error' => $errorMsg], 500);
+    }
+}
+
+/**
+ * Send non-blocking async HTTP request
+ */
+private function sendAsyncRequest($endpoint, $data)
+{
+    $url = url($endpoint);
+    $dataString = json_encode($data);
+    
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $dataString);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, false); // Don't wait for response
+    curl_setopt($ch, CURLOPT_TIMEOUT_MS, 500); // 500ms timeout = fire and forget
+    curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'Content-Length: ' . strlen($dataString)
+    ]);
+    
+    // Fire and forget
+    curl_exec($ch);
+    curl_close($ch);
+}
+
+/**
+ * Submit multiple batches in true parallel using multi-cURL
+ */
+private function submitBatchesParallel(array $batches, string $connection)
+{
+    if (empty($batches)) {
+        return [];
+    }
+    
+    $mh = curl_multi_init();
+    $handles = [];
+    
+    // Add all batches to multi-handle
+    foreach ($batches as $index => $batch) {
+        $ch = curl_init();
+        
+        $data = json_encode([
+            'batch' => $batch,
+            'connection' => $connection
+        ]);
+        
+        curl_setopt($ch, CURLOPT_URL, url('/internal/submit-batch-background'));
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 180); // 3 minute timeout per batch
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Content-Length: ' . strlen($data)
+        ]);
+        
+        curl_multi_add_handle($mh, $ch);
+        $handles[$index] = $ch;
+    }
+    
+    // Execute all handles simultaneously
+    $running = null;
+    do {
+        curl_multi_exec($mh, $running);
+        curl_multi_select($mh, 0.1); // Wait up to 100ms
+    } while ($running > 0);
+    
+    // Collect results
+    $results = [];
+    foreach ($handles as $index => $ch) {
+        $content = curl_multi_getcontent($ch);
+        $results[$index] = $content ? json_decode($content, true) : null;
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    
+    curl_multi_close($mh);
+    
+    return $results;
+}
+public function consolidateStatus()
+{
+    $stats = [
+        'pending' => \DB::table('consolidate_invoice_item')
+            ->where(function ($q) {
+                $q->whereNull('submission_status')
+                  ->orWhere('submission_status', 'pending');
+            })
+            ->count(),
+        
+        'processing_items' => \DB::table('consolidate_invoice_item')
+            ->where('submission_status', 'processing')
+            ->count(),
+        
+        'created_items' => \DB::table('consolidate_invoice_item')
+            ->where('submission_status', 'created')
+            ->count(),
+        
+        'submitted_items' => \DB::table('consolidate_invoice_item')
+            ->where('submission_status', 'submitted')
+            ->where('is_sent_invoice', 1)
+            ->count(),
+        
+        'invoices_pending' => \DB::table('invoice')
+            ->where('submission_status', 'Pending')
+            ->where('is_processing', 0)
+            ->count(),
+        
+        'invoices_processing' => \DB::table('invoice')
+            ->where('is_processing', 1)
+            ->count(),
+        
+        'invoices_submitted' => \DB::table('invoice')
+            ->where('submission_status', 'Submitted')
+            ->count(),
+        
+        'invoices_failed' => \DB::table('invoice')
             ->where('is_failed', 1)
-            ->where('submission_status', 'Failed')
-            ->limit(10)
-            ->lockForUpdate() // Lock these so other crons don't double-submit
+            ->count(),
+        
+        'total_invoices' => \DB::table('invoice')->count(),
+        
+        'invoices_by_status' => \DB::table('invoice')
+            ->select('submission_status', \DB::raw('COUNT(*) as count'))
+            ->groupBy('submission_status')
+            ->get(),
+    ];
+    
+    return response()->json($stats);
+}
+public function SubmitApi(Request $request)
+{
+    set_time_limit(0);
+    ini_set('memory_limit', '-1');
+
+    $processedBatches = 0;
+    $failedResponses = [];
+    $successfulInvoices = 0;
+    $failedInvoices = 0;
+    $batchLimit = 1000;
+
+    \Log::info("=== SUBMIT API STARTED ===");
+
+    // Get and LOCK 1000 pending invoices
+    $pendingInvoices = null;
+    
+    \DB::transaction(function () use (&$pendingInvoices, $batchLimit) {
+        $pendingInvoices = \DB::table('invoice')
+            ->where('submission_status', 'Pending')
+            ->where('is_failed', 0)
+            ->where('is_processing', 0)
+            ->orderBy('created_at', 'asc')
+            ->limit($batchLimit)
+            ->lockForUpdate()
             ->get();
 
-        if ($failedInvoices->isNotEmpty()) {
-            $ids = $failedInvoices->pluck('id_invoice')->toArray();
+        if ($pendingInvoices->isNotEmpty()) {
+            $ids = $pendingInvoices->pluck('id_invoice')->toArray();
+            
             \DB::table('invoice')
                 ->whereIn('id_invoice', $ids)
-                ->update(['submission_status' => 'Retrying', 'updated_at' => now()]);
+                ->update([
+                    'submission_status' => 'Processing',
+                    'is_processing' => 1,
+                    'updated_at' => now()
+                ]);
         }
     });
 
-    if ($failedInvoices && $failedInvoices->isNotEmpty()) {
-        foreach ($failedInvoices as $record) {
+    if (!$pendingInvoices || $pendingInvoices->isEmpty()) {
+        $pendingCount = \DB::table('invoice')->where('submission_status', 'Pending')->where('is_processing', 0)->count();
+        $processingCount = \DB::table('invoice')->where('is_processing', 1)->count();
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'No pending invoices to submit',
+            'processed' => 0,
+            'pending_count' => $pendingCount,
+            'processing_count' => $processingCount,
+            'can_call_again' => false
+        ]);
+    }
+
+    \Log::info("Locked {$pendingInvoices->count()} invoices");
+
+    // BULK LOAD ALL CUSTOMERS ONCE
+    $uniqueCustomerIds = $pendingInvoices->pluck('id_customer')
+        ->merge($pendingInvoices->pluck('id_supplier'))
+        ->unique()
+        ->filter()
+        ->values()
+        ->toArray();
+
+    $customersMap = \DB::table('customer')
+        ->whereIn('id_customer', $uniqueCustomerIds)
+        ->get()
+        ->keyBy('id_customer');
+
+    \Log::info("Loaded " . $customersMap->count() . " customers");
+
+    // BULK LOAD ALL INVOICE ITEMS ONCE
+    $uniqueIds = $pendingInvoices->pluck('unique_id')->toArray();
+    
+    $allInvoiceItems = \DB::table('invoice_item')
+        ->whereIn('unique_id', $uniqueIds)
+        ->get()
+        ->groupBy('unique_id');
+
+    \Log::info("Loaded invoice items for " . $allInvoiceItems->count() . " invoices");
+
+    // BULK LOAD CUSTOMER ID 6 (CONSOLIDATE CUSTOMER)
+    $consolidateCustomer = \DB::table('customer')->where('id_customer', 6)->first();
+
+    // Group by connection
+    $invoicesByConnection = $pendingInvoices->groupBy('connection_integrate');
+
+    foreach ($invoicesByConnection as $connection => $invoices) {
+        \Log::info("Processing {$invoices->count()} invoices for connection {$connection}");
+
+        $invoiceBatchData = [];
+
+        foreach ($invoices as $invoice) {
             try {
-                // Identify Invoice Category (Self-Bill vs Normal)
-                $isSelfBill = in_array($record->invoice_type_code, ['11', '12', '13', '14']);
-                
-                // Clear previous session safely
-                session()->forget([
-                    'invoice_unique_id', 'selfbill_unique_id', 'previous_uuid', 
-                    'previous_invoice_no', 'invoice_type_code', 'is_selfbilled', 'consolidate_status'
-                ]);
+                $isSelfBill = in_array($invoice->invoice_type_code, ['11', '12', '13', '14']);
 
-                \Session::put('connection_integrate', $record->connection_integrate);
-
-                // Set precise session based on your autoResubmit logic
+                // USE PRE-LOADED CUSTOMERS (NO DB QUERIES)
                 if ($isSelfBill) {
-                    session([
-                        'selfbill_unique_id' => $record->unique_id,
-                        'invoice_type_code'  => $record->invoice_type_code,
-                        'is_selfbilled'      => true
-                    ]);
+                    $supplierRow = $customersMap[$invoice->id_customer] ?? null;
+                    $customerRow = $customersMap[$invoice->id_supplier] ?? null;
                 } else {
-                    session([
-                        'invoice_unique_id'   => $record->unique_id,
-                        'previous_uuid'       => $record->previous_uuid,
-                        'previous_invoice_no' => $record->previous_invoice_no,
-                        'invoice_type_code'   => $record->invoice_type_code
+                    $supplierRow = $customersMap[$invoice->id_supplier] ?? null;
+                    $customerId = (empty($invoice->id_customer) || $invoice->id_customer == 6) ? 6 : $invoice->id_customer;
+                    $customerRow = $customersMap[$customerId] ?? $consolidateCustomer;
+                }
+
+                if (!$supplierRow || !$customerRow) {
+                    \Log::error("Supplier/Customer not found for invoice {$invoice->invoice_no}");
+                    
+                    // Save error to message_header
+                    \DB::table('message_header')->updateOrInsert(
+                        ['id_invoice' => $invoice->id_invoice],
+                        [
+                            'status_submission' => 'ERROR',
+                            'error_message' => 'Supplier or Customer not found in database',
+                            'response_json' => json_encode([
+                                'error' => 'Supplier/Customer not found',
+                                'invoice_no' => $invoice->invoice_no,
+                                'id_supplier' => $invoice->id_supplier,
+                                'id_customer' => $invoice->id_customer
+                            ]),
+                            'response_date' => now(),
+                            'updated_at' => now()
+                        ]
+                    );
+                    
+                    \DB::table('invoice')->where('id_invoice', $invoice->id_invoice)->update([
+                        'submission_status' => 'Failed',
+                        'is_failed' => 1,
+                        'is_processing' => 0,
+                        'updated_at' => now()
                     ]);
+                    
+                    $failedInvoices++;
+                    continue;
                 }
 
-                // Dummy Consolidate Logic
-                if (empty($record->id_customer) || $record->id_customer == 6) {
-                    session(['consolidate_status' => '1']);
+                $supplier = [
+                    'tin_no' => $supplierRow->tin_no,
+                    'registration_name' => $supplierRow->registration_name,
+                    'phone' => $supplierRow->phone,
+                    'msicCode' => $supplierRow->msicCode ?? null,
+                    'email' => $supplierRow->email,
+                    'city_name' => $supplierRow->city_name,
+                    'postal_zone' => $supplierRow->postal_zone,
+                    'country_subentity_code' => $supplierRow->country_subentity_code,
+                    'country_code' => $supplierRow->country_code,
+                    'address_line_1' => $supplierRow->address_line_1,
+                    'address_line_2' => $supplierRow->address_line_2 ?? null,
+                    'address_line_3' => $supplierRow->address_line_3 ?? null,
+                    'identification_type' => $supplierRow->identification_type ?? null,
+                    'identification_no' => $supplierRow->identification_no ?? null
+                ];
+
+                $customer = [
+                    'tin_no' => $customerRow->tin_no,
+                    'sst_registration' => $customerRow->sst_registration ?? null,
+                    'registration_name' => $customerRow->registration_name,
+                    'phone' => $customerRow->phone,
+                    'email' => $customerRow->email,
+                    'city_name' => $customerRow->city_name,
+                    'postal_zone' => $customerRow->postal_zone,
+                    'country_subentity_code' => $customerRow->country_subentity_code,
+                    'country_code' => $customerRow->country_code,
+                    'address_line_1' => $customerRow->address_line_1,
+                    'address_line_2' => $customerRow->address_line_2 ?? null,
+                    'address_line_3' => $customerRow->address_line_3 ?? null,
+                    'identification_type' => $customerRow->identification_type ?? null,
+                    'identification_no' => $customerRow->identification_no ?? null
+                ];
+
+                $consolidate_status = (empty($invoice->id_customer) || $invoice->id_customer == 6) ? 1 : 0;
+                $delivery = ($consolidate_status == 1 || $invoice->invoice_status == 'manual' || $isSelfBill || $customerRow->tin_no == 'EI00000000010') ? '' : $customer;
+
+                // USE PRE-LOADED INVOICE ITEMS (NO DB QUERIES)
+                $invoiceItems = $allInvoiceItems[$invoice->unique_id] ?? collect();
+                $items = [];
+                foreach ($invoiceItems as $row) {
+                    $items[] = [
+                        'id_customer' => $row->id_customer,
+                        'id_invoice' => $row->id_invoice,
+                        'price_discount' => $row->price_discount,
+                        'line_id' => $row->line_id,
+                        'invoiced_quantity' => $row->invoiced_quantity,
+                        'line_extension_amount' => $row->line_extension_amount,
+                        'item_description' => $row->item_description,
+                        'price_amount' => $row->price_amount,
+                        'tax' => $row->tax,
+                        'price_extension_amount' => $row->price_extension_amount,
+                        'item_clasification_value' => $row->item_clasification_value
+                    ];
                 }
 
-                $model = new \App\Models\eInvoisModel($record->connection_integrate);
-                $model->submit($record->id_invoice);
-
-                // SUCCESS: Reset the failed flag
-                \DB::table('invoice')->where('id_invoice', $record->id_invoice)->update([
-                    'is_failed' => 0, 
-                    'submission_status' => 'Submitted',
-                    'updated_at' => now()
-                ]);
-                $processedRetries++;
+                $invoiceBatchData[] = [
+                    'id_invoice' => $invoice->id_invoice,
+                    'unique_id' => $invoice->unique_id,
+                    'invoice_status' => $invoice->invoice_status,
+                    'invoice_no' => $invoice->invoice_no,
+                    'invoice_type_code' => $invoice->invoice_type_code,
+                    'issue_date' => $invoice->issue_date,
+                    'price' => $invoice->price,
+                    'total_price_discount' => $invoice->total_price_discount ?? 0,
+                    'taxable_amount' => $invoice->taxable_amount,
+                    'tax_amount' => $invoice->tax_amount,
+                    'tax_scheme_id' => $invoice->tax_scheme_id,
+                    'tax_percent' => $invoice->tax_percent ?? 0,
+                    'tax_exemption_reason' => $invoice->tax_exemption_reason ?? null,
+                    'payment_note_term' => $invoice->payment_note_term,
+                    'payment_financial_account' => $invoice->payment_financial_account ?? null,
+                    'include_signature' => $invoice->include_signature ?? true,
+                    'uuid' => $invoice->uuid ?? null,
+                    'long_id' => $invoice->long_id ?? null,
+                    'payment_method' => $invoice->payment_method ?? null,
+                    'supplier' => $supplier,
+                    'customer' => $customer,
+                    'delivery' => $delivery,
+                    'items' => $items
+                ];
 
             } catch (\Exception $e) {
-                \Log::error("Auto-Retry Failed for Inv #{$record->invoice_no}: " . $e->getMessage());
+                \Log::error("Failed to prepare invoice {$invoice->invoice_no}: " . $e->getMessage());
                 
-                // FAILURE: Revert to Failed so it tries again infinitely on next cron runs
-                \DB::table('invoice')->where('id_invoice', $record->id_invoice)->update([
-                    'is_failed' => 1, 
+                // Save preparation error to message_header
+                \DB::table('message_header')->updateOrInsert(
+                    ['id_invoice' => $invoice->id_invoice],
+                    [
+                        'status_submission' => 'ERROR',
+                        'error_message' => substr($e->getMessage(), 0, 500),
+                        'response_json' => json_encode([
+                            'error' => $e->getMessage(),
+                            'file' => $e->getFile(),
+                            'line' => $e->getLine(),
+                            'invoice_no' => $invoice->invoice_no
+                        ]),
+                        'response_date' => now(),
+                        'updated_at' => now()
+                    ]
+                );
+                
+                \DB::table('invoice')->where('id_invoice', $invoice->id_invoice)->update([
                     'submission_status' => 'Failed',
+                    'is_failed' => 1,
+                    'is_processing' => 0,
                     'updated_at' => now()
                 ]);
+                
+                $failedInvoices++;
+            }
+        }
+
+        // Submit in batches of 50 to LHDN
+        $batchSize = 200;
+        
+        foreach (array_chunk($invoiceBatchData, $batchSize) as $batchIndex => $batchChunk) {
+            \Log::info("Submitting batch " . ($batchIndex + 1) . "/" . ceil(count($invoiceBatchData) / $batchSize));
+
+            $retryAttempt = 0;
+            $maxRetries = 3;
+            $batchSuccess = false;
+
+            while ($retryAttempt < $maxRetries && !$batchSuccess) {
+                try {
+                    $model = new \App\Models\eInvoisModel($connection);
+                    $response = $model->submitBatch($batchChunk);
+
+                    $responseArray = json_decode(json_encode($response), true);
+                    $rejectedDocs = $responseArray['original']['rejectedDocuments'] ?? $responseArray['rejectedDocuments'] ?? [];
+
+                    if (!empty($rejectedDocs)) {
+                        \Log::error("Batch had rejections", ['rejected' => $rejectedDocs]);
+                        
+                        // Save rejection details to message_header
+                        foreach ($rejectedDocs as $rejectedDoc) {
+                            $rejectedInvoiceNo = $rejectedDoc['invoiceCodeNumber'] ?? null;
+                            if ($rejectedInvoiceNo) {
+                                // Find invoice ID from batch
+                                $rejectedInvoice = collect($batchChunk)->firstWhere('invoice_no', $rejectedInvoiceNo);
+                                
+                                if ($rejectedInvoice) {
+                                    \DB::table('message_header')->updateOrInsert(
+                                        ['id_invoice' => $rejectedInvoice['id_invoice']],
+                                        [
+                                            'status_submission' => 'REJECTED',
+                                            'error_message' => $rejectedDoc['error']['message'] ?? 'Invoice rejected by LHDN',
+                                            'response_json' => json_encode($rejectedDoc),
+                                            'response_date' => now(),
+                                            'updated_at' => now()
+                                        ]
+                                    );
+                                    
+                                    \DB::table('invoice')
+                                        ->where('invoice_no', $rejectedInvoiceNo)
+                                        ->update([
+                                            'submission_status' => 'Failed',
+                                            'is_failed' => 1,
+                                            'is_processing' => 0,
+                                            'updated_at' => now()
+                                        ]);
+                                    
+                                    $failedInvoices++;
+                                }
+                            }
+                        }
+                    }
+
+                    // Mark successful invoices and save success to message_header
+                    $successCount = count($batchChunk) - count($rejectedDocs);
+                    if ($successCount > 0) {
+                        $successfulIds = [];
+                        foreach ($batchChunk as $inv) {
+                            $wasRejected = false;
+                            foreach ($rejectedDocs as $rejected) {
+                                if (isset($rejected['invoiceCodeNumber']) && $rejected['invoiceCodeNumber'] == $inv['invoice_no']) {
+                                    $wasRejected = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (!$wasRejected) {
+                                $successfulIds[] = $inv['id_invoice'];
+                                
+                                // Save success to message_header
+                                \DB::table('message_header')->updateOrInsert(
+                                    ['id_invoice' => $inv['id_invoice']],
+                                    [
+                                        'status_submission' => 'SUBMITTED',
+                                        'response_json' => json_encode([
+                                            'status' => 'success',
+                                            'submitted_at' => now()->toDateTimeString()
+                                        ]),
+                                        'submission_date' => now(),
+                                        'response_date' => now(),
+                                        'updated_at' => now()
+                                    ]
+                                );
+                            }
+                        }
+                        
+                        if (!empty($successfulIds)) {
+                            \DB::table('invoice')
+                                ->whereIn('id_invoice', $successfulIds)
+                                ->update([
+                                    'submission_status' => 'Submitted',
+                                    'is_processing' => 0,
+                                    'updated_at' => now()
+                                ]);
+                        }
+                    }
+
+                    $successfulInvoices += $successCount;
+                    $batchSuccess = true;
+                    $processedBatches++;
+
+                } catch (\Exception $e) {
+                    $errorMsg = $e->getMessage();
+                    \Log::error("Batch submission failed", [
+                        'error' => $errorMsg,
+                        'attempt' => $retryAttempt + 1,
+                        'trace' => $e->getTraceAsString()
+                    ]);
+
+                    // Handle 413
+                    if ((strpos($errorMsg, '413') !== false || strpos($errorMsg, 'Too Large') !== false) && count($batchChunk) > 1) {
+                        $halfSize = (int) ceil(count($batchChunk) / 2);
+                        $firstHalf = array_slice($batchChunk, 0, $halfSize);
+                        $secondHalf = array_slice($batchChunk, $halfSize);
+
+                        try {
+                            $model = new \App\Models\eInvoisModel($connection);
+                            $model->submitBatch($firstHalf);
+                            $model->submitBatch($secondHalf);
+
+                            $allIds = array_column($batchChunk, 'id_invoice');
+                            \DB::table('invoice')
+                                ->whereIn('id_invoice', $allIds)
+                                ->update([
+                                    'submission_status' => 'Submitted',
+                                    'is_processing' => 0,
+                                    'updated_at' => now()
+                                ]);
+
+                            $successfulInvoices += count($batchChunk);
+                            $batchSuccess = true;
+                            $processedBatches++;
+                            break;
+
+                        } catch (\Exception $splitError) {
+                            \Log::error("Split batch failed: " . $splitError->getMessage());
+                            $retryAttempt++;
+                        }
+                    } else {
+                        $retryAttempt++;
+                    }
+
+                    // Final failure - save error to message_header for all invoices in batch
+                    if ($retryAttempt >= $maxRetries) {
+                        foreach ($batchChunk as $inv) {
+                            // Save detailed error to message_header
+                            \DB::table('message_header')->updateOrInsert(
+                                ['id_invoice' => $inv['id_invoice']],
+                                [
+                                    'status_submission' => 'ERROR',
+                                    'error_message' => substr($errorMsg, 0, 500),
+                                    'response_json' => json_encode([
+                                        'error' => $errorMsg,
+                                        'file' => $e->getFile(),
+                                        'line' => $e->getLine(),
+                                        'trace' => substr($e->getTraceAsString(), 0, 1000),
+                                        'invoice_no' => $inv['invoice_no'],
+                                        'batch_index' => $batchIndex + 1,
+                                        'retry_attempts' => $maxRetries
+                                    ]),
+                                    'response_date' => now(),
+                                    'updated_at' => now()
+                                ]
+                            );
+                            
+                            \DB::table('invoice')->where('id_invoice', $inv['id_invoice'])->update([
+                                'submission_status' => 'Failed',
+                                'is_failed' => 1,
+                                'is_processing' => 0,
+                                'updated_at' => now()
+                            ]);
+                        }
+
+                        $failedInvoices += count($batchChunk);
+                        $failedResponses[] = [
+                            'batch' => $batchIndex + 1,
+                            'error' => $errorMsg,
+                            'count' => count($batchChunk)
+                        ];
+                    }
+                }
             }
         }
     }
 
+    $remainingPending = \DB::table('invoice')->where('submission_status', 'Pending')->where('is_processing', 0)->count();
+    $currentlyProcessing = \DB::table('invoice')->where('is_processing', 1)->count();
+    $totalSubmitted = \DB::table('invoice')->where('submission_status', 'Submitted')->count();
+    $totalFailed = \DB::table('invoice')->where('is_failed', 1)->count();
+
+    \Log::info("=== SUBMIT API COMPLETED ===", [
+        'successful' => $successfulInvoices,
+        'failed' => $failedInvoices,
+        'remaining' => $remainingPending
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'message' => "Submitted {$successfulInvoices} invoices. {$failedInvoices} failed.",
+        'processed_in_this_call' => $pendingInvoices->count(),
+        'successful_invoices' => $successfulInvoices,
+        'failed_invoices' => $failedInvoices,
+        'remaining_pending' => $remainingPending,
+        'currently_processing' => $currentlyProcessing,
+        'total_submitted' => $totalSubmitted,
+        'total_failed' => $totalFailed,
+        'can_call_again' => $remainingPending > 0,
+        'estimated_calls_remaining' => ceil($remainingPending / $batchLimit),
+        'failed_details' => $failedResponses
+    ]);
+}
+
+public function autoConsolidate(Request $request)
+{
+    set_time_limit(0);
+    ini_set('memory_limit', '-1');
+
+    $processedRetries = 0;
+    $processedBatches = 0;
+    $createdInvoices = 0;
+
     // ====================================================================
-    // PHASE 2: CONSOLIDATE NEW ITEMS (Scheduled Queue)
+    // PHASE 1: RESUBMIT FAILED INVOICES (Background Sweep)
+    // ====================================================================
+    $failedInvoices = \DB::table('invoice')
+        ->where('is_failed', 1)
+        ->where('submission_status', 'Failed')
+        ->limit(10)
+        ->get();
+
+    if ($failedInvoices->isNotEmpty()) {
+        $ids = $failedInvoices->pluck('id_invoice')->toArray();
+        \DB::table('invoice')
+            ->whereIn('id_invoice', $ids)
+            ->update(['submission_status' => 'Pending', 'is_failed' => 0, 'updated_at' => now()]);
+        
+        $processedRetries = $failedInvoices->count();
+        \Log::info("Marked {$processedRetries} failed invoices as Pending for retry");
+    }
+
+    // ====================================================================
+    // PHASE 2: CONSOLIDATE NEW ITEMS (Create Invoices Only)
     // ====================================================================
     $candidates = \DB::table('consolidate_setting')
         ->join('customer', 'consolidate_setting.connection_integrate', '=', 'customer.connection_integrate')
@@ -752,190 +1536,189 @@ public function autoConsolidate(Request $request)
         ->get();
 
     if ($candidates->isEmpty() && $processedRetries === 0) {
-        return response()->json(['success' => true, 'message' => 'No scheduled consolidations or retries due.']);
+        return response()->json([
+            'success' => true,
+            'message' => 'No scheduled consolidations or retries due.',
+            'created_invoices' => 0,
+            'retried_invoices' => 0
+        ]);
     }
 
-    // Dynamic configuration from .env
-    $itemsPerInvoice = env('MYINVOIS_INVOICE_CHUNK');
-    // Batch size for processing (e.g., pulling enough items to fill roughly 2.5 invoices)
-    $batchSize = $itemsPerInvoice * 2.5; 
+    $itemsPerInvoice = 30;
+    $batchSize = 10000;
 
     foreach ($candidates as $candidate) {
         $developerId = $candidate->id_developer;
         $connection = $candidate->connection_integrate;
-        
-        $itemsToProcess = null;
 
-        \DB::transaction(function () use ($developerId, $batchSize, &$itemsToProcess) {
-            $items = \DB::table('consolidate_invoice_item')
-                ->where('id_developer', $developerId)
-                ->where(function ($q) {
-                    $q->whereNull('submission_status')->orWhere('submission_status', 'pending');
-                })
-                ->where(function ($q) {
-                    $q->where('is_sent_invoice', 0)->orWhereNull('is_sent_invoice');
-                })
-                ->orderBy('issue_date', 'asc')
-                ->limit($batchSize)
-                ->lockForUpdate() 
-                ->get();
+        $hasMoreItems = true;
 
-            if ($items->isNotEmpty()) {
-                $itemIds = $items->pluck('id_invoice_item')->toArray();
+        while ($hasMoreItems) {
+            $itemsToProcess = null;
 
-                \DB::table('consolidate_invoice_item')
-                    ->whereIn('id_invoice_item', $itemIds)
-                    ->update(['submission_status' => 'processing', 'updated_at' => now()]);
-                
-                $itemsToProcess = $items;
-            }
-        });
+            \DB::transaction(function () use ($developerId, $batchSize, &$itemsToProcess) {
+                $items = \DB::table('consolidate_invoice_item')
+                    ->where('id_developer', $developerId)
+                    ->where(function ($q) {
+                        $q->whereNull('submission_status')->orWhere('submission_status', 'pending');
+                    })
+                    ->where(function ($q) {
+                        $q->where('is_sent_invoice', 0)->orWhereNull('is_sent_invoice');
+                    })
+                    ->orderBy('issue_date', 'asc')
+                    ->limit($batchSize)
+                    ->lockForUpdate()
+                    ->get();
 
-        if (empty($itemsToProcess)) {
-            $this->checkAndFinalize($developerId, $connection);
-            continue;
-        }
-
-        try {
-            $supplier = \DB::table('customer')
-                ->where('id_developer', $developerId)
-                ->where('customer_type', 'SUPPLIER')
-                ->whereNull('deleted')
-                ->first();
-
-            if ($supplier) {
-                \Session::put('connection_integrate', $connection);
-                
-                // Chunking items based on .env value
-                $chunks = $itemsToProcess->chunk($itemsPerInvoice); 
-                $invoiceBaseNo = 'AUTO-' . now()->format('Ymd-His');
-                
-                $processedItemIds = [];
-                $invoiceTypeCode = ($supplier->is_selfbill_supplier == 1) ? '11' : '01';
-
-                foreach ($chunks as $chunk) {
-                    $uniqueId = (string) \Str::uuid();
-                    $invoiceNo = $invoiceBaseNo . '-' . strtoupper(\Str::random(4));
-
-                    // --- 1. CALCULATE HEADER TOTALS ---
-                    $totalTax = $chunk->sum('tax');
-                    
-                    $totalNet = $chunk->sum(function($item) {
-                        $gross = $item->price_amount * $item->invoiced_quantity;
-                        return $gross - $item->price_discount;
-                    });
-                    
-                    $payableAmount = $totalNet + $totalTax;
-
-                    // --- 2. INSERT INVOICE HEADER ---
-                    $invoiceId = \DB::table('invoice')->insertGetId([
-                        'unique_id' => $uniqueId,
-                        'connection_integrate' => $connection,
-                        'invoice_status' => 'manual',
-                        'submission_status' => 'Pending',
-                        'is_failed' => 0,
-                        'id_developer' => $developerId,
-                        'id_customer' => 6, 
-                        'id_supplier' => $supplier->id_customer,
-                        'invoice_no' => $invoiceNo,
-                        'invoice_type_code' => $invoiceTypeCode,
-                        'issue_date' => now(),
-                        'tax_scheme_id' => 'OTH',
-                        'tax_category_id'=> '01',
-                        
-                        'price' => number_format((float)$payableAmount, 2, '.', ''), 
-                        'taxable_amount' => number_format((float)$totalNet, 2, '.', ''), 
-                        'tax_amount' => number_format((float)$totalTax, 2, '.', ''),
-                        
-                        'payment_note_term' => 'CASH',
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-
-                    // --- 3. INSERT INVOICE ITEMS ---
-                    foreach ($chunk as $index => $item) {
-                        $grossAmount = $item->price_amount * $item->invoiced_quantity;
-                        $netAmount = $grossAmount - $item->price_discount;
-
-                        \DB::table('invoice_item')->insert([
-                            'id_developer' => $item->id_developer,
-                            'unique_id' => $uniqueId, 
-                            'id_invoice' => $invoiceId, 
-                            'issue_date' => $item->issue_date,
-                            'connection_integrate' => $connection, 
-                            'sale_id_integrate' => $item->sale_id_integrate,
-                            'id_consolidate_invoice' => $item->id_consolidate_invoice,
-                            'line_id' => $index + 1,
-                            'id_customer' => $supplier->id_customer,
-                            'invoiced_quantity' => $item->invoiced_quantity,
-                            
-                            'line_extension_amount' => number_format((float)$grossAmount, 2, '.', ''), 
-                            'price_extension_amount' => number_format((float)$netAmount, 2, '.', ''), 
-                            
-                            'item_description' => $item->item_description,
-                            'price_amount' => number_format((float)$item->price_amount, 2, '.', ''),
-                            'price_discount' => number_format((float)$item->price_discount, 2, '.', ''),
-                            'tax' => number_format((float)$item->tax, 2, '.', ''), 
-                            'item_clasification_value' => '004',
-                            'created_at' => now(),
-                        ]);
-                        $processedItemIds[] = $item->id_invoice_item;
-                    }
-
-                    // Submit to LHDN
-                    try {
-                        session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'invoice_type_code', 'is_selfbilled']);
-                        session(['consolidate_status' => '1']); 
-                        
-                        if (in_array($invoiceTypeCode, ['11', '12', '13', '14'])) {
-                            session(['selfbill_unique_id' => $uniqueId, 'invoice_type_code' => $invoiceTypeCode, 'is_selfbilled' => true]);
-                        } else {
-                            session(['invoice_unique_id' => $uniqueId, 'invoice_type_code' => $invoiceTypeCode]);
-                        }
-                        
-                        $model = new \App\Models\eInvoisModel($connection);
-                        $model->submit($invoiceId);
-
-                        \DB::table('invoice')->where('id_invoice', $invoiceId)->update([
-                            'submission_status' => 'Submitted',
-                            'updated_at' => now()
-                        ]);
-                    } catch (\Exception $e) {
-                        \Log::error("Failed to submit Auto-Consolidate Inv #{$invoiceNo}: " . $e->getMessage());
-                        
-                        \DB::table('invoice')->where('id_invoice', $invoiceId)->update([
-                            'submission_status' => 'Failed',
-                            'is_failed' => 1,
-                            'updated_at' => now()
-                        ]);
-                    }
-                }
-
-                if (!empty($processedItemIds)) {
+                if ($items->isNotEmpty()) {
+                    $itemIds = $items->pluck('id_invoice_item')->toArray();
                     \DB::table('consolidate_invoice_item')
-                        ->whereIn('id_invoice_item', $processedItemIds)
-                        ->update(['submission_status' => 'submitted', 'is_sent_invoice' => 1, 'updated_at' => now()]);
+                        ->whereIn('id_invoice_item', $itemIds)
+                        ->update(['submission_status' => 'processing', 'updated_at' => now()]);
+                    $itemsToProcess = $items;
                 }
-            }
-            
-            $processedBatches++;
-            $this->checkAndFinalize($developerId, $connection);
+            });
 
-        } catch (\Exception $e) {
-            \Log::error("Consolidate Batch Error ($developerId): " . $e->getMessage());
-            if (!empty($itemsToProcess)) {
-                $itemIds = $itemsToProcess->pluck('id_invoice_item')->toArray();
-                \DB::table('consolidate_invoice_item')
-                    ->whereIn('id_invoice_item', $itemIds)
-                    ->update(['submission_status' => null]);
+            if (empty($itemsToProcess)) {
+                $hasMoreItems = false;
+                $this->checkAndFinalize($developerId, $connection);
+                break;
+            }
+
+            try {
+                $supplier = \DB::table('customer')
+                    ->where('id_developer', $developerId)
+                    ->where('customer_type', 'SUPPLIER')
+                    ->whereNull('deleted')
+                    ->first();
+
+                if ($supplier) {
+                    \Session::put('connection_integrate', $connection);
+
+                    $chunks = $itemsToProcess->chunk($itemsPerInvoice);
+                    $invoiceBaseNo = 'AUTO-' . now()->format('Ymd-His');
+
+                    $processedItemIds = [];
+                    $invoiceTypeCode = ($supplier->is_selfbill_supplier == 1) ? '11' : '01';
+                    $isSelfBill = in_array($invoiceTypeCode, ['11', '12', '13', '14']);
+
+                    $customerId = 6;
+                    if ($isSelfBill) {
+                        $customerRow = \DB::table('customer')->where('id_customer', $supplier->id_customer)->first();
+                        $supplierRow = \DB::table('customer')->where('id_customer', $customerId)->first();
+                    } else {
+                        $supplierRow = $supplier;
+                        $customerRow = \DB::table('customer')->where('id_customer', $customerId)->first();
+                    }
+
+                    if (!$supplierRow || !$customerRow) {
+                        throw new \Exception("Supplier/Customer not found");
+                    }
+
+                    foreach ($chunks as $chunk) {
+                        $uniqueId = (string) \Str::uuid();
+                        $invoiceNo = $invoiceBaseNo . '-' . strtoupper(\Str::random(4));
+
+                        $totalTax = $chunk->sum('tax');
+                        $totalNet = $chunk->sum(function ($item) {
+                            $gross = $item->price_amount * $item->invoiced_quantity;
+                            return $gross - $item->price_discount;
+                        });
+                        $payableAmount = $totalNet + $totalTax;
+
+                        $invoiceId = \DB::table('invoice')->insertGetId([
+                            'unique_id' => $uniqueId,
+                            'connection_integrate' => $connection,
+                            'invoice_status' => 'manual',
+                            'submission_status' => 'Pending',
+                            'is_failed' => 0,
+                            'id_developer' => $developerId,
+                            'id_customer' => 6,
+                            'id_supplier' => $supplier->id_customer,
+                            'invoice_no' => $invoiceNo,
+                            'invoice_type_code' => $invoiceTypeCode,
+                            'issue_date' => now(),
+                            'tax_scheme_id' => 'OTH',
+                            'tax_category_id' => '01',
+                            'price' => number_format((float)$payableAmount, 2, '.', ''),
+                            'taxable_amount' => number_format((float)$totalNet, 2, '.', ''),
+                            'tax_amount' => number_format((float)$totalTax, 2, '.', ''),
+                            'payment_note_term' => 'CASH',
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+
+                        foreach ($chunk as $index => $item) {
+                            $grossAmount = $item->price_amount * $item->invoiced_quantity;
+                            $netAmount = $grossAmount - $item->price_discount;
+
+                            \DB::table('invoice_item')->insert([
+                                'id_developer' => $item->id_developer,
+                                'unique_id' => $uniqueId,
+                                'id_invoice' => $invoiceId,
+                                'issue_date' => $item->issue_date,
+                                'connection_integrate' => $connection,
+                                'sale_id_integrate' => $item->sale_id_integrate,
+                                'id_consolidate_invoice' => $item->id_consolidate_invoice,
+                                'line_id' => $index + 1,
+                                'id_customer' => $supplier->id_customer,
+                                'invoiced_quantity' => $item->invoiced_quantity,
+                                'line_extension_amount' => number_format((float)$grossAmount, 2, '.', ''),
+                                'price_extension_amount' => number_format((float)$netAmount, 2, '.', ''),
+                                'item_description' => $item->item_description,
+                                'price_amount' => number_format((float)$item->price_amount, 2, '.', ''),
+                                'price_discount' => number_format((float)$item->price_discount, 2, '.', ''),
+                                'tax' => number_format((float)$item->tax, 2, '.', ''),
+                                'item_clasification_value' => '004',
+                                'created_at' => now(),
+                            ]);
+
+                            $processedItemIds[] = $item->id_invoice_item;
+                        }
+
+                        $createdInvoices++;
+                    }
+
+                    // Mark items as ready for submission
+                    if (!empty($processedItemIds)) {
+                        \DB::table('consolidate_invoice_item')
+                            ->whereIn('id_invoice_item', $processedItemIds)
+                            ->update(['submission_status' => 'created', 'updated_at' => now()]);
+                    }
+                }
+
+                $processedBatches++;
+
+            } catch (\Exception $e) {
+                \Log::error("Consolidate Batch Error ($developerId): " . $e->getMessage());
+                if (!empty($itemsToProcess)) {
+                    $itemIds = $itemsToProcess->pluck('id_invoice_item')->toArray();
+                    \DB::table('consolidate_invoice_item')
+                        ->whereIn('id_invoice_item', $itemIds)
+                        ->update(['submission_status' => null]);
+                }
+                $hasMoreItems = false;
             }
         }
     }
 
+    \Log::info("autoConsolidate completed", [
+        'created_invoices' => $createdInvoices,
+        'retried_invoices' => $processedRetries
+    ]);
+
     return response()->json([
         'success' => true,
-        'message' => "Cycle complete. Retried {$processedRetries} failed invoices. Processed {$processedBatches} new batches."
+        'message' => "Created {$createdInvoices} invoices. Marked {$processedRetries} failed invoices for retry. Call /developer/submit to submit to LHDN.",
+        'created_invoices' => $createdInvoices,
+        'retried_invoices' => $processedRetries,
+        'next_step' => 'Call /developer/submit to submit invoices to LHDN'
     ]);
+
+
+
+
+
 }    // Helper to Check Remaining Items
     private function checkAndFinalize($developerId, $connection) {
         $remainingCount = \DB::table('consolidate_invoice_item')
@@ -954,62 +1737,77 @@ public function autoConsolidate(Request $request)
     }
 
     // Helper: Email and Reschedule
+ // Helper: Email and Reschedule
     private function finalizeConsolidation($developerId, $connection) {
-        $supplier = \DB::table('customer')->where('id_developer', $developerId)->where('customer_type', 'SUPPLIER')->first();
-        $setting = \DB::table('consolidate_setting')->where('connection_integrate', $connection)->first();
+        $supplier = \DB::table('customer')
+            ->where('id_developer', $developerId)
+            ->where('customer_type', 'SUPPLIER')
+            ->whereNull('deleted') // Added this to prevent picking up deleted suppliers
+            ->first();
+            
+        $setting = \DB::table('consolidate_setting')
+            ->where('connection_integrate', $connection)
+            ->first();
         
         if ($setting && \Carbon\Carbon::parse($setting->next_consolidate)->isFuture()) {
             return;
         }
 
-        $todayInvoices = \DB::table('invoice')
-            ->where('id_supplier', $supplier->id_customer)
-            ->where('invoice_no', 'LIKE', 'AUTO-' . now()->format('Ymd') . '%')
-            ->get();
-            
-        $count = $todayInvoices->count();
-        $amount = $todayInvoices->sum('price');
+        // 🚩 FIX: Check if $supplier actually exists before accessing $supplier->id_customer
+        if ($supplier) {
+            $todayInvoices = \DB::table('invoice')
+                ->where('id_supplier', $supplier->id_customer)
+                ->where('invoice_no', 'LIKE', 'AUTO-' . now()->format('Ymd') . '%')
+                ->get();
+                
+            $count = $todayInvoices->count();
+            $amount = $todayInvoices->sum('price');
 
-        if ($setting && $setting->is_send_email == 1 && $count > 0) {
-             try {
-                $emailData = [
-                    'name' => $supplier->registration_name,
-                    'count' => $count,
-                    'amount' => number_format($amount, 2),
-                    'date' => now()->format('d M Y')
-                ];
+            if ($setting && $setting->is_send_email == 1 && $count > 0) {
+                 try {
+                    $emailData = [
+                        'name' => $supplier->registration_name,
+                        'count' => $count,
+                        'amount' => number_format($amount, 2),
+                        'date' => now()->format('d M Y')
+                    ];
 
-                \Mail::send('emails.auto_consolidate', $emailData, function ($message) use ($supplier) {
-                    $cc = 'fjusrin@gmail.com';
-                    if (!empty($supplier->email)) {
-                        $message->to($supplier->email)->cc($cc);
-                    } else {
-                        $message->to($cc);
-                    }
-                    $message->subject('Auto-Consolidation Completed');
-                });
-            } catch (\Exception $e) {
-                \Log::error("Email failed: " . $e->getMessage());
+                    \Mail::send('emails.auto_consolidate', $emailData, function ($message) use ($supplier) {
+                        $cc = 'fjusrin@gmail.com';
+                        if (!empty($supplier->email)) {
+                            $message->to($supplier->email)->cc($cc);
+                        } else {
+                            $message->to($cc);
+                        }
+                        $message->subject('Auto-Consolidation Completed');
+                    });
+                } catch (\Exception $e) {
+                    \Log::error("Email failed: " . $e->getMessage());
+                }
             }
         }
 
-        $nextDate = null;
-        $now = now();
+        // We must calculate the next date regardless of whether a supplier was found, 
+        // otherwise this connection will block future crons.
+        if ($setting) {
+            $nextDate = null;
+            $now = now();
 
-        if ($setting->is_daily) $nextDate = $now->copy()->addDay()->startOfDay();
-        elseif ($setting->is_weekly) $nextDate = $now->copy()->next('Sunday')->startOfDay();
-        elseif ($setting->is_monthly) $nextDate = $now->copy()->addMonth()->endOfMonth()->startOfDay();
-        elseif ($setting->is_spesific_date) {
-            $candidate = $now->copy()->day($setting->is_spesific_date)->startOfDay();
-            $nextDate = ($candidate->lte($now)) ? $now->copy()->addMonth()->day($setting->is_spesific_date)->startOfDay() : $candidate;
-        }
+            if ($setting->is_daily) $nextDate = $now->copy()->addDay()->startOfDay();
+            elseif ($setting->is_weekly) $nextDate = $now->copy()->next('Sunday')->startOfDay();
+            elseif ($setting->is_monthly) $nextDate = $now->copy()->addMonth()->endOfMonth()->startOfDay();
+            elseif ($setting->is_spesific_date) {
+                $candidate = $now->copy()->day($setting->is_spesific_date)->startOfDay();
+                $nextDate = ($candidate->lte($now)) ? $now->copy()->addMonth()->day($setting->is_spesific_date)->startOfDay() : $candidate;
+            }
 
-        if ($nextDate) {
-            \DB::table('consolidate_setting')
-                ->where('connection_integrate', $connection)
-                ->update(['last_consolidate' => now(), 'next_consolidate' => $nextDate]);
+            if ($nextDate) {
+                \DB::table('consolidate_setting')
+                    ->where('connection_integrate', $connection)
+                    ->update(['last_consolidate' => now(), 'next_consolidate' => $nextDate]);
+            }
         }
-    }
+    }   
 
     /**
      * Export Unified Invoices (Normal & Self Bill)

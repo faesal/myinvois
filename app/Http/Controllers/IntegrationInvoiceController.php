@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http; // ✅ Add this line for the HTTP client // ✅ Add this line for error logging
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -880,6 +881,5 @@ class IntegrationInvoiceController extends Controller
             'qr_url'         => "{$appUrl}/redirect/{$shortCode}"
         ], 201);
     }
-    
 
 }

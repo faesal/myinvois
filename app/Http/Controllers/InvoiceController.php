@@ -1974,13 +1974,47 @@ public function submitSelectedLHDN(Request $request)
 
         } catch (\Exception $e) {
             $failCount++;
-            $errors[] = "Inv #{$inv->invoice_no}: " . $e->getMessage();
+            
+            // ---------------------------------------------------------
+            // 5. EXTRACT EXACT JSON ERROR FROM LHDN
+            // ---------------------------------------------------------
+            $errorDetails = $e->getMessage();
+            
+            // Try to pull the raw JSON body if it was an HTTP exception
+            if (method_exists($e, 'getResponse') && $e->getResponse() !== null) {
+                $errorDetails = $e->getResponse()->getBody()->getContents(); 
+            } elseif (method_exists($e, 'response') && $e->response !== null) {
+                $errorDetails = $e->response->body(); 
+            }
 
+            // Keep the error text safe for the frontend summary
+            $frontendError = is_string($errorDetails) ? $errorDetails : json_encode($errorDetails);
+            $errors[] = "Inv #{$inv->invoice_no}: " . $frontendError;
+
+            // Mark Invoice as Failed
             DB::table('invoice')->where('id_invoice', $inv->id_invoice)->update([
                 'submission_status' => 'Failed',
                 'is_failed'         => 1, // Mark as failed for auto-resubmit to pick up later
                 'updated_at'        => now()
             ]);
+
+            // ---------------------------------------------------------
+            // 6. SAVE FAILURE LOG TO MESSAGE_HEADER
+            // ---------------------------------------------------------
+            // We use updateOrInsert so if they click submit multiple times on 
+            // the same failed invoice, it just updates the existing error log
+            DB::table('message_header')->updateOrInsert(
+                ['id_invoice' => $inv->id_invoice],
+                [
+                    'document_id'       => $inv->invoice_no,
+                    'type_submission'   => $inv->invoice_type_code,
+                    'status_submission' => 'ERROR',
+                    'error_message'     => substr($e->getMessage(), 0, 1000), // Safe truncation
+                    'response_json'     => is_string($errorDetails) ? $errorDetails : json_encode($errorDetails),
+                    'created_at'        => DB::raw('IFNULL(created_at, NOW())'), // Keep original created_at if updating
+                    'updated_at'        => now()
+                ]
+            );
             
             // Clean session on failure
             session()->forget(['invoice_unique_id', 'selfbill_unique_id', 'invoice_type_code', 'is_selfbilled', 'previous_uuid', 'previous_invoice_no', 'consolidate_status']);
