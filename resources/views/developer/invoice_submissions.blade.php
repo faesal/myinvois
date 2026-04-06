@@ -8,15 +8,93 @@
     div.dt-buttons .dt-button { padding: 0; border: none; background: none; }
     .dataTables_filter { float: right !important; margin-bottom: 15px; }
     
+    /* Status Cards */
+    .status-card {
+        border-radius: 10px;
+        padding: 20px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+    }
+    
+    .status-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .status-card.active {
+        border: 2px solid #333;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    
+    .status-card .card-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .status-card .card-count {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 0;
+    }
+    
+    .status-card.card-submitted {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    .status-card.card-pending {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+    }
+    
+    .status-card.card-failed {
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        color: white;
+    }
+    
     @media (max-width: 768px) {
         .filter-col { margin-bottom: 15px; }
         .badge { width: 100%; padding: 8px !important; font-size: 0.75rem !important; }
         .btn-info, .btn-warning, .btn-danger, .resubmit-btn { width: 100%; }
+        .status-card { margin-bottom: 15px; }
+        .status-card .card-count { font-size: 2rem; }
     }
 </style>
 
 <div class="container-fluid">
     <h3 class="mb-4">Invoice Submissions</h3>
+
+    {{-- Status Cards --}}
+    <div class="row mb-4">
+        <div class="col-md-4 col-sm-6">
+            <div class="status-card card-submitted" data-status="Submitted" id="card-submitted">
+                <div class="card-title">
+                    <i class="fas fa-check-circle me-2"></i>Submitted
+                </div>
+                <h2 class="card-count" id="count-submitted">0</h2>
+            </div>
+        </div>
+        <div class="col-md-4 col-sm-6">
+            <div class="status-card card-pending" data-status="Pending" id="card-pending">
+                <div class="card-title">
+                    <i class="fas fa-clock me-2"></i>Pending
+                </div>
+                <h2 class="card-count" id="count-pending">0</h2>
+            </div>
+        </div>
+        <div class="col-md-4 col-sm-6">
+            <div class="status-card card-failed" data-status="Failed" id="card-failed">
+                <div class="card-title">
+                    <i class="fas fa-times-circle me-2"></i>Failed
+                </div>
+                <h2 class="card-count" id="count-failed">0</h2>
+            </div>
+        </div>
+    </div>
 
     {{-- Filter Form --}}
     <div class="card mb-4">
@@ -34,11 +112,11 @@
                     </div>
                     <div class="col-md-2 col-6 filter-col">
                         <label class="form-label small fw-bold">Status</label>
-                        <select name="status" class="form-control">
+                        <select name="status" id="statusFilter" class="form-control">
                             <option value="ALL">All</option>
                             <option value="Submitted" {{ request('status')=='Submitted'?'selected':'' }}>Submitted</option>
-                            <option value="Failed" {{ request('status')=='Failed'?'selected':'' }}>Failed</option>
                             <option value="Pending" {{ request('status')=='Pending'?'selected':'' }}>Pending</option>
+                            <option value="Failed" {{ request('status')=='Failed'?'selected':'' }}>Failed</option>
                         </select>
                     </div>
                     <div class="col-md-2 col-6 filter-col">
@@ -139,6 +217,12 @@
         </div>
     </div>
 </div>
+
+{{-- Hidden data for JavaScript --}}
+<script>
+    window.statusCounts = @json($statusCounts ?? ['Submitted' => 0, 'Pending' => 0, 'Failed' => 0]);
+</script>
+
 @endsection
 
 @section('scripts')
@@ -157,6 +241,13 @@
 $(document).ready(function() {
     let invoiceTypes = @json($invoiceTypes);
     let exportRoute = "{{ route('developer.invoices.export') }}";
+
+    // Update card counts from server data
+    if (window.statusCounts) {
+        $('#count-submitted').text(window.statusCounts.Submitted || 0);
+        $('#count-pending').text(window.statusCounts.Pending || 0);
+        $('#count-failed').text(window.statusCounts.Failed || 0);
+    }
 
     // --- 1. Define Export Dropdown Buttons ---
     let dropdownButtons = [
@@ -181,7 +272,6 @@ $(document).ready(function() {
             className: 'dropdown-item py-2 fw-semibold',
             action: function () {
                 let url = new URL(exportRoute);
-                // Append all current form filters to the export URL
                 url.searchParams.append('start_date', $('input[name="start_date"]').val());
                 url.searchParams.append('end_date', $('input[name="end_date"]').val());
                 url.searchParams.append('status', $('select[name="status"]').val());
@@ -196,7 +286,6 @@ $(document).ready(function() {
         }
     ];
 
-    // Build specific type buttons dynamically
     invoiceTypes.forEach(function(type) {
         dropdownButtons.push({
             text: 'All ' + type.description + 's',
@@ -212,11 +301,12 @@ $(document).ready(function() {
         });
     });
 
-    // --- 2. Initialize DataTable ---
+    // --- 2. Initialize DataTable with Pagination Options ---
     @if(request()->filled('connection_integrate') && $invoices->isNotEmpty())
         var table = $('#invoiceTable').DataTable({
             pageLength: 30,
-            dom: '<"d-flex justify-content-between align-items-center mb-3"<"dt-buttons-container"B><"dt-search-container"f>>rt<"d-flex justify-content-between mt-3"ip>',
+            lengthMenu: [[10, 30, 50, 100, -1], [10, 30, 50, 100, "All"]],
+            dom: '<"d-flex justify-content-between align-items-center mb-3"<"dt-buttons-container"B><"d-flex gap-2"l<"dt-search-container"f>>>rt<"d-flex justify-content-between mt-3"ip>',
             buttons: [
                 {
                     extend: 'collection',
@@ -224,11 +314,38 @@ $(document).ready(function() {
                     buttons: dropdownButtons
                 }
             ],
-            columnDefs: [{ orderable: false, targets: [0, 8] }]
+            columnDefs: [{ orderable: false, targets: [0, 8] }],
+            language: {
+                lengthMenu: "Show _MENU_ entries",
+                info: "Showing _START_ to _END_ of _TOTAL_ invoices",
+                infoEmpty: "Showing 0 to 0 of 0 invoices",
+                infoFiltered: "(filtered from _MAX_ total invoices)"
+            }
         });
+
+        // Highlight active status card based on current filter
+        let currentStatus = "{{ request('status', 'ALL') }}";
+        if (currentStatus !== 'ALL') {
+            $('.status-card[data-status="' + currentStatus + '"]').addClass('active');
+        }
     @endif
 
-    // --- 3. Unified Select All Logic ---
+    // --- 3. Status Card Click Handler ---
+    $('.status-card').on('click', function() {
+        let status = $(this).data('status');
+        
+        // Update dropdown
+        $('#statusFilter').val(status);
+        
+        // Highlight clicked card
+        $('.status-card').removeClass('active');
+        $(this).addClass('active');
+        
+        // Submit form
+        $('#searchForm').submit();
+    });
+
+    // --- 4. Unified Select All Logic ---
     $("#select-all").on("click", function() {
         let isChecked = this.checked;
         if ($.fn.DataTable.isDataTable('#invoiceTable')) {
@@ -238,62 +355,119 @@ $(document).ready(function() {
         }
     });
 
-    // --- 4. Submission & Resubmission Logic (Remaining Original) ---
-    function processInvoices(actionType) {
-        let selected = [];
-        let totalPrice = 0;
-        let supplierCheck = null;
-        let supplierMismatch = false;
+ // Helper function to create a delay (to respect LHDN rate limits)
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        // Use table.$ if DataTables is active to grab checkboxes from other pages
-        let $checkboxes = $.fn.DataTable.isDataTable('#invoiceTable') 
-            ? table.$(".select-item:checked") 
-            : $(".select-item:checked");
+// --- 5. Submission & Resubmission Logic (Sequential 1-by-1) ---
+async function processInvoices(actionType) {
+    let selected = [];
+    let totalPrice = 0;
+    let supplierCheck = null;
+    let supplierMismatch = false;
 
-        $checkboxes.each(function() {
-            let row = $(this).closest("tr");
-            let id = $(this).val();
-            let amountText = row.find("td:nth-child(6)").text().trim(); 
-            let amount = parseFloat(amountText.replace(/,/g, '')) || 0;
-            let supplierId = row.find(".supplier-id").val();
+    let $checkboxes = $.fn.DataTable.isDataTable('#invoiceTable') 
+        ? table.$(".select-item:checked") 
+        : $(".select-item:checked");
 
-            if (supplierCheck === null) {
-                supplierCheck = supplierId;
-            } else if (supplierId && supplierCheck !== supplierId) {
-                supplierMismatch = true;
+    $checkboxes.each(function() {
+        let row = $(this).closest("tr");
+        let id = $(this).val();
+        let amountText = row.find("td:nth-child(6)").text().trim(); 
+        let amount = parseFloat(amountText.replace(/,/g, '')) || 0;
+        let supplierId = row.find(".supplier-id").val();
+
+        if (supplierCheck === null) {
+            supplierCheck = supplierId;
+        } else if (supplierId && supplierCheck !== supplierId) {
+            supplierMismatch = true;
+        }
+
+        selected.push(id);
+        totalPrice += amount;
+    });
+
+    if (selected.length === 0) return Swal.fire({ icon: "warning", title: "No invoices selected" });
+    if (supplierMismatch) return Swal.fire({ icon: "error", title: "Supplier mismatch", text: "Invoices must be from the same supplier." });
+
+    let config = actionType === 'resubmit' 
+        ? { title: "Confirm Resubmission", btn: "Resubmit Now", color: "#f1c40f", url: "{{ url('api/invoices/bulk-resubmit') }}" }
+        : { title: "Confirm Submission", btn: "Submit Now", color: "#22c55e", url: "{{ route('developer.invoices.submitSelected') }}" };
+
+    Swal.fire({
+        icon: "info",
+        title: config.title,
+        html: `<b>Total:</b> ${selected.length} invoices<br><b>Amount:</b> RM ${totalPrice.toFixed(2)}<br><br><small class="text-muted">Invoices will be processed sequentially.</small>`,
+        showCancelButton: true,
+        confirmButtonText: config.btn,
+        confirmButtonColor: config.color,
+    }).then(async (res) => {
+        if (!res.isConfirmed) return;
+
+        let total = selected.length;
+        let successCount = 0;
+        let failCount = 0;
+
+        // Open the loading alert
+        Swal.fire({
+            title: `Processing 1 of ${total}...`,
+            html: "Please wait. Do not close or refresh this page.",
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        // Loop through each selected invoice ONE BY ONE
+        for (let i = 0; i < total; i++) {
+            let currentInvoiceId = selected[i];
+
+            // Update SweetAlert text so the user sees real-time progress
+            Swal.update({
+                title: `Processing ${i + 1} of ${total}...`
+            });
+
+            try {
+                // Wait for this specific AJAX request to finish before moving to the next
+                let response = await $.ajax({
+                    url: config.url,
+                    method: "POST",
+                    data: { 
+                        _token: "{{ csrf_token() }}", 
+                        invoices: [currentInvoiceId], // Send exactly 1 invoice in the array
+                        connection_integrate: $("select[name='connection_integrate']").val(), 
+                        id_supplier: supplierCheck, 
+                        mode: actionType 
+                    }
+                });
+                
+                successCount++;
+
+            } catch (xhr) {
+                console.error(`Invoice ${currentInvoiceId} failed:`, xhr);
+                failCount++;
             }
 
-            selected.push(id);
-            totalPrice += amount;
+            // Optional but HIGHLY recommended: Pause for 1 second between requests 
+            // so LHDN doesn't block the frontend for spamming the API too fast
+            if (i < total - 1) {
+                await sleep(1000); 
+            }
+        }
+
+        // Final Result Alert
+        let finalIcon = failCount === 0 ? "success" : (successCount === 0 ? "error" : "warning");
+        let finalTitle = failCount === 0 ? "All Complete!" : "Completed with Errors";
+        let finalText = `Successfully submitted: <b>${successCount}</b><br>Failed: <b>${failCount}</b>`;
+
+        Swal.fire({ 
+            icon: finalIcon, 
+            title: finalTitle, 
+            html: finalText, 
+            confirmButtonText: "Refresh Page"
+        }).then(() => { 
+            location.reload(); 
         });
 
-        if (selected.length === 0) return Swal.fire({ icon: "warning", title: "No invoices selected" });
-        if (supplierMismatch) return Swal.fire({ icon: "error", title: "Supplier mismatch", text: "Invoices must be from the same supplier." });
-
-        let config = actionType === 'resubmit' 
-            ? { title: "Confirm Resubmission", btn: "Resubmit Now", color: "#f1c40f", url: "{{ url('api/invoices/bulk-resubmit') }}" }
-            : { title: "Confirm Submission", btn: "Submit Now", color: "#22c55e", url: "{{ route('developer.invoices.submitSelected') }}" };
-
-        Swal.fire({
-            icon: "info",
-            title: config.title,
-            html: `<b>Total:</b> ${selected.length} invoices<br><b>Amount:</b> RM ${totalPrice.toFixed(2)}`,
-            showCancelButton: true,
-            confirmButtonText: config.btn,
-            confirmButtonColor: config.color,
-        }).then((res) => {
-            if (!res.isConfirmed) return;
-            $.ajax({
-                url: config.url,
-                method: "POST",
-                data: { _token: "{{ csrf_token() }}", invoices: selected, connection_integrate: $("select[name='connection_integrate']").val(), id_supplier: supplierCheck, mode: actionType },
-                beforeSend: function() { Swal.fire({ title: "Processing...", didOpen: () => Swal.showLoading(), allowOutsideClick: false }); },
-                success: function(response) { Swal.fire({ icon: "success", title: "Success!", text: response.message, timer: 1800, showConfirmButton: false }).then(() => location.reload()); },
-                error: function(xhr) { Swal.fire({ icon: "error", title: "Failed", text: xhr.responseJSON?.message || "Error occurred." }); }
-            });
-        });
-    }
-
+    });
+}
     $("#submitSelectedBtn").on("click", () => processInvoices('submit'));
     $("#resubmitSelectedBtn").on("click", () => processInvoices('resubmit'));
 });

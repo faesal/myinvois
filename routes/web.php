@@ -1,6 +1,10 @@
 <?php
 
+use Illuminate\Support\Facades\DB;
 
+use Illuminate\Support\Facades\Schema;
+
+use Illuminate\Database\Schema\Blueprint;
 
 use Illuminate\Support\Facades\Route;
 
@@ -116,6 +120,7 @@ Route::get('/subscriberLogin/{uuid}', [AuthController::class, 'subscriberLogin']
 // Developer Documentation Route asd
 
 Route::get('/developer/documentation', [DeveloperDocumentationController::class, 'index'])->name('developer.documentation');
+Route::get('/developer/release_note', [DeveloperDocumentationController::class, 'release_note'])->name('developer.release_note');
 
 
 
@@ -398,6 +403,9 @@ Route::middleware(['auth'])->group(function () {
 
         ->name('developer.client.edit');
 
+    Route::post('/developer/client/regenerate-keys/{id_customer}', [ClientController::class, 'regenerateKeys'])
+        ->name('developer.client.regenerate_keys');
+
 
 
     Route::post('/developer/client/update/{id_customer}', [ClientController::class, 'update'])
@@ -512,9 +520,14 @@ Route::post('/client/settings/consolidate/{id}', [ClientController::class, 'save
         ->name('developer.invoices.submitSelected');
 
 
-    Route::get('/developer/invoice/delete/{id}', [App\Http\Controllers\InvoiceSubmissionController::class, 'deleteInvoice'])
+    Route::get('/developer/invoice/delete/{id}', [InvoiceSubmissionController::class, 'deleteInvoice'])
     
         ->name('developer.invoices.delete');
+
+    Route::post('/api/stop-worker', [InvoiceSubmissionController::class, 'stopWorker']);
+
+    Route::post('/developer/invoices/bulk-delete', [InvoiceSubmissionController::class, 'bulkDeleteInvoices'])
+    ->name('developer.invoices.bulkDelete');
 
 
 
@@ -648,15 +661,17 @@ Route::any('/getsubmission', [InvoiceController::class, 'getsubmission']);
 Route::get('/invoice/view/{unique_id}', [App\Http\Controllers\InvoiceSubmissionController::class, 'showInvoice'])
     ->name('invoice.view.public');
 
-// Grouping them under a prefix is usually cleaner
+
 // Grouping them under a prefix is usually cleaner
 Route::prefix('manage-customer')->name('manage_customer.')->group(function () {
     
     // --- 1. Custom Actions (Must be defined first to avoid conflict with {id}) ---
-    Route::post('/import', [ManageCustomerController::class, 'import'])->name('import');
-     Route::post('/export', [ManageCustomerController::class, 'export'])->name('export');
     
-    // FIX: Simplified here because the group already adds "manage-customer" prefix and "manage_customer." name
+    // Bulk Delete
+    Route::delete('/bulk-delete', [ManageCustomerController::class, 'bulkDelete'])->name('bulk_delete');
+    
+    Route::post('/import', [ManageCustomerController::class, 'import'])->name('import');
+    Route::post('/export', [ManageCustomerController::class, 'export'])->name('export');
     Route::get('/download-template', [ManageCustomerController::class, 'downloadTemplate'])->name('download_template');
 
     // --- 2. Standard CRUD Actions ---
@@ -676,9 +691,8 @@ Route::prefix('manage-customer')->name('manage_customer.')->group(function () {
     // Update Action (manage_customer.update)
     Route::put('/{id}', [ManageCustomerController::class, 'update'])->name('update');
 
-    // Delete Action (manage_customer.destroy)
+    // Delete Single Action (manage_customer.destroy)
     Route::delete('/{id}', [ManageCustomerController::class, 'destroy'])->name('destroy');
-    Route::post('/export', [ManageCustomerController::class, 'export'])->name('export');
 });
 Route::group(['prefix' => 'self_bill', 'as' => 'self_invoice.', 'middleware' => ['auth']], function () {
     
@@ -713,3 +727,96 @@ Route::middleware(['auth'])->group(function () {
 
 // URL: https://www.mysynctax.com/dev/cron/check-expired/synctax-secure-2026
 Route::get('/cron/check-expired/{secret}', [App\Http\Controllers\SubscriberController::class, 'autoCheckExpired']);
+
+// ==============================================================================
+// 🚨 MOVED INSIDE AUTH MIDDLEWARE FOR SECURITY 🚨
+// ==============================================================================
+Route::middleware(['auth'])->group(function () {
+
+    Route::post('/api/trigger-worker', function () {
+        // 1. Check if there are actually jobs left to process
+        $pendingJobs = DB::table('jobs')->count();
+        
+        if ($pendingJobs === 0) {
+            return response()->json(['status' => 'complete', 'remaining' => 0]);
+        }
+
+        // 2. Spin up the worker! It will stop automatically after 20 seconds
+        Artisan::call('queue:work', [
+            '--stop-when-empty' => true,
+            '--max-time' => 20 
+        ]);
+
+        // 3. Report back to the JavaScript how many batches are left
+        return response()->json([
+            'status' => 'processing',
+            'remaining' => DB::table('jobs')->count()
+        ]);
+    });
+
+
+/**Route::get('/setup-database-queue', function () {
+    
+    // 1. Create the 'jobs' table
+    if (!Schema::hasTable('jobs')) {
+        Schema::create('jobs', function (Blueprint $table) {
+            $table->bigIncrements('id');
+            $table->string('queue')->index();
+            $table->longText('payload');
+            $table->unsignedTinyInteger('attempts');
+            $table->unsignedInteger('reserved_at')->nullable();
+            $table->unsignedInteger('available_at');
+            $table->unsignedInteger('created_at');
+        });
+    }**/
+
+    // 2. Create the 'failed_jobs' table
+    if (!Schema::hasTable('failed_jobs')) {
+        Schema::create('failed_jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('uuid')->unique();
+            $table->text('connection');
+            $table->text('queue');
+            $table->longText('payload');
+            $table->longText('exception');
+            $table->timestamp('failed_at')->useCurrent();
+        });
+    }
+
+    return 'Queue tables created perfectly using the Schema Builder!';
+});
+Route::get('/test-shell-exec', function () {
+    try {
+        // 1. First, let's see if the server even allows basic terminal commands.
+        // We use 2>&1 to catch any terminal errors and print them to the screen.
+        $phpVersion = shell_exec('php -v 2>&1'); 
+
+        if (empty($phpVersion)) {
+            return "<h3>Bummer!</h3> shell_exec() is strictly disabled by your hosting provider. The AJAX method is your only option!";
+        }
+
+        // 2. If it works, let's try running ONE background job safely.
+        // The --once flag guarantees it will stop and not become a zombie process.
+        $artisanOutput = shell_exec('php artisan queue:work --once 2>&1');
+
+        return "<h3>Success! shell_exec is ALIVE!</h3>" .
+               "<strong>1. Server PHP Check:</strong><br><pre>" . $phpVersion . "</pre><hr>" .
+               "<strong>2. Artisan Queue Output:</strong><br><pre>" . ($artisanOutput ?: 'No jobs in queue to process.') . "</pre>";
+
+    } catch (\Exception $e) {
+        return "Failed: " . $e->getMessage();
+    }
+
+
+});
+
+Route::get('/clear-everything', function () {
+    try {
+        Artisan::call('config:clear');
+        Artisan::call('cache:clear');
+        Artisan::call('view:clear');
+        return "SUCCESS: Config and Cache cleared! You can close this tab.";
+    } catch (\Exception $e) {
+        return "ERROR: " . $e->getMessage();
+    }
+});

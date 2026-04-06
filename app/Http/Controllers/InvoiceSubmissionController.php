@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail; 
 use Illuminate\Support\Facades\Log;
+use App\Jobs\SubmitInvoicesBatch;
 
 class InvoiceSubmissionController extends Controller
 {
@@ -143,6 +144,7 @@ public function index(Request $request)
         ->where('ci.id_developer', $developerId)
         ->where('c.id_developer', $developerId)
         ->where('c.customer_type', 'SUPPLIER')
+        ->where('i.is_deleted', 0) // <======== 1. ADD THIS LINE HERE
         ->groupBy('i.id_invoice');
 
     /*
@@ -566,177 +568,89 @@ public function ConsolidateSelected(Request $request)
         ));
     }
     
+/**
+     * ROUTE 1: THE PUSHER (Saves the chunks to the database)
+     */
 public function submitSelectedInvoices(Request $request)
     {
-        if (!$request->ajax()) {
-            return response()->json(['error' => 'Invalid request type.'], 400);
-        }
+        if (!$request->ajax()) return response()->json(['error' => 'Invalid request'], 400);
 
-        $developerId = auth()->user()->id;
-
-        // receive invoices from AJAX
         $selectedIds = $request->input('invoices', []);
+        if (empty($selectedIds)) return response()->json(['success' => false, 'message' => 'No invoices selected.'], 400);
 
-        if (empty($selectedIds)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No invoices selected.'
-            ], 400);
-        }
-
-        // Validate invoices belong to developer
-        $invoices = DB::table('invoice')
+        // Filter out already submitted invoices to prevent double-billing
+        $validIdsToSubmit = DB::table('invoice')
             ->whereIn('id_invoice', $selectedIds)
-            ->get();
+            ->whereNotIn('submission_status', ['submitted', 'accepted'])
+            ->pluck('id_invoice')
+            ->toArray();
 
-        if ($invoices->isEmpty()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No valid invoices found.'
-            ], 400);
+        if (empty($validIdsToSubmit)) {
+            return response()->json(['success' => true, 'message' => 'Selected invoices are already submitted.'], 200);
         }
 
-        // Save selected connection
-        Session::put('connection_integrate', $request->connection_integrate);
+        $consolidateStatus = session('consolidate_status');
+        $connectionIntegrate = $request->connection_integrate;
 
-        $hasErrors = false;
-        $errorMessages = [];
+        // 💡 CHUNK BY 20: This is the safest way to avoid the "Batch size exceeds 5MB" error
+        $chunks = array_chunk($validIdsToSubmit, 20); 
+        $totalBatches = count($chunks);
 
-        foreach ($invoices as $inv) {
-            // ==========================================================
-            // GUARD: Check if the invoice is ALREADY submitted
-            // ==========================================================
-            // 👇 CHANGE 1: Use strtolower to match 'submitted' or 'accepted'
-            $currentStatus = strtolower($inv->submission_status ?? '');
-            if (in_array($currentStatus, ['submitted', 'accepted'])) {
-                $hasErrors = true;
-                $errorMessages[] = "Invoice {$inv->invoice_no}: Skipped. This invoice has already been submitted to LHDN.";
-                continue; // Skip the LHDN API call and move to the next invoice
-            }
-
-            session([
-                 'invoice_type_code' => $inv->invoice_type_code,
-                 'invoice_unique_id' => $inv->unique_id
-             ]);
-
-            session(['consolidate_status' => '']);
-
-            if(empty($inv->id_customer)) {
-                session(['consolidate_status' => '1']);
-            }
-
-            try {
-                // 1. Submit to LHDN
-                $model = new \App\Models\eInvoisModel;
-                $response = $model->submit($inv->id_invoice);
-
-                // 2. Safely parse the response to an array
-                $resArray = [];
-                if ($response instanceof \Illuminate\Http\JsonResponse) {
-                    $resArray = $response->getData(true);
-                } elseif (is_string($response)) {
-                    $resArray = json_decode($response, true);
-                } elseif (is_array($response)) {
-                    $resArray = $response;
-                } elseif (is_object($response)) {
-                    $resArray = json_decode(json_encode($response), true);
-                }
-
-                $isRejected = false;
-                $isError = false;
-                $errMsg = "Unknown error occurred.";
-
-                // 3. Evaluate LHDN Response
-                if (isset($resArray['original']['rejectedDocuments']) && count($resArray['original']['rejectedDocuments']) > 0) {
-                    $isRejected = true;
-                    $errMsg = $resArray['original']['rejectedDocuments'][0]['error']['message'] ?? 'Rejected by LHDN API.';
-                } elseif (isset($resArray['rejectedDocuments']) && count($resArray['rejectedDocuments']) > 0) {
-                    $isRejected = true;
-                    $errMsg = $resArray['rejectedDocuments'][0]['error']['message'] ?? 'Rejected by LHDN API.';
-                } elseif (isset($resArray['error']) || isset($resArray['original']['error'])) {
-                    $isError = true; 
-                    $errMsg = $resArray['error']['message'] ?? $resArray['original']['error']['message'] ?? 'LHDN System Error.';
-                }
-
-                // ==========================================================
-                // NEW GUARD: Verify UUID was actually generated and saved
-                // ==========================================================
-                // We fetch the latest state of this invoice from the database
-                $checkInv = DB::table('invoice')
-                    ->select('uuid', 'submission_uuid')
-                    ->where('id_invoice', $inv->id_invoice)
-                    ->first();
-
-                // If it wasn't already caught as an error, but UUID is missing, force an error!
-                if (!$isRejected && !$isError && (empty($checkInv->uuid) && empty($checkInv->submission_uuid))) {
-                    $isError = true;
-                    $errMsg = "Failed to retrieve UUID from LHDN. The API connection may have dropped.";
-                }
-
-                // 4. Apply the strict ENUM statuses
-                if ($isRejected) {
-                    $hasErrors = true;
-                    $errorMessages[] = "Invoice {$inv->invoice_no}: {$errMsg}";
-
-                    DB::table('invoice')
-                        ->where('id_invoice', $inv->id_invoice)
-                        ->update([
-                            'submission_status' => 'Failed', // 👇 CHANGE 2: Was 'REJECTED'
-                            'is_failed' => 1,
-                            'updated_at' => now()
-                        ]);
-                } elseif ($isError) {
-                    $hasErrors = true;
-                    $errorMessages[] = "Invoice {$inv->invoice_no}: {$errMsg}";
-
-                    DB::table('invoice')
-                        ->where('id_invoice', $inv->id_invoice)
-                        ->update([
-                            'submission_status' => 'Failed', // 👇 CHANGE 3: Was 'ERROR'
-                            'is_failed' => 1,
-                            'updated_at' => now()
-                        ]);
-                } else {
-                    // Success! 
-                    DB::table('invoice')
-                        ->where('id_invoice', $inv->id_invoice)
-                        ->update([
-                            'submission_status' => 'submitted', // 👇 CHANGE 4: Was 'SUBMITTED'
-                            'is_failed' => 0,
-                            'updated_at' => now()
-                        ]);
-                }
-
-            } catch (\Exception $e) {
-                // Hard crash (e.g. database timeout, LHDN server down, or missing invoice items)
-                $hasErrors = true;
-                $errorMessages[] = "Invoice {$inv->invoice_no}: System Exception - " . $e->getMessage();
-
-                DB::table('invoice')
-                    ->where('id_invoice', $inv->id_invoice)
-                    ->update([
-                        'submission_status' => 'Failed', // 👇 CHANGE 5: Was 'ERROR'
-                        'is_failed' => 1,
-                        'updated_at' => now()
-                    ]);
-            }
-        }
-
-        // 5. Return detailed response back to your SweetAlert JS
-        if ($hasErrors) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Processing complete, but some errors occurred.',
-                'errors' => $errorMessages, 
-                'connection_integrate' => session('connection_integrate')
-            ], 200);
+        foreach ($chunks as $index => $chunk) {
+            // 🚨 CHANGE 1: Added ->onConnection('database') to bypass shared hosting bugs
+            // 🚨 CHANGE 2: Removed ->delay(). (Jobs are naturally processed 1-by-1 anyway. 
+            // Delaying them hides them from the worker, causing the progress bar to stick).
+            SubmitInvoicesBatch::dispatch($chunk, $consolidateStatus, $connectionIntegrate)
+                ->onConnection('database');
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Selected invoices submitted successfully.',
-            'connection_integrate' => session('connection_integrate')
+            'message' => $totalBatches . ' batches queued successfully.',
+            'total_batches' => $totalBatches
         ], 200);
+    }
+
+    /**
+     * ROUTE 2: THE PINGER
+     */
+    public function triggerWorker()
+    {
+        $pendingJobs = DB::table('jobs')->count();
+        
+        if ($pendingJobs === 0) {
+            return response()->json(['status' => 'complete', 'remaining' => 0]);
+        }
+
+        try {
+            // 🚨 CHANGE 3: Swapped '--max-time' for '--max-jobs => 2'
+            // This is the secret to the progress bar! It forces the server to process 
+            // exactly 2 batches and immediately send an update to the browser, 
+            // making the progress bar move smoothly.
+            Artisan::call('queue:work', [
+                'database', // Force DB connection
+                '--stop-when-empty' => true,
+                '--max-jobs' => 2 
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Worker Crash: " . $e->getMessage());
+        }
+
+        return response()->json([
+            'status' => 'processing',
+            'remaining' => DB::table('jobs')->count()
+        ]);
+    }
+
+public function stopWorker()
+    {
+        // Truncate the jobs table to instantly kill any pending/stuck syncs
+        \Illuminate\Support\Facades\DB::table('jobs')->truncate();
+        
+        return response()->json([
+            'success' => true, 
+            'message' => 'Sync stopped and queue cleared.'
+        ]);
     }
     /**
      * Delete Invoice (Only if Pending or Failed)
@@ -784,6 +698,43 @@ public function deleteInvoice($id)
         return redirect()->back()->with('error', 'Delete failed: ' . $e->getMessage());
     }
 }
+
+/**
+     * Bulk Soft Delete Invoices
+     */
+    public function bulkDeleteInvoices(Request $request)
+    {
+        if (!$request->ajax()) {
+            return response()->json(['error' => 'Invalid request'], 400);
+        }
+
+        $selectedIds = $request->input('invoices', []);
+
+        if (empty($selectedIds)) {
+            return response()->json(['success' => false, 'message' => 'No invoices selected.'], 400);
+        }
+
+        try {
+            // Perform the Soft Delete on all selected IDs instantly
+            \Illuminate\Support\Facades\DB::table('invoice')
+                ->whereIn('id_invoice', $selectedIds)
+                ->update([
+                    'is_deleted' => 1,
+                    'updated_at' => now()
+                ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => count($selectedIds) . ' invoice(s) successfully deleted.'
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'System Exception: ' . $e->getMessage()
+            ], 500);
+        }
+    }
     /**
      * Delete a specific Consolidate Item
      */

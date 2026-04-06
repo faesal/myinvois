@@ -334,6 +334,11 @@
                 <i class="fa-solid fa-book"></i> API Documentation
             </a>
         </li>
+        <li>
+            <a href="{{ url('/developer/release_note') }}">
+                <i class="fa-solid fa-book"></i> Release Note
+            </a>
+        </li>
     </ul>
 
 </div>

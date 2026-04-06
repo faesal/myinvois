@@ -524,57 +524,168 @@ public function qr_link($uuid)
 
         return $token;
     }
-
-    /**
+    
+ /**
      * =====================================================
-     * BATCH SUBMISSION WITH RETRY LOGIC
+     * BATCH SUBMISSION WITH RETRY LOGIC & 5MB SAFETY CHECK
      * =====================================================
      */
-    public function submitBatch(array $invoicesData)
+public function submitBatch(array $invoiceIds)
     {
-        // Validate certificate ONCE for entire batch
+        // 1. Validate certificate ONCE for entire batch
         [$cert, $privateKey, $certPath, $privatePath] = $this->getCertificate();
 
-        // Login ONCE and reuse token
+        // 2. Login ONCE and reuse token
         $client = $this->getClient();
         $token = $this->getAuthToken();
         $client->setAccessToken($token);
 
         $documents = [];
         $invoiceMap = [];
+        $consolidate_status = session('consolidate_status');
 
-        // Prepare all documents in memory
-        foreach ($invoicesData as $invoiceData) {
-            $isSelfBilled = in_array($invoiceData['invoice_type_code'], ['11', '12', '13', '14']);
+        // ========================================================================
+        // OPTIMIZATION: THE N+1 QUERY FIX
+        // Fetch ALL required data for the entire batch upfront in just 3 queries.
+        // ========================================================================
+        
+        // QUERY 1: Fetch all headers
+        $records = DB::table('invoice')->whereIn('id_invoice', $invoiceIds)->get();
 
+        // QUERY 2: Fetch all items and group them by invoice ID
+        $allItems = DB::table('invoice_item')
+            ->whereIn('id_invoice', $invoiceIds)
+            ->get()
+            ->groupBy('id_invoice');
+
+        // Prepare to fetch all unique customers/suppliers
+        $customerIdsToFetch = [];
+        foreach ($records as $rec) {
+            $customerId = (empty($rec->id_customer) || $consolidate_status == 1) ? 6 : $rec->id_customer;
+            $customerIdsToFetch[] = $customerId;
+            $customerIdsToFetch[] = $rec->id_supplier;
+            $customerIdsToFetch[] = $rec->id_customer; // Needed for self-billed
+        }
+        $customerIdsToFetch = array_unique(array_filter($customerIdsToFetch));
+
+        // QUERY 3: Fetch all relevant customers/suppliers and key them by ID for instant lookup
+        $allCustomers = DB::table('customer')
+            ->whereIn('id_customer', $customerIdsToFetch)
+            ->get()
+            ->keyBy('id_customer');
+
+        // ========================================================================
+        
+        // Start processing memory-only loop (0 database queries inside here!)
+        foreach ($records as $record) {
+            $isSelfBilled = in_array($record->invoice_type_code, ['11', '12', '13', '14']);
+
+            // --- A. CUSTOMER & SUPPLIER LOGIC ---
+            $customerId = (empty($record->id_customer) || $consolidate_status == 1) ? 6 : $record->id_customer;
+
+            // Pull instantly from our pre-fetched Collection instead of hitting the DB
+            if ($isSelfBilled) {
+                $supplierRow = $allCustomers->get($record->id_customer);
+                $customerRow = $allCustomers->get($record->id_supplier);
+            } else {
+                $supplierRow = $allCustomers->get($record->id_supplier);
+                $customerRow = $allCustomers->get($customerId);
+            }
+
+            if (!$supplierRow || !$customerRow) {
+                throw new \Exception("Supplier / Customer record not found for Invoice ID: {$record->id_invoice}");
+            }
+
+            $supplier = [
+                'tin_no' => $supplierRow->tin_no,
+                'registration_name' => $supplierRow->registration_name,
+                'phone' => $supplierRow->phone,
+                'msicCode' => $supplierRow->msicCode ?? null,
+                'email' => $supplierRow->email,
+                'city_name' => $supplierRow->city_name,
+                'postal_zone' => $supplierRow->postal_zone,
+                'country_subentity_code' => $supplierRow->country_subentity_code,
+                'country_code' => $supplierRow->country_code,
+                'address_line_1' => $supplierRow->address_line_1,
+                'address_line_2' => $supplierRow->address_line_2,
+                'address_line_3' => $supplierRow->address_line_3,
+                'identification_type' => $supplierRow->identification_type,
+                'identification_no' => $supplierRow->identification_no
+            ];
+
+            $customer = [
+                'tin_no' => $customerRow->tin_no,
+                'sst_registration' => $customerRow->sst_registration ?? null,
+                'registration_name' => $customerRow->registration_name,
+                'phone' => $customerRow->phone,
+                'email' => $customerRow->email,
+                'city_name' => $customerRow->city_name,
+                'postal_zone' => $customerRow->postal_zone,
+                'country_subentity_code' => $customerRow->country_subentity_code,
+                'country_code' => $customerRow->country_code,
+                'address_line_1' => $customerRow->address_line_1,
+                'address_line_2' => $customerRow->address_line_2,
+                'address_line_3' => $customerRow->address_line_3,
+                'identification_type' => $customerRow->identification_type,
+                'identification_no' => $customerRow->identification_no
+            ];
+
+            // --- B. DELIVERY LOGIC ---
+            if ($consolidate_status == 1 || $record->invoice_status == 'manual' || $isSelfBilled || $customerRow->tin_no == 'EI00000000010') {
+                $delivery = '';
+            } else {
+                $delivery = $customer;
+            }
+
+            // --- C. FETCH INVOICE ITEMS ---
+            $items = [];
+            // Pull instantly from our pre-fetched Collection instead of hitting the DB
+            $invoiceItems = $allItems->get($record->id_invoice, collect([]));
+
+            foreach ($invoiceItems as $row) {
+                $items[] = [
+                    'id_invoice_item' => $row->id_invoice_item,
+                    'id_customer' => $row->id_customer,
+                    'id_invoice' => $row->id_invoice,
+                    'price_discount' => $row->price_discount,
+                    'line_id' => $row->line_id,
+                    'invoiced_quantity' => $row->invoiced_quantity,
+                    'line_extension_amount' => $row->line_extension_amount,
+                    'item_description' => $row->item_description,
+                    'price_amount' => $row->price_amount,
+                    'tax' => $row->tax,
+                    'price_extension_amount' => $row->price_extension_amount,
+                    'item_clasification_value' => $row->item_clasification_value
+                ];
+            }
+
+            // --- D. PREPARE MAIN DATA ARRAY ---
             $data = [
-                'id_invoice' => $invoiceData['id_invoice'],
-                'invoice_status' => $invoiceData['invoice_status'],
-                'invoice_no' => $invoiceData['invoice_no'],
-                'invoice_type_code' => $invoiceData['invoice_type_code'],
-                'issue_date' => $invoiceData['issue_date'],
-                'price' => $invoiceData['price'],
-                'total_price_discount' => $invoiceData['total_price_discount'] ?? 0,
-                'taxable_amount' => $invoiceData['taxable_amount'],
-                'tax_amount' => $invoiceData['tax_amount'],
+                'id_invoice' => $record->id_invoice,
+                'invoice_status' => $record->invoice_status,
+                'invoice_no' => $record->invoice_no,
+                'invoice_type_code' => $record->invoice_type_code,
+                'issue_date' => $record->issue_date,
+                'price' => $record->price,
+                'total_price_discount' => $record->total_price_discount,
+                'taxable_amount' => $record->taxable_amount,
+                'tax_amount' => $record->tax_amount,
                 'tax_category_id' => $isSelfBilled ? 'OTH' : '01',
-                'tax_scheme_id' => $invoiceData['tax_scheme_id'],
-                'tax_percent' => $isSelfBilled ? 0 : ($invoiceData['tax_percent'] ?? 0),
-                'tax_exemption_reason' => $invoiceData['tax_exemption_reason'] ?? null,
-                'payment_note_term' => $invoiceData['payment_note_term'],
-                'payment_financial_account' => $invoiceData['payment_financial_account'] ?? null,
-                'include_signature' => $invoiceData['include_signature'] ?? true,
-                'uuid' => $invoiceData['uuid'] ?? null,
-                'long_id' => $invoiceData['long_id'] ?? null,
-                'payment_method' => $invoiceData['payment_method'] ?? null,
-                'items' => $invoiceData['items'],
+                'tax_scheme_id' => $record->tax_scheme_id,
+                'tax_percent' => $isSelfBilled ? 0 : $record->tax_percent,
+                'tax_exemption_reason' => $record->tax_exemption_reason,
+                'payment_note_term' => $record->payment_note_term,
+                'payment_financial_account' => $record->payment_financial_account,
+                'include_signature' => $record->include_signature ?? 0,
+                'uuid' => $record->uuid,
+                'long_id' => $record->long_id,
+                'payment_method' => $record->payment_method,
+                'items' => $items,
                 'is_version' => $this->is_version,
             ];
 
-            // ✅ FIX: Use the same class instantiation as your existing submit() method
+            // --- E. GENERATE XML/JSON PAYLOAD ---
             $example = new CreateDocumentExample();
-
-            // ✅ FIX: Use the same constants as your existing submit() method
             $invoiceTypes = [
                 '01' => InvoiceTypeCodes::INVOICE,
                 '02' => InvoiceTypeCodes::CREDIT_NOTE,
@@ -588,11 +699,11 @@ public function qr_link($uuid)
 
             if ($this->is_version == '1.1') {
                 $invoiceJson = $example->createXmlDocument(
-                    $invoiceTypes[$invoiceData['invoice_type_code']],
-                    $invoiceData['invoice_no'],
-                    $invoiceData['supplier'],
-                    $invoiceData['customer'],
-                    $invoiceData['delivery'],
+                    $invoiceTypes[$record->invoice_type_code],
+                    $record->invoice_no,
+                    $supplier,
+                    $customer,
+                    $delivery,
                     true,
                     $certPath,
                     $privatePath,
@@ -602,11 +713,11 @@ public function qr_link($uuid)
                 );
             } else {
                 $invoiceJson = $example->createJsonDocument(
-                    $invoiceTypes[$invoiceData['invoice_type_code']],
-                    $invoiceData['invoice_no'],
-                    $invoiceData['supplier'],
-                    $invoiceData['customer'],
-                    $invoiceData['delivery'],
+                    $invoiceTypes[$record->invoice_type_code],
+                    $record->invoice_no,
+                    $supplier,
+                    $customer,
+                    $delivery,
                     true,
                     $certPath,
                     $privatePath,
@@ -616,28 +727,35 @@ public function qr_link($uuid)
                 );
             }
 
-            // ✅ FIX: Use the same helper as your existing submit() method
-            $document = MyInvoisHelper::getSubmitDocument(
-                $invoiceData['invoice_no'],
-                $invoiceJson
-            );
+            $document = MyInvoisHelper::getSubmitDocument($record->invoice_no, $invoiceJson);
 
             $documents[] = $document;
             $invoiceMap[] = [
-                'id_invoice' => $invoiceData['id_invoice'],
-                'unique_id' => $invoiceData['unique_id'],
-                'invoice_no' => $invoiceData['invoice_no'],
-                'invoice_type_code' => $invoiceData['invoice_type_code'],
+                'id_invoice' => $record->id_invoice,
+                'unique_id' => $record->unique_id,
+                'invoice_no' => $record->invoice_no,
+                'invoice_type_code' => $record->invoice_type_code,
                 'json' => $invoiceJson,
-                'supplier_tin' => $invoiceData['supplier']['tin_no'] ?? null,
-                'customer_tin' => $invoiceData['customer']['tin_no'] ?? null,
+                'supplier_tin' => $supplier['tin_no'] ?? null,
+                'customer_tin' => $customer['tin_no'] ?? null,
             ];
         }
 
-        // Submit all documents with retry logic
+        // =====================================================
+        // 4. 5MB PAYLOAD SAFETY CHECK (LHDN LIMIT)
+        // =====================================================
+        $payloadSizeInBytes = strlen(json_encode(['documents' => $documents]));
+        $payloadSizeInMB = $payloadSizeInBytes / 1048576; // Convert bytes to MB
+
+        if ($payloadSizeInMB > 4.9) {
+            $roundedSize = round($payloadSizeInMB, 2);
+            throw new \Exception("Batch size ({$roundedSize} MB) exceeds LHDN 5MB limit. Please select fewer invoices.");
+        }
+
+        // 5. Submit all documents with retry logic
         $response = $this->submitWithRetry($documents);
 
-        // Process batch response
+        // 6. Process batch response and save to database
         $this->processBatchResponse($response, $invoiceMap);
 
         return $response;
@@ -1128,7 +1246,7 @@ public function submit($id_customer)
         $client->setAccessToken($access_token);
    
 
-        return $this->client->rejectDocument($id, $reason);
+        return $client->rejectDocument($id, $reason);
     }
 
     public function getRecentDocuments(

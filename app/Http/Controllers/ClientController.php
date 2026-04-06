@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use App\Models\Customer;
 use Auth;
 
 class ClientController extends Controller
@@ -514,6 +515,7 @@ class ClientController extends Controller
         }
     }
 
+    
     // -------------------------------------------
     // AJAX: DELETE IP ADDRESS
     // -------------------------------------------
@@ -545,6 +547,49 @@ class ClientController extends Controller
             return response()->json(['success' => true, 'message' => 'IP Whitelist status updated!']);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+/**
+     * Regenerate MySyncTax API Keys for a given client (Customer)
+     */
+    public function regenerateKeys($id_customer)
+    {
+        try {
+            // Check if the customer exists using the DB query builder
+            $client = DB::table('customer')->where('id_customer', $id_customer)->first();
+
+            if (!$client) {
+                return response()->json(['message' => 'Client not found.'], 404);
+            }
+
+            // Generate new keys matching your existing database format
+            // Key: 30 characters alphanumeric
+            $newKey = Str::random(30); 
+            // Secret: 30 characters alphanumeric
+            $newSecret = Str::random(30);
+
+            // Update the keys directly in the database
+            DB::table('customer')
+                ->where('id_customer', $id_customer)
+                ->update([
+                    'mysynctax_key' => $newKey,
+                    'mysynctax_secret' => $newSecret,
+                    'updated_at' => now() 
+                ]);
+
+            return response()->json([
+                'success' => true,
+                'new_key' => $newKey,
+                'new_secret' => $newSecret,
+                'message' => 'API Keys regenerated successfully.'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while regenerating keys: ' . $e->getMessage()
+            ], 500);
         }
     }
 }

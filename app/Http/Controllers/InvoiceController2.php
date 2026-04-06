@@ -15,10 +15,11 @@ use App\Mail\InvoiceSent;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Redirect;
-
 use Illuminate\Support\Str;
+use App\Http\Controllers\Controller;
 
-class InvoiceController extends Controller
+
+class InvoiceController2 extends Controller
 {
     private $clientId;
     private $clientSecret;
@@ -29,6 +30,9 @@ class InvoiceController extends Controller
         $this->clientId = "68459bb8-ed45-4ea6-8846-5ba2740a5e2f";
         $this->clientSecret = "ed9d15f7-1886-48f7-b642-9d85ab995881";
         $this->prodMode = false;
+       if (method_exists($this, 'middleware')) {
+            $this->middleware('auth')->except(['sendInvoiceEmail']);
+    }
     }
 
     private function getClient()
@@ -886,6 +890,69 @@ class InvoiceController extends Controller
 
     return view('emails.sent', compact('invoice', 'customer','supplier', 'items'))
         ->with('success', 'Invoice sent to customer.');
+    }
+public function sendInvoiceEmail(Request $request)
+    {
+        $request->validate([
+            'mysynctax_uuid' => 'required|string',
+        ]);
+
+        $uuid = $request->mysynctax_uuid;
+
+        // 1. Find by LHDN uuid (the one starting with 656a...) first
+        $invoice = DB::table('invoice')->where('uuid', $uuid)->first();
+        
+        // Fallback to internal unique_id if not found by LHDN uuid
+        if (!$invoice) {
+            $invoice = DB::table('invoice')->where('unique_id', $uuid)->first();
+        }
+
+        if (!$invoice) {
+            return response()->json(['success' => false, 'message' => 'Invoice not found in DB.'], 404);
+        }
+
+        // 2. Fetch related data using the record found
+        $supplier = DB::table('customer')->where('id_customer', $invoice->id_supplier)->first();
+        $customer = DB::table('customer')->where('id_customer', $invoice->id_customer)->first();
+        
+        // IMPORTANT: Use the internal unique_id from the record to find items
+        $items = DB::table('invoice_item')->where('unique_id', $invoice->unique_id)->get();
+
+        if (!$customer || !$supplier) {
+            return response()->json(['success' => false, 'message' => 'Customer or Supplier data missing.'], 404);
+        }
+
+        // 3. GENERATE LINK
+        // If the route expects the LHDN uuid, we prioritize $invoice->uuid
+        $finalUuid = $invoice->uuid ?? $invoice->unique_id;
+        $invoiceLink = "https://www.mysynctax.com/dev/invoice/view/" . $finalUuid;
+
+        try {
+            // 4. SEND MAIL WITH EXPLICIT CC
+            // We define recipients clearly to ensure the SMTP driver picks up both
+            $toEmail = 'faesal09@gmail.com';
+            $ccEmail = 'fjusrin@gmail.com';
+
+            Mail::to($toEmail)
+                ->cc($ccEmail)
+                ->send(new InvoiceSent($invoice, $customer, $items, $supplier, $invoiceLink));
+
+            // Log attempt for debugging in storage/logs/laravel.log
+            \Log::info("e-Invoice Email Sent: To: $toEmail, CC: $ccEmail, Link: $invoiceLink");
+
+            return response()->json([
+                'success' => true, 
+                'message' => "Email sent to $toEmail and CC to $ccEmail",
+                'link'    => $invoiceLink
+            ], 200);
+
+        } catch (\Exception $e) {
+            \Log::error("Mail Dispatch Failed: " . $e->getMessage());
+            return response()->json([
+                'success' => false, 
+                'message' => 'Mail Server Error: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function presubmit($id)

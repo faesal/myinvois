@@ -927,7 +927,13 @@ public function store_create(Request $request)
 public function qr_link($unique_id)
 {
     // The eInvoisModel already expects the unique_id (UUID) to fetch the LHDN link
-    $invoice = new eInvoisModel();
+    $inv = DB::table('invoice')
+    ->where('unique_id', $unique_id)
+    ->first();
+
+    Session::put('connection_integrate', $inv->connection_integrate);
+
+    $invoice = new eInvoisModel($inv->connection_integrate);
     echo $invoice->qr_link_lhdn($unique_id);
     exit();
 }

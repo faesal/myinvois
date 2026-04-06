@@ -86,4 +86,9 @@ class DeveloperDocumentationController extends Controller
 
         return view('developer.documentation', compact('endpoints', 'responseCodes', 'sdks'));
     }
+    public function release_note()
+    {
+        
+        return view('developer.release_note');
+    }
 }

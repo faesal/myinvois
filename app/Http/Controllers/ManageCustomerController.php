@@ -318,10 +318,23 @@ class ManageCustomerController extends Controller
         }
     }
 
-    public function destroy($id)
+public function destroy($id)
     {
         DB::table('customer')->where('id_customer', $id)->delete();
         return redirect()->route('manage_customer.index')->with('success', 'Customer deleted successfully.');
+    }
+
+    // NEW: Bulk Delete Function
+    public function bulkDelete(\Illuminate\Http\Request $request)
+    {
+        $ids = $request->input('ids');
+        
+        if (!empty($ids)) {
+            DB::table('customer')->whereIn('id_customer', $ids)->delete();
+            return redirect()->route('manage_customer.index')->with('success', count($ids) . ' Customers deleted successfully.');
+        }
+
+        return redirect()->route('manage_customer.index')->with('error', 'No customers selected for deletion.');
     }
 
     public function import(Request $request)

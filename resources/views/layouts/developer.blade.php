@@ -244,6 +244,13 @@
     </li>
 	
 	<li class="nav-item">
+        <a href="#general-tin-types" class="nav-link">
+            <i class="ph-code"></i>
+            <span>General TIN</span>
+        </a>
+    </li>
+
+	<li class="nav-item">
         <a href="#add-customer" class="nav-link">
             <i class="ph-code"></i>
             <span>Add / Update Customer</span>

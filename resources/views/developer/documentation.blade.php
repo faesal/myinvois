@@ -519,7 +519,6 @@ master data and require direct submission to LHDN.
       "item_description": "USB Keyboard",
       "invoiced_quantity": 2,
       "unit_price": 30.00,
-      "total_before_tax": 60.00,
       "price_discount":5,
       "tax_amount": 3.60
     },
@@ -529,7 +528,6 @@ master data and require direct submission to LHDN.
       "item_description": "USB Mouse",
       "invoiced_quantity": 1,
       "unit_price": 40.00,
-      "total_before_tax": 40.00,
        "price_discount":5,
       "tax_amount": 2.40
 
@@ -687,7 +685,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
       "item_description": "USB Keyboard",
       "invoiced_quantity": 2,
       "unit_price": 30.00,
-      "total_before_tax": 60.00,
       "tax_amount": 3.60,
       "price_discount":5
     },
@@ -697,7 +694,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
       "item_description": "USB Mouse",
       "invoiced_quantity": 1,
       "unit_price": 40.00,
-      "total_before_tax": 40.00,
       "tax_amount": 2.40,
       "price_discount":5
     }
@@ -885,6 +881,345 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
   ]
 }</pre></div>
 </div>
+
+
+<!-- ===================== GENERAL TIN TYPES ===================== -->
+<div class="doc-section" id="general-tin-types">
+    <h2>General TIN Types (LHDN Standard)</h2>
+
+    <p>
+        These predefined TIN values are used when a valid TIN is not available.
+    </p>
+
+    <table class="table table-bordered" style="max-width:700px">
+        <thead>
+            <tr>
+                <th>Scenario</th>
+                <th>TIN</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Walk-in / B2C</td>
+                <td><code>EI00000000010</code></td>
+                <td>Consolidate - POS / ERP </td>
+            </tr>
+            <tr>
+                <td>Foreign Export</td>
+                <td><code>EI00000000020</code></td>
+                <td>Invoice to overseas customer</td>
+            </tr>
+            <tr>
+                <td>Foreign Import (Self-Billed)</td>
+                <td><code>EI00000000030</code></td>
+                <td>Import supplier (self-billed)</td>
+            </tr>
+            <tr>
+                <td>Government</td>
+                <td><code>EI00000000040</code></td>
+                <td>Government related entity</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Mandatory Identification Format</h3>
+    <div class="code-block"><pre>
+"identification_no": "NA",
+"identification_type": "BRN"
+</pre></div>
+</div>
+
+
+<!-- ===================== GENERAL TIN INVOICE ===================== -->
+<div class="doc-section">
+    <h2>General TIN Invoice</h2>
+
+    <div class="code-block">
+        <pre>POST {{url('')}}/api/myinvois/invoice_generaltin</pre>
+    </div>
+
+    <h3>Payload</h3>
+    <div class="code-block"><pre>
+    {
+  "mysynctax_key": "cccc",
+  "mysynctax_secret": "xxxxx",
+  "isAutoToLHDN":1,
+  "invoice_no": "INV-32224",
+  "sale_id_integrate": 32224,
+  "payment_note_term": "CASH",
+  "customer": {
+    "tin_no": "EI00000000010",
+    "identification_type":"BRN",//BRN/NRIC/PASSPORT/ARMY
+    "identification_no":"NA",
+    "registration_name": "ABC Trading Sdn Bhd",
+    "sst_registration": "SST123456",
+    "phone": "0123456789",
+    "email": "finance@abctrading.com",
+    "address_line_1": "No 10, Jalan Teknologi",
+    "address_line_2": "Taman Teknologi",
+    "address_line_3": "Seksyen 7",
+    "city_name": "Shah Alam",
+    "postal_zone": "40000",
+    "state_code": "10",
+    "country_code": "MYS"
+  },
+  "items": [
+    {
+      "item_id": 101,
+      "sorting_id": 1,
+      "item_description": "USB Keyboard",
+      "invoiced_quantity": 2,
+      "unit_price": 30.00,
+      "price_discount":3,
+      "tax_amount": 3
+    },
+    {
+      "item_id": 102,
+      "sorting_id": 2,
+      "item_description": "USB Mouse",
+      "invoiced_quantity": 1,
+      "unit_price": 40.00,
+       "price_discount":5,
+      "tax_amount": 2
+
+    }
+  ]
+}
+    </pre></div>
+
+    <h3>Response</h3>
+    <div class="code-block"><pre>
+    {
+    "headers": {},
+    "original": {
+        "status": "ok",
+        "invoice_id": 809,
+        "mysynctax_uuid": "6f91236366130791c506ccede35a0b8f48094d66",
+        "customer_status": "updated",
+        "customer_id": 93,
+        "qr_lhdn": "https://mysynctax.com/v5/qr_link/6f91236366130791c506ccede35a0b8f48094d66",
+        "result": {
+            "headers": {},
+            "original": {
+                "submissionUid": "YSS2VJXZW9KYHSV4AP0MMKMK10",
+                "acceptedDocuments": [
+                    {
+                        "uuid": "XMJ9T0GQ79R7VGBKAP0MMKMK10",
+                        "invoiceCodeNumber": "INV-32224"
+                    }
+                ],
+                "rejectedDocuments": []
+            },
+            "exception": null
+        }
+    },
+    "exception": null
+}
+    </pre></div>
+</div>
+
+
+<!-- ===================== GENERAL TIN NOTE ===================== -->
+<div class="doc-section">
+    <h2>General TIN Credit / Debit / Refund</h2>
+
+    <div class="code-block">
+        <pre>POST {{url('')}}/api/myinvois/invoice_generaltin/note</pre>
+    </div>
+
+    <h3>Payload</h3>
+    <div class="code-block"><pre>
+    {
+  "mysynctax_key": "xx",
+  "mysynctax_secret": "xx",
+  "note_type": "credit",
+  "mysynctax_uuid":"xxxxxxxxx",
+  "sale_id_integrate": 32223,
+  "items": [
+    {
+      "item_id": 102,
+      "qty": 1,
+      "price": 50.00,
+      "discount": 0.00,
+      "tax": 3.00,
+      "description": "Item rosak / dipulangkan"
+    }
+  ]
+}
+
+    </pre></div>
+
+    <h3>Response</h3>
+    <div class="code-block"><pre>{
+    "headers": {},
+    "original": {
+        "status": "ok",
+        "note_type": "credit",
+        "invoice_id": 1233,
+        "mysynctax_uuid": "xxxx",
+        "qr_lhdn": "https://mysynctax.com/v5/qr_link/xxxx",
+        "result": {
+            "headers": {},
+            "original": {
+                "submissionUid": "ssss",
+                "acceptedDocuments": [
+                    {
+                        "uuid": "ccc",
+                        "invoiceCodeNumber": "CREDIT-NOTE-20260301162121"
+                    }
+                ],
+                "rejectedDocuments": []
+            },
+            "exception": null
+        }
+    },
+    "exception": null
+}</pre></div>
+</div>
+
+
+<!-- ===================== GENERAL TIN SELFBILL ===================== -->
+<div class="doc-section">
+    <h2>General TIN Self-Billed Invoice</h2>
+
+    <div class="code-block">
+        <pre>POST {{url('')}}/api/myinvois/invoice_generaltin/selfbill</pre>
+    </div>
+
+    <h3>Payload</h3>
+    <div class="code-block"><pre>
+
+    {
+  "mysynctax_key": "oHwIlgfhsBPP30f7",
+  "mysynctax_secret": "fYxPMD2A5hPDWNI6",
+  "isAutoToLHDN":1,
+  "invoice_no": "INV-323574",
+  "sale_id_integrate": 323574,
+  "payment_note_term": "CASH",
+  "supplier": {
+    "tin_no": "EI00000000010",
+    "registration_name": "ABC23 Trading Sdn Bhd",
+    "sst_registration": "SST123456",
+    "identification_type": "BRN",
+    "phone": "0123456789",
+    "email": "finance@abctrading.com",
+    "address_line_1": "No 10, Jalan Teknologi",
+    "address_line_2": "Taman Teknologi",
+    "address_line_3": "Seksyen 7",
+    "city_name": "Shah Alam",
+    "postal_zone": "40000",
+    "state_code": "10",
+    "country_code": "MYS"
+  },
+  "items": [
+    {
+      "item_id": 101,
+      "sorting_id": 1,
+      "item_description": "USB Keyboard",
+      "invoiced_quantity": 2,
+      "unit_price": 30.00,
+      "price_discount":3,
+      "tax_amount": 3
+    },
+    {
+      "item_id": 102,
+      "sorting_id": 2,
+      "item_description": "USB Mouse",
+      "invoiced_quantity": 1,
+      "unit_price": 40.00,
+       "price_discount":5,
+      "tax_amount": 2
+
+    }
+  ]
+}
+
+
+    </pre></div>
+
+    <h3>Response</h3>
+    <div class="code-block"><pre>
+
+    {
+    "status": "ok",
+    "invoice_id": 1235,
+    "mysynctax_uuid": "xxx",
+    "customer_status": "created",
+    "qr_lhdn": "https://mysynctax.com/v5/qr_link/xxxx",
+    "customer_id": 349,
+    "result": {
+        "headers": {},
+        "original": {
+            "submissionUid": "xxxc",
+            "acceptedDocuments": [
+                {
+                    "uuid": "ccc",
+                    "invoiceCodeNumber": "INV-323574"
+                }
+            ],
+            "rejectedDocuments": []
+        },
+        "exception": null
+    }
+}
+    </pre></div>
+</div>
+
+
+<!-- ===================== GENERAL TIN SELFBILL NOTE ===================== -->
+<div class="doc-section">
+    <h2>General TIN Self-Billed Note</h2>
+
+    <div class="code-block">
+        <pre>POST {{url('')}}/api/myinvois/invoice_generaltin/selfbill/note</pre>
+    </div>
+
+    <h3>Payload</h3>
+    <div class="code-block"><pre>{
+  "mysynctax_key": "cccc",
+  "mysynctax_secret": "xxxx",
+  "note_type": "credit",
+  "mysynctax_uuid":"xxxxxxx",
+  "sale_id_integrate": 32223,
+  "items": [
+    {
+      "item_id": 102,
+      "qty": 1,
+      "price": 50.00,
+      "discount": 0.00,
+      "tax": 3.00,
+      "description": "Item rosak / dipulangkan"
+    }
+  ]
+}
+</pre></div>
+
+    <h3>Response</h3>
+    <div class="code-block"><pre>{
+    "status": "ok",
+    "note_type": "credit",
+    "invoice_id": 1236,
+    "mysynctax_uuid": "xxxxxxx",
+    "qr_lhdn": "https://mysynctax.com/v5/qr_link/xxxxxx2",
+    "result": {
+        "headers": {},
+        "original": {
+            "submissionUid": "dfdsf",
+            "acceptedDocuments": [
+                {
+                    "uuid": "qwewqe",
+                    "invoiceCodeNumber": "CREDIT-NOTE-20260301162227"
+                }
+            ],
+            "rejectedDocuments": []
+        },
+        "exception": null
+    }
+}</pre></div>
+</div>
+
+
 
 
 <!-- ===================== ADD / UPDATE SUPPLIER ===================== -->
