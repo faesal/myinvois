@@ -257,6 +257,18 @@
                 <div class="radio-circle"></div>
                 <span class="fw-medium">Business / Company</span>
             </label>
+            
+            <input type="radio" class="btn-check" name="customer_type" id="type_local" value="local">
+            <label class="selection-label" for="type_local">
+                <div class="radio-circle"></div>
+                <span class="fw-medium">Local (Without TIN No)</span>
+            </label>
+
+            <input type="radio" class="btn-check" name="customer_type" id="type_foreigner" value="foreigner">
+            <label class="selection-label" for="type_foreigner">
+                <div class="radio-circle"></div>
+                <span class="fw-medium">Foreigner (Without TIN No)</span>
+            </label>
 
             <div class="mt-4">
                 <label class="form-label text-secondary mb-1 fw-bold">Enter TIN Number</label>
@@ -307,11 +319,27 @@
                 <div class="col-md-6 mb-3">
                     <label for="identification_type" class="form-label">Business ID Type <span class="text-danger">*</span></label>
                     <select name="identification_type" id="identification_type" class="form-control" required>
-                        <option value="">Please Choose</option>    
-                        <option value="NRIC">NRIC (IC)</option>
-                        <option value="BRN">Business Registration No</option>
-                        <option value="PASSPORT">Passport</option>
-                        <option value="ARMY">Army ID</option>
+                        @if(request('customer_type') == 'foreigner')
+                            <option value="PASSPORT" selected>Passport</option>
+                        @elseif(request('customer_type') == 'business')
+                            <option value="BRN" selected>Business Registration No</option>
+                        @elseif(request('customer_type') == 'personal')
+                            <option value="">Please Choose</option>    
+                            <option value="NRIC">NRIC (IC)</option>
+                            <option value="ARMY">Army ID</option>
+                            <option value="PASSPORT">Passport</option>
+                        @elseif(request('customer_type') == 'local')
+                            <option value="">Please Choose</option>    
+                            <option value="BRN">Business Registration No</option>
+                            <option value="NRIC">NRIC (IC)</option>
+                            <option value="ARMY">Army ID</option>
+                        @else
+                            <option value="">Please Choose</option>    
+                            <option value="NRIC">NRIC (IC)</option>
+                            <option value="BRN">Business Registration No</option>
+                            <option value="ARMY">Army ID</option>
+                            <option value="PASSPORT">Passport</option>
+                        @endif
                     </select>
                 </div>
                 <div class="col-md-6 mb-3">
@@ -389,20 +417,41 @@
 <script>
     $(document).ready(function() {
         
-        // --- 1. Enforce Alphanumeric on TIN Input (Step 1) ---
-        $('#tin_input').on('input', function() {
-            var node = $(this);
-            node.val(node.val().replace(/[^a-zA-Z0-9]/g, ''));
-        });
+        // --- 1. Auto-fill and Lock TIN logic based on 4 Customer Types ---
+        @if(!request()->isMethod('post'))
+            $('input[name="customer_type"]').on('change', function() {
+                var selectedType = $(this).val();
+                var tinInput = $('#tin_input');
 
-        // --- 2. Auto Select ID Type (Step 2) ---
+                if (selectedType === 'local') {
+                    tinInput.val('EI00000000010').prop('readonly', true);
+                } else if (selectedType === 'foreigner') {
+                    tinInput.val('EI00000000020').prop('readonly', true);
+                } else {
+                    tinInput.val('').prop('readonly', false);
+                }
+            });
+
+            // Trigger change on page load to format default selection correctly
+            $('input[name="customer_type"]:checked').trigger('change');
+            
+            // Enforce Alphanumeric on TIN Input (Step 1)
+            $('#tin_input').on('input', function() {
+                var node = $(this);
+                node.val(node.val().replace(/[^a-zA-Z0-9]/g, ''));
+            });
+        @endif
+
+        // --- 2. Auto Select & Lock ID Type (Step 2) ---
         @if(request()->isMethod('post'))
             var customerType = "{{ request('customer_type') }}";
             
-            if(customerType === 'personal') {
-                $('#identification_type').val('NRIC');
-            } else if (customerType === 'business') {
+            if(customerType === 'business') {
                 $('#identification_type').val('BRN');
+                $('#identification_type').css({'pointer-events': 'none', 'background-color': '#e9ecef'}).attr('tabindex', '-1');
+            } else if (customerType === 'foreigner') {
+                $('#identification_type').val('PASSPORT');
+                $('#identification_type').css({'pointer-events': 'none', 'background-color': '#e9ecef'}).attr('tabindex', '-1');
             }
         @endif
 

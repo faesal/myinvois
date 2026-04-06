@@ -53,10 +53,8 @@
     <div class="card p-4 shadow-sm mb-4">
         <h3 class="mb-4">Edit Account</h3>
 
-        {{-- ADDED ID "mainClientForm" HERE --}}
         <form id="mainClientForm" action="{{ route('developer.client.update', $client->id_customer) }}" method="POST">
             @csrf
-            {{-- REMOVED @method('POST') as it is default, but keeping csrf is crucial --}}
 
             @if ($errors->any())
                 <div class="alert alert-danger">
@@ -191,25 +189,40 @@
 
             <div class="divider"></div>
 
-            <div class="section-title">
-                <i class="fa-solid fa-code"></i>
-                MySyncTax Developer Credentials
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="section-title mb-0">
+                    <i class="fa-solid fa-code"></i>
+                    MySyncTax Developer Credentials
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="regenerateKeysBtn">
+                    <i class="fa-solid fa-rotate"></i> Regenerate Keys
+                </button>
             </div>
 
             <div class="warning-box mb-3">
                 <i class="fa-solid fa-circle-exclamation me-1"></i>
-                These credentials identify your integration with MySyncTax. Not editable.
+                <strong>Notice:</strong> These credentials identify your integration. Regenerating these keys will immediately block access for any system using the old keys. You will need to update your application code with the new keys.
             </div>
 
             <div class="row mb-3">
                 <div class="col-md-6 mb-3">
                     <label class="form-label">MySyncTax API Key</label>
-                    <input type="text" class="form-control bg-light text-secondary" value="{{ $connection->mysynctax_key ?? '' }}" readonly>
+                    <div class="input-group">
+                        <input type="text" id="mysynctax_key_display" class="form-control bg-light text-secondary fw-bold" value="{{ $client->mysynctax_key ?? $connection->mysynctax_key ?? '' }}" readonly>
+                        <button class="btn btn-outline-secondary copy-btn" type="button" data-clipboard-target="#mysynctax_key_display" title="Copy to clipboard">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="col-md-6 mb-3">
                     <label class="form-label">MySyncTax API Secret</label>
-                    <input type="text" class="form-control bg-light text-secondary" value="{{ $connection->mysynctax_secret ?? '' }}" readonly>
+                    <div class="input-group">
+                        <input type="text" id="mysynctax_secret_display" class="form-control bg-light text-secondary fw-bold" value="{{ $client->mysynctax_secret ?? $connection->mysynctax_secret ?? '' }}" readonly>
+                        <button class="btn btn-outline-secondary copy-btn" type="button" data-clipboard-target="#mysynctax_secret_display" title="Copy to clipboard">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -220,11 +233,6 @@
 
             <div class="divider"></div>
 
-            {{-- 
-                =========================================
-                API VERSION SETTINGS (ADDED)
-                =========================================
-            --}}
             <div class="section-title">
                 <i class="fa-solid fa-code-branch"></i> API Version
             </div>
@@ -249,15 +257,9 @@
 
             <div class="divider"></div>
 
-            {{-- 
-                =========================================
-                DYNAMIC CONSOLIDATION SETTINGS
-                =========================================
-            --}}
             <div class="section-title">
                 <i class="fa-solid fa-calendar-check"></i> Consolidation Frequency 
                 <div class="form-check form-switch ms-2 d-inline-block">
-                    {{-- FIX: Check database value for saved state --}}
                     <input class="form-check-input" type="checkbox" role="switch" id="toggleConsolidation" 
                            {{ ($consolidation->is_enabled ?? 1) ? 'checked' : '' }}>
                 </div>
@@ -266,7 +268,6 @@
 
             <div id="consolidationWrapper">
                 <div class="mb-3">
-                    {{-- Determine Current Setting --}}
                     @php
                         $isDaily = $consolidation->is_daily ?? 0;
                         $isWeekly = $consolidation->is_weekly ?? 0;
@@ -275,7 +276,6 @@
                         $isSpecific = !empty($specificDate);
                         $isSendEmail = $consolidation->is_send_email ?? 0;
 
-                        // Default to Daily if nothing is set in DB yet
                         if(!$isDaily && !$isWeekly && !$isMonthly && !$isSpecific) {
                             $isDaily = 1;
                         }
@@ -319,7 +319,6 @@
                 <div class="bg-light p-3 rounded border mb-4">
                     <div class="small text-muted mb-2"><i class="fa-solid fa-eye me-1"></i> Preview Schedule</div>
                     <div class="row small">
-                        {{-- This is static preview logic, but fine for UI --}}
                         <div class="col-6">Next consolidation: <span class="fw-bold">Pending Scheduler...</span></div>
                         <div class="col-6 text-end">Auto-calculated by system</div>
                     </div>
@@ -328,15 +327,9 @@
 
             <div class="divider"></div>
 
-            {{-- 
-                =========================================
-                DYNAMIC IP WHITELIST
-                =========================================
-            --}}
             <div class="section-title">
                 <i class="fa-solid fa-shield-halved"></i> IP Whitelist Management
                 <div class="form-check form-switch ms-2 d-inline-block">
-                    {{-- FIX: Check DB value + Add NAME attribute so it submits with form --}}
                     <input class="form-check-input" type="checkbox" role="switch" 
                            id="toggleIpWhitelist" 
                            name="is_ip_whitelist_enabled" 
@@ -362,7 +355,6 @@
                 <div class="border rounded p-0 overflow-hidden mb-3">
                     <table class="table table-hover mb-0 small">
                         <tbody id="ipTableBody">
-                            {{-- DYNAMIC DATA LOADED HERE --}}
                             @if(isset($ip_list) && count($ip_list) > 0)
                                 @foreach($ip_list as $ip)
                                     <tr class="border-bottom" data-id="{{ $ip->id_ip_managment }}">
@@ -401,7 +393,6 @@
 
             <div class="d-flex justify-content-between mb-2">
                 <a href="{{ route('developer.dashboard') }}" class="btn btn-light px-4">Cancel</a>
-                {{-- NOTE: This button ID 'masterUpdateBtn' is hooked to JS below --}}
                 <button type="button" id="masterUpdateBtn" class="btn btn-primary px-4">Update Account</button>
             </div>
 
@@ -436,11 +427,17 @@ $(document).ready(function() {
         timerProgressBar: true
     });
 
-    // ---------------------------------------------------------
-    // DYNAMIC BOOTSTRAP MODAL SETUP FOR VERSION 1.1
-    // ---------------------------------------------------------
-    // We inject a standard Bootstrap Modal into the body so it doesn't 
-    // conflict with SweetAlert Toasts closing each other.
+    // Simple clipboard copy functionality for user convenience
+    $('.copy-btn').click(function() {
+        let targetId = $(this).data('clipboard-target');
+        let copyText = $(targetId);
+        
+        copyText.select();
+        document.execCommand("copy");
+        
+        Toast.fire({ icon: 'success', title: 'Copied to clipboard' });
+    });
+
     if ($('#version11Modal').length === 0) {
         const modalHtml = `
             <div class="modal fade" id="version11Modal" tabindex="-1" aria-hidden="true">
@@ -512,9 +509,6 @@ $(document).ready(function() {
         $('body').append(modalHtml);
     }
 
-    // ---------------------------------------------------------
-    // HELPER FUNCTION: Handle Visual & Logic Toggle
-    // ---------------------------------------------------------
     function updateToggleState(triggerSelector, wrapperSelector, isInit = false) {
         const $trigger = $(triggerSelector);
         const $wrapper = $(wrapperSelector);
@@ -522,73 +516,97 @@ $(document).ready(function() {
         const $inputs = $wrapper.find('input, select, button');
 
         if (isChecked) {
-            if(isInit) {
-                $wrapper.show();
-            } else {
-                $wrapper.slideDown();
-            }
+            if(isInit) $wrapper.show();
+            else $wrapper.slideDown();
             $inputs.prop('disabled', false);
         } else {
-            if(isInit) {
-                $wrapper.hide();
-            } else { 
-                $wrapper.slideUp();
-            }
+            if(isInit) $wrapper.hide();
+            else $wrapper.slideUp();
             $inputs.prop('disabled', true);
         }
     }
 
-    // 2. INITIAL UI STATE
     updateToggleState('#toggleConsolidation', '#consolidationWrapper', true);
     updateToggleState('#toggleIpWhitelist', '#ipWhitelistWrapper', true);
 
     // ---------------------------------------------------------
-    // API VERSION AUTO-SAVE & POPUP
+    // API KEY REGENERATION
     // ---------------------------------------------------------
-    $('.api-version-radio').on('change', function() {
-        let version = $(this).val();
+    $('#regenerateKeysBtn').click(function(e) {
+        e.preventDefault();
+        
+        Swal.fire({
+            title: 'Regenerate API Keys?',
+            text: "Warning: Your current keys will stop working instantly. This cannot be undone.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, Regenerate'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                let $btn = $(this);
+                let originalText = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Generating...');
 
-        // 1. Show the Bootstrap Guideline Popup if Version 1.1 is selected
-        if (version === '1.1') {
-            $('#version11Modal').modal('show');
-        }
-
-        // 2. Perform the auto-save in the background
-        $.ajax({
-            url: "{{ route('client.settings.update_version', '') }}/" + clientId,
-            method: "POST",
-            data: {
-                _token: "{{ csrf_token() }}",
-                version: version
-            },
-            success: function(response) {
-                // Background save successful
-                // We can safely fire the toast for ALL versions now, 
-                // because SweetAlert will no longer close our Bootstrap Modal!
-                Toast.fire({
-                    icon: 'success',
-                    title: 'API Version Updated to ' + version
+                $.ajax({
+                    url: "{{ route('developer.client.regenerate_keys', $client->id_customer) }}",
+                    method: "POST",
+                    data: {
+                        _token: "{{ csrf_token() }}"
+                    },
+                    success: function(response) {
+                        $('#mysynctax_key_display').val(response.new_key);
+                        $('#mysynctax_secret_display').val(response.new_secret);
+                        
+                        $btn.prop('disabled', false).html(originalText);
+                        
+                        Swal.fire(
+                            'Regenerated!',
+                            'Your new API keys are ready to use. Please update your integration code.',
+                            'success'
+                        );
+                    },
+                    error: function(xhr) {
+                        $btn.prop('disabled', false).html(originalText);
+                        let msg = xhr.responseJSON ? xhr.responseJSON.message : 'Failed to regenerate keys.';
+                        Swal.fire('Error', msg, 'error');
+                    }
                 });
-            },
-            error: function(xhr) {
-                let msg = xhr.responseJSON ? xhr.responseJSON.message : 'Failed to update version';
-                Swal.fire('Error', msg, 'error');
-                
-                // Revert radio button visually if it failed
-                if (version === '1.0') {
-                    $('#ver_1_1').prop('checked', true);
-                } else {
-                    $('#ver_1_0').prop('checked', true);
-                }
             }
         });
     });
 
     // ---------------------------------------------------------
-    // CORE FUNCTION: Save Consolidation Settings (Centralized)
+    // API VERSION
+    // ---------------------------------------------------------
+    $('.api-version-radio').on('change', function() {
+        let version = $(this).val();
+
+        if (version === '1.1') {
+            $('#version11Modal').modal('show');
+        }
+
+        $.ajax({
+            url: "{{ route('client.settings.update_version', '') }}/" + clientId,
+            method: "POST",
+            data: { _token: "{{ csrf_token() }}", version: version },
+            success: function(response) {
+                Toast.fire({ icon: 'success', title: 'API Version Updated to ' + version });
+            },
+            error: function(xhr) {
+                let msg = xhr.responseJSON ? xhr.responseJSON.message : 'Failed to update version';
+                Swal.fire('Error', msg, 'error');
+                if (version === '1.0') $('#ver_1_1').prop('checked', true);
+                else $('#ver_1_0').prop('checked', true);
+            }
+        });
+    });
+
+    // ---------------------------------------------------------
+    // CONSOLIDATION SETTINGS
     // ---------------------------------------------------------
     function saveConsolidationSettings() {
-        // Gather all values from the form
         let isEnabled = $('#toggleConsolidation').is(':checked') ? 1 : 0;
         let freq = $('input[name="freq"]:checked').val() || 'daily';
         let specificDate = $('#specific_date_input').val();
@@ -599,126 +617,59 @@ $(document).ready(function() {
             method: "POST",
             data: {
                 _token: "{{ csrf_token() }}",
-                is_enabled: isEnabled,
-                freq: freq,
-                specific_date: specificDate,
-                email_notif: emailNotif
+                is_enabled: isEnabled, freq: freq, specific_date: specificDate, email_notif: emailNotif
             },
-            success: function(response) {
-                Toast.fire({ 
-                    icon: 'success', 
-                    title: 'Settings Saved' 
-                });
-            },
-            error: function(xhr) {
-                let msg = xhr.responseJSON ? xhr.responseJSON.message : 'Failed to save settings';
-                Swal.fire('Error', msg, 'error');
-            }
+            success: function(response) { Toast.fire({ icon: 'success', title: 'Settings Saved' }); },
+            error: function(xhr) { Swal.fire('Error', 'Failed to save settings', 'error'); }
         });
     }
 
-    // ---------------------------------------------------------
-    // EVENT LISTENERS: Auto-Save Triggers
-    // ---------------------------------------------------------
-
-    // 1. Master Toggle Switch
     $('#toggleConsolidation').on('change', function() {
         updateToggleState(this, '#consolidationWrapper');
         saveConsolidationSettings();
     });
-
-    // 2. Frequency Radio Buttons (Daily, Weekly, Monthly...)
-    $('input[name="freq"]').on('change', function() {
-        saveConsolidationSettings();
-    });
-
-    // 3. Specific Date Input (Save on blur/loss of focus to avoid spamming)
-    $('#specific_date_input').on('blur', function() {
-        // Only save if the value changed or is valid
-        saveConsolidationSettings();
-    });
-
-    // 4. Email Notification Checkbox
-    $('#email_notif').on('change', function() {
-        saveConsolidationSettings();
-    });
+    $('input[name="freq"]').on('change', saveConsolidationSettings);
+    $('#specific_date_input').on('blur', saveConsolidationSettings);
+    $('#email_notif').on('change', saveConsolidationSettings);
 
     // ---------------------------------------------------------
-    // IP WHITELIST LOGIC
+    // IP WHITELIST
     // ---------------------------------------------------------
-
-    // IP Whitelist Toggle Auto-Save
     $('#toggleIpWhitelist').on('change', function() {
         updateToggleState(this, '#ipWhitelistWrapper');
-        
         let isEnabled = $(this).is(':checked') ? 1 : 0;
-
         $.ajax({
             url: "{{ route('client.settings.ip_toggle', '') }}/" + clientId,
             method: "POST",
-            data: {
-                _token: "{{ csrf_token() }}",
-                is_enabled: isEnabled
-            },
-            success: function(response) {
-                Toast.fire({ 
-                    icon: 'success', 
-                    title: 'IP Whitelist Status Updated' 
-                });
-            },
-            error: function(xhr) {
-                Swal.fire('Error', 'Failed to auto-save IP Whitelist status', 'error');
-            }
+            data: { _token: "{{ csrf_token() }}", is_enabled: isEnabled },
+            success: function() { Toast.fire({ icon: 'success', title: 'IP Whitelist Status Updated' }); },
+            error: function() { Swal.fire('Error', 'Failed to auto-save IP Whitelist status', 'error'); }
         });
     });
 
-    // ---------------------------------------------------------
-    // MASTER UPDATE BUTTON (Account Info & Keys)
-    // ---------------------------------------------------------
     $('#masterUpdateBtn').click(function(e) {
         e.preventDefault();
-        const $btn = $(this);
-        
-        // Visual feedback
-        $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-2"></i> Saving...');
-
-        // We trigger one last save of consolidation settings just to be safe, then submit form
-        // Or simply submit the form directly since we have auto-save on inputs
+        $(this).prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-2"></i> Saving...');
         $('#mainClientForm').submit();
     });
 
-    // ---------------------------------------------------------
-    // IP MANAGEMENT (Add/Delete)
-    // ---------------------------------------------------------
-
-    // Add IP Logic
     $('#addIpBtn').click(function() {
         let ip = $('#newIpAddress').val();
         let desc = $('#newIpDesc').val();
         let $btn = $(this);
 
-        if(!ip) {
-            Swal.fire('Required', 'Please enter an IP address', 'warning');
-            return;
-        }
+        if(!ip) { Swal.fire('Required', 'Please enter an IP address', 'warning'); return; }
 
         $btn.prop('disabled', true);
-
         $.ajax({
             url: "{{ route('client.settings.ip.store', '') }}/" + clientId,
             method: "POST",
-            data: {
-                _token: "{{ csrf_token() }}",
-                ip: ip,
-                desc: desc
-            },
+            data: { _token: "{{ csrf_token() }}", ip: ip, desc: desc },
             success: function(response) {
                 $('#noIpRow').remove();
                 $('#ipTableBody').append(`
                     <tr class="border-bottom" data-id="${response.id}">
-                        <td class="ps-3 py-3">
-                            <i class="fa-regular fa-square-check text-dark me-2"></i> ${ip}
-                        </td>
+                        <td class="ps-3 py-3"><i class="fa-regular fa-square-check text-dark me-2"></i> ${ip}</td>
                         <td class="text-muted">${desc || ''}</td>
                         <td><span class="badge bg-success-subtle text-success border border-success">Active</span></td>
                         <td class="text-end pe-3">
@@ -728,20 +679,17 @@ $(document).ready(function() {
                         </td>
                     </tr>
                 `);
-                $('#newIpAddress').val('');
-                $('#newIpDesc').val('');
+                $('#newIpAddress').val(''); $('#newIpDesc').val('');
                 $btn.prop('disabled', false);
                 Toast.fire({ icon: 'success', title: 'IP Added Successfully' });
             },
             error: function(xhr) {
                 $btn.prop('disabled', false);
-                let msg = xhr.responseJSON?.message || 'Failed to add IP';
-                Swal.fire('Error', msg, 'error');
+                Swal.fire('Error', xhr.responseJSON?.message || 'Failed to add IP', 'error');
             }
         });
     });
 
-    // Delete IP Logic
     $(document).on('click', '.delete-ip', function() {
         let id = $(this).data('id');
         let $row = $(this).closest('tr');
@@ -760,13 +708,11 @@ $(document).ready(function() {
                     url: "{{ route('client.settings.ip.delete', '') }}/" + id,
                     method: "DELETE",
                     data: { _token: "{{ csrf_token() }}" },
-                    success: function(response) {
+                    success: function() {
                         $row.fadeOut(300, function() { $(this).remove(); });
                         Toast.fire({ icon: 'success', title: 'IP Removed' });
                     },
-                    error: function(xhr) {
-                        Swal.fire('Error', 'Failed to remove IP', 'error');
-                    }
+                    error: function() { Swal.fire('Error', 'Failed to remove IP', 'error'); }
                 });
             }
         });

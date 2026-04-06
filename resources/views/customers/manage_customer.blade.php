@@ -5,6 +5,8 @@
 @section('content')
 {{-- Load Phosphor Icons via CDN --}}
 <script src="https://unpkg.com/@phosphor-icons/web"></script>
+{{-- 🚩 Include SweetAlert2 --}}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <style>
     /* Apple-like soft action buttons */
@@ -42,6 +44,16 @@
         width: 1.15rem;
         height: 1.15rem;
         cursor: pointer;
+    }
+    /* SweetAlert List Styling */
+    .swal-customer-list {
+        max-height: 150px;
+        overflow-y: auto;
+        text-align: left;
+        background: #f8f9fa;
+        padding: 10px 10px 10px 30px;
+        border-radius: 5px;
+        font-size: 0.9rem;
     }
 </style>
 
@@ -81,6 +93,10 @@
 
                 <div class="{{ Auth::user()->role === 'subscriber' ? 'col-md-12' : 'col-md-9' }} d-flex justify-content-end gap-2 flex-wrap">
                     
+                    <button type="button" class="btn btn-light-danger border shadow-sm btn-sm px-3" onclick="bulkDeleteCustomers()">
+                        <i class="ph ph-trash me-1"></i> Delete Selected
+                    </button>
+
                     {{-- Export Data Dropdown --}}
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-light border shadow-sm btn-sm px-3 dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -119,7 +135,7 @@
         </div>
     </div>
 
-    {{-- Data Table wrapped in Export Form (Method POST + CSRF) --}}
+    {{-- Data Table wrapped in Export Form --}}
     <form id="exportForm" action="{{ route('manage_customer.export') }}" method="POST">
         @csrf
         <div class="card border-0 shadow-sm">
@@ -147,7 +163,8 @@
                             @forelse($customers as $customer)
                             <tr>
                                 <td class="ps-4">
-                                    <input type="checkbox" name="selected_ids[]" value="{{ $customer->id_customer }}" class="form-check-input row-checkbox">
+                                    {{-- 🚩 Added 'data-name' attribute here --}}
+                                    <input type="checkbox" name="selected_ids[]" value="{{ $customer->id_customer }}" data-name="{{ $customer->registration_name ?? 'Unknown Customer' }}" class="form-check-input row-checkbox">
                                 </td>
                                 <td class="text-center">
                                     @if($customer->is_selfbill_supplier == 1)
@@ -179,8 +196,9 @@
                                             <i class="ph ph-pencil-simple"></i>
                                         </a>
 
+                                        {{-- 🚩 Passing customer name to the single delete function --}}
                                         <button type="button" class="action-btn btn btn-sm btn-light-danger rounded-circle" 
-                                                onclick="deleteCustomer({{ $customer->id_customer }})" title="Delete">
+                                                onclick="deleteCustomer('{{ route('manage_customer.destroy', $customer->id_customer) }}', '{{ addslashes($customer->registration_name ?? 'this customer') }}')" title="Delete">
                                             <i class="ph ph-trash"></i>
                                         </button>
                                     </div>
@@ -209,10 +227,17 @@
     </form>
 </div>
 
-{{-- Hidden Delete Form --}}
+{{-- Hidden Single Delete Form --}}
 <form id="deleteForm" method="POST" style="display:none;">
     @csrf
     @method('DELETE')
+</form>
+
+{{-- Hidden Bulk Delete Form --}}
+<form id="bulkDeleteForm" action="{{ route('manage_customer.bulk_delete') }}" method="POST" style="display:none;">
+    @csrf
+    @method('DELETE')
+    <div id="bulkDeleteInputs"></div>
 </form>
 
 {{-- Import Modal --}}
@@ -227,7 +252,6 @@
                 @csrf
                 <div class="modal-body px-4">
 
-                    {{-- Dropdown to assign LHDN Account for Import --}}
                     @if(Auth::user()->role !== 'subscriber')
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-muted">TARGET LHDN ACCOUNT</label>
@@ -275,7 +299,7 @@
 </div>
 
 <script>
-    // Checkbox "Select All" Logic (Selects current page only)
+    // Checkbox "Select All" Logic
     document.getElementById('selectAll').addEventListener('change', function() {
         const checkboxes = document.querySelectorAll('.row-checkbox');
         checkboxes.forEach(cb => cb.checked = this.checked);
@@ -284,45 +308,101 @@
     // Smart Export Logic
     function submitExportForm(mode) {
         const exportForm = document.getElementById('exportForm');
-        
-        // Clean up any old hidden inputs
         exportForm.querySelectorAll('.dynamic-filter').forEach(el => el.remove());
 
         if (mode === 'selected') {
-            // Scenario 1: Export only what is checked on the screen
             const selected = document.querySelectorAll('.row-checkbox:checked');
             if (selected.length === 0) {
-                alert('Please select at least one customer to export.');
-                return; // Stop form submission
+                Swal.fire('No Selection', 'Please select at least one customer to export.', 'warning');
+                return; 
             }
         } 
         else if (mode === 'all') {
-            // Scenario 2: Export EVERYTHING matching current filters
-            // Uncheck all boxes first so the backend ignores selected_ids
             document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
             document.getElementById('selectAll').checked = false;
             
-            // Grab the current search and dropdown filters
             const lhdnCustId = document.querySelector('select[name="lhdn_cust_id"]')?.value || 
                                document.querySelector('input[name="lhdn_cust_id"]')?.value || '';
             const searchVal = document.querySelector('input[name="search"]')?.value || '';
             
-            // Attach them to the form
             if (lhdnCustId) exportForm.insertAdjacentHTML('beforeend', `<input type="hidden" name="lhdn_cust_id" value="${lhdnCustId}" class="dynamic-filter">`);
             if (searchVal) exportForm.insertAdjacentHTML('beforeend', `<input type="hidden" name="search" value="${searchVal}" class="dynamic-filter">`);
         }
 
-        // Submit the form
         exportForm.submit();
     }
 
-    // Helper to delete customer
-    function deleteCustomer(id) {
-        if (confirm('Are you sure you want to delete this customer?')) {
-            const form = document.getElementById('deleteForm');
-            form.action = `/manage-customer/${id}`;
-            form.submit();
-        }
+    // 🚩 Single Delete logic with SweetAlert
+    function deleteCustomer(actionUrl, customerName) {
+        Swal.fire({
+            title: 'Delete Customer?',
+            html: `Are you sure you want to delete <b>${customerName}</b>?<br><br><span class='text-danger'>This action cannot be undone.</span>`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, delete it!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const form = document.getElementById('deleteForm');
+                form.action = actionUrl;
+                form.submit();
+            }
+        });
     }
+
+    // 🚩 Bulk Delete logic with SweetAlert and Customer List
+    function bulkDeleteCustomers() {
+        const selected = document.querySelectorAll('.row-checkbox:checked');
+        
+        if (selected.length === 0) {
+            Swal.fire('No Selection', 'Please select at least one customer to delete.', 'warning');
+            return;
+        }
+
+        // Collect the names of the selected customers
+        let customerNames = '';
+        selected.forEach(cb => {
+            let name = cb.getAttribute('data-name');
+            customerNames += `<li>${name}</li>`;
+        });
+
+        // Build the HTML for the SweetAlert
+        let htmlContent = `<p>You are about to delete <b>${selected.length}</b> customer(s):</p>`;
+        htmlContent += `<ul class='swal-customer-list'>${customerNames}</ul>`;
+        htmlContent += `<p class='text-danger mt-3 mb-0'><b>This action cannot be undone.</b></p>`;
+
+        Swal.fire({
+            title: 'Delete Selected Customers?',
+            html: htmlContent,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, delete them!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const form = document.getElementById('bulkDeleteForm');
+                const inputsContainer = document.getElementById('bulkDeleteInputs');
+                
+                inputsContainer.innerHTML = ''; // clear previous inputs
+                
+                // Add selected IDs to the hidden form
+                selected.forEach(cb => {
+                    inputsContainer.insertAdjacentHTML('beforeend', `<input type="hidden" name="ids[]" value="${cb.value}">`);
+                });
+
+                form.submit();
+            }
+        });
+    }
+
+    // Show success/error messages if they exist in the session
+    @if(session('success'))
+        Swal.fire('Success!', "{{ session('success') }}", 'success');
+    @endif
+    @if(session('error'))
+        Swal.fire('Error!', "{{ session('error') }}", 'error');
+    @endif
 </script>
 @endsection

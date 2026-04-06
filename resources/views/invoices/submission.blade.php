@@ -95,9 +95,9 @@
                         <label class="form-label fw-bold small text-muted mb-1">Status</label>
                         <select name="status" class="form-select">
                             <option value="">All Status</option>
-                            <option value="submitted" {{ request('status') == 'submitted' ? 'selected' : '' }}>Submitted</option>
-                            <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>Pending</option>
-                            <option value="failed" {{ request('status') == 'failed' ? 'selected' : '' }}>Failed</option>
+                            <option value="submitted" {{ strtolower(request('status')) == 'submitted' ? 'selected' : '' }}>Submitted</option>
+                            <option value="pending" {{ strtolower(request('status')) == 'pending' ? 'selected' : '' }}>Pending</option>
+                            <option value="failed" {{ strtolower(request('status')) == 'failed' ? 'selected' : '' }}>Failed</option>
                         </select>
                     </div>
                     <div class="col-md-2">
@@ -137,13 +137,17 @@
                             <td>RM {{ number_format($invoice->price, 2) }}</td>
                             <td>{{ \Carbon\Carbon::parse($invoice->issue_date)->format('d-m-Y H:i') }}</td>
                             <td>
-                                @php $status = strtolower($invoice->submission_status ?? 'pending'); @endphp
-                                @if ($status == 'submitted')
-                                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">SUBMITTED</span>
-                                @elseif ($status == 'failed')
-                                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25">FAILED</span>
+                                @php 
+                                    // Normalize status to lowercase to avoid case-sensitivity bugs (Failed vs failed)
+                                    $status = strtolower($invoice->submission_status ?? 'pending'); 
+                                @endphp
+                                
+                                @if ($status == 'submitted' || $status == 'accepted')
+                                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">{{ strtoupper($status) }}</span>
+                                @elseif ($status == 'failed' || $status == 'rejected' || $status == 'error')
+                                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25">{{ strtoupper($status) }}</span>
                                 @else
-                                    <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25">PENDING</span>
+                                    <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25">{{ strtoupper($status) }}</span>
                                 @endif
                             </td>
                             <td>
@@ -154,7 +158,7 @@
                                         <a href="{{ url('/api/myinvois/cancelDocument/'.$invoice->unique_id) }}" class="cancel-link btn btn-sm btn-outline-danger ms-1">Cancel</a>
                                     @endif
 
-                                    @if (in_array($status, ['pending', 'failed', '']))
+                                    @if (!in_array($status, ['submitted', 'accepted']))
                                         <button onclick="confirmDelete('{{ $invoice->id_invoice }}')" class="btn btn-sm btn-outline-danger ms-1">Delete</button>
                                     @endif
                                 </div>
@@ -213,7 +217,7 @@
 <script>
 $(document).ready(function () {
     // ==========================================================
-    // NEW: Catch Laravel Flash Messages and show via SweetAlert
+    // Catch Laravel Flash Messages and show via SweetAlert
     // ==========================================================
     @if(session('success'))
         Swal.fire({ 
