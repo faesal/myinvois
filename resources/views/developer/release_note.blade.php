@@ -107,10 +107,88 @@ li {
     <div class="select-box">
         <label>Select Version:</label><br>
         <select id="versionSelect">
-            <option value="v1_1">v1.1 (Latest)</option>
+        <option value="v1_2">v1.2</option>
+            <option value="v1_1">v1.1</option>
             <option value="v1_0">v1.0</option>
+           
         </select>
     </div>
+
+    <div id="v1_2" class="version">
+    <div class="card">
+    <h2 style="color:#ef4444;">🛑 Cancel & Control Processing</h2>
+    <ul>
+        <li><strong>Batch Cancellation</strong> — Stop running processes using Batch ID</li>
+        <li><strong>Safe Queue Stop</strong> — Improved stop mechanism without system crash</li>
+        <li><strong>Instant Queue Clearing</strong> — Clear pending jobs immediately</li>
+        <li><strong>Smart Process Handling</strong> — Prevent data corruption during cancellation</li>
+    </ul>
+</div>
+<div class="card">
+    <h2 style="color:#ef4444;">📧 Email & Notification</h2>
+    <ul>
+        <li><strong>Automated Email Notification</strong> — Send alerts for submission status</li>
+        <li><strong>Batch Result Notification</strong> — Email summary after processing</li>
+        <li><strong>Error Alert System</strong> — Notify failed or rejected invoices</li>
+        <li><strong>Queue-Based Email Delivery</strong> — Non-blocking email processing</li>
+    </ul>
+</div>
+<div class="card">
+    <h2 style="color:#38bdf8;">⚡ Performance & Processing</h2>
+    <ul>
+        <li><strong>Parallel Invoice Submission</strong> — Faster processing using concurrent jobs</li>
+        <li><strong>Batch Limit Control</strong> — Supports up to 5,000 invoices per batch</li>
+        <li><strong>Auto-Continue Processing</strong> — Automatically processes remaining invoices</li>
+        <li><strong>Optimized Query Performance</strong> — Faster loading for large datasets</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2 style="color:#a78bfa;">⚙️ Background Processing</h2>
+    <ul>
+        <li><strong>Batch Queue System</strong> — More stable background processing</li>
+        <li><strong>Improved Worker Execution</strong> — Better handling for shared hosting</li>
+        <li><strong>Auto Job Recovery</strong> — Prevent stuck or failed processes</li>
+        <li><strong>Safe Stop & Reset</strong> — Ability to stop and clear running jobs safely</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2 style="color:#22c55e;">📊 Real-Time Monitoring</h2>
+    <ul>
+        <li><strong>Live Progress Tracking</strong> — Track submission progress in real-time</li>
+        <li><strong>Batch Status Visibility</strong> — View remaining and completed jobs</li>
+        <li><strong>Error Detection</strong> — Identify failed batches instantly</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2 style="color:#f59e0b;">🛡️ Validation & Data Accuracy</h2>
+    <ul>
+        <li><strong>Dynamic Validation Rules</strong> — Smarter validation based on system configuration</li>
+        <li><strong>Conditional Data Requirements</strong> — Enforced fields for API & version settings</li>
+        <li><strong>Improved Data Integrity</strong> — Reduced submission errors to LHDN</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2 style="color:#ef4444;">❗ Error Handling & Stability</h2>
+    <ul>
+        <li><strong>Automatic Retry Mechanism</strong> — Handles API payload limits (413 errors)</li>
+        <li><strong>Improved Failure Detection</strong> — Captures hidden/system failures</li>
+        <li><strong>Enhanced Logging</strong> — Better debugging and tracking</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2 style="color:#8b5cf6;">📊 Reporting Accuracy</h2>
+    <ul>
+        <li><strong>Improved Failed Status Logic</strong> — Includes system-level failures</li>
+        <li><strong>Accurate Dashboard Metrics</strong> — Better reporting for submissions</li>
+    </ul>
+</div>
+
+</div>
 
     <!-- ================= v1.1 ================= -->
     <div id="v1_1" class="version">
