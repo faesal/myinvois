@@ -501,36 +501,64 @@ public function qr_link($uuid)
      * TOKEN CACHING (REUSE ACROSS MULTIPLE SUBMISSIONS)
      * =====================================================
      */
-    private function getAuthToken()
+ private function getAuthToken()
     {
-        // Check if token is still valid (typically 1 hour expiry)
-        if (self::$cachedToken && self::$tokenExpiry > time()) {
-            return self::$cachedToken;
+        $cacheKey = 'lhdn_auth_token_' . $this->tinNo;
+
+        // 1. QUICK CHECK: If the token is already in the cache, grab it instantly.
+        if ($token = \Illuminate\Support\Facades\Cache::get($cacheKey)) {
+            return $token;
         }
 
-        $client = $this->getClient();
+        // 2. ATOMIC LOCK: Create a "key" that only lasts for 10 seconds.
+        $lock = \Illuminate\Support\Facades\Cache::lock('login_lock_' . $this->tinNo, 10);
 
-        if ($this->is_version == '1.1') {
-            $client->login($this->tinNo . ':' . $this->idNo);
-        } else {
-            $client->login();
+        try {
+            // 3. Force workers to wait in line (block) for up to 8 seconds to get the key.
+            return $lock->block(8, function () use ($cacheKey) {
+                
+                // DOUBLE-CHECK! 
+                // Worker B just waited in line. While it was waiting, Worker A might have 
+                // already fetched the token. Check the cache one more time!
+                if ($token = \Illuminate\Support\Facades\Cache::get($cacheKey)) {
+                    return $token;
+                }
+
+                \Illuminate\Support\Facades\Log::info("Requesting fresh LHDN Auth Token for TIN: {$this->tinNo}");
+
+                $client = $this->getClient();
+
+                if ($this->is_version == '1.1') {
+                    $client->login($this->tinNo . ':' . $this->idNo);
+                } else {
+                    $client->login();
+                }
+
+                $token = $client->getAccessToken();
+
+                // Save it for 50 minutes (3000 seconds)
+                \Illuminate\Support\Facades\Cache::put($cacheKey, $token, 3000);
+
+                return $token;
+            });
+
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
+            // If a worker waits 8 seconds and the line is still stuck, safely throw an error.
+            // The Job try/catch will catch this and put the chunk back in the queue to try later!
+            throw new \Exception("System busy authenticating with LHDN. Automatically retrying...");
         }
-
-        $token = $client->getAccessToken();
-
-        // Cache for 50 minutes (assuming 60 min expiry)
-        self::$cachedToken = $token;
-        self::$tokenExpiry = time() + 3000; // 50 minutes
-
-        return $token;
     }
-    
- /**
+/**
      * =====================================================
-     * BATCH SUBMISSION WITH RETRY LOGIC & 5MB SAFETY CHECK
+     * BATCH SUBMISSION WITH RETRY LOGIC & SMART CHUNKING
      * =====================================================
      */
-public function submitBatch(array $invoiceIds)
+ /**
+     * =====================================================
+     * BATCH SUBMISSION WITH RETRY LOGIC & SMART CHUNKING
+     * =====================================================
+     */
+    public function submitBatch(array $invoiceIds)
     {
         // 1. Validate certificate ONCE for entire batch
         [$cert, $privateKey, $certPath, $privatePath] = $this->getCertificate();
@@ -540,9 +568,7 @@ public function submitBatch(array $invoiceIds)
         $token = $this->getAuthToken();
         $client->setAccessToken($token);
 
-        $documents = [];
-        $invoiceMap = [];
-        $consolidate_status = session('consolidate_status');
+        $consolidate_status = session('consolidate_status') ?? $this->consolidate_status ?? 0;
 
         // ========================================================================
         // OPTIMIZATION: THE N+1 QUERY FIX
@@ -575,7 +601,27 @@ public function submitBatch(array $invoiceIds)
             ->keyBy('id_customer');
 
         // ========================================================================
+        // 3. PREPARE PAYLOADS (WITH SMART 4.5MB CHUNKING)
+        // ========================================================================
         
+        $chunks = [];
+        $currentChunkDocs = [];
+        $currentChunkMap = [];
+        $currentChunkSize = 0;
+        $maxBytes = 4.5 * 1024 * 1024; // 4.5 MB Safety Limit
+
+        $example = new CreateDocumentExample();
+        $invoiceTypes = [
+            '01' => InvoiceTypeCodes::INVOICE,
+            '02' => InvoiceTypeCodes::CREDIT_NOTE,
+            '03' => InvoiceTypeCodes::DEBIT_NOTE,
+            '04' => InvoiceTypeCodes::REFUND_NOTE,
+            '11' => InvoiceTypeCodes::SELF_BILLED_INVOICE,
+            '12' => InvoiceTypeCodes::SELF_BILLED_CREDIT_NOTE,
+            '13' => InvoiceTypeCodes::SELF_BILLED_DEBIT_NOTE,
+            '14' => InvoiceTypeCodes::SELF_BILLED_REFUND_NOTE,
+        ];
+
         // Start processing memory-only loop (0 database queries inside here!)
         foreach ($records as $record) {
             $isSelfBilled = in_array($record->invoice_type_code, ['11', '12', '13', '14']);
@@ -639,7 +685,6 @@ public function submitBatch(array $invoiceIds)
 
             // --- C. FETCH INVOICE ITEMS ---
             $items = [];
-            // Pull instantly from our pre-fetched Collection instead of hitting the DB
             $invoiceItems = $allItems->get($record->id_invoice, collect([]));
 
             foreach ($invoiceItems as $row) {
@@ -667,6 +712,11 @@ public function submitBatch(array $invoiceIds)
                 'invoice_type_code' => $record->invoice_type_code,
                 'issue_date' => $record->issue_date,
                 'price' => $record->price,
+                
+                // 🚀 PASSING PREVIOUS INVOICE REFERENCE FOR NOTES
+                'previous_uuid' => $record->previous_uuid,
+                'previous_invoice_no' => $record->previous_invoice_no,
+                
                 'total_price_discount' => $record->total_price_discount,
                 'taxable_amount' => $record->taxable_amount,
                 'tax_amount' => $record->tax_amount,
@@ -685,52 +735,37 @@ public function submitBatch(array $invoiceIds)
             ];
 
             // --- E. GENERATE XML/JSON PAYLOAD ---
-            $example = new CreateDocumentExample();
-            $invoiceTypes = [
-                '01' => InvoiceTypeCodes::INVOICE,
-                '02' => InvoiceTypeCodes::CREDIT_NOTE,
-                '03' => InvoiceTypeCodes::DEBIT_NOTE,
-                '04' => InvoiceTypeCodes::REFUND_NOTE,
-                '11' => InvoiceTypeCodes::SELF_BILLED_INVOICE,
-                '12' => InvoiceTypeCodes::SELF_BILLED_CREDIT_NOTE,
-                '13' => InvoiceTypeCodes::SELF_BILLED_DEBIT_NOTE,
-                '14' => InvoiceTypeCodes::SELF_BILLED_REFUND_NOTE,
-            ];
-
             if ($this->is_version == '1.1') {
                 $invoiceJson = $example->createXmlDocument(
                     $invoiceTypes[$record->invoice_type_code],
                     $record->invoice_no,
-                    $supplier,
-                    $customer,
-                    $delivery,
-                    true,
-                    $certPath,
-                    $privatePath,
-                    env('PKCS12_PASSWORD'),
-                    ['SigningTime' => date('Y-m-d\TH:i:s\Z')],
-                    $data
+                    $supplier, $customer, $delivery, true, $certPath, $privatePath,
+                    env('PKCS12_PASSWORD'), ['SigningTime' => date('Y-m-d\TH:i:s\Z')], $data
                 );
             } else {
                 $invoiceJson = $example->createJsonDocument(
                     $invoiceTypes[$record->invoice_type_code],
                     $record->invoice_no,
-                    $supplier,
-                    $customer,
-                    $delivery,
-                    true,
-                    $certPath,
-                    $privatePath,
-                    false,
-                    ['SigningTime' => date('Y-m-d\TH:i:s\Z')],
-                    $data
+                    $supplier, $customer, $delivery, true, $certPath, $privatePath,
+                    false, ['SigningTime' => date('Y-m-d\TH:i:s\Z')], $data
                 );
             }
 
             $document = MyInvoisHelper::getSubmitDocument($record->invoice_no, $invoiceJson);
 
-            $documents[] = $document;
-            $invoiceMap[] = [
+            // 🚀 SMART CHUNKING LOGIC: Measure the size of this specific document
+            $docSizeBytes = strlen(json_encode(['documents' => [$document]]));
+
+            // If adding this pushes us over 4.5MB OR we hit 100 items, close the chunk!
+            if (($currentChunkSize + $docSizeBytes) > $maxBytes || count($currentChunkDocs) >= 100) {
+                $chunks[] = ['docs' => $currentChunkDocs, 'map' => $currentChunkMap];
+                $currentChunkDocs = [];
+                $currentChunkMap = [];
+                $currentChunkSize = 0;
+            }
+
+            $currentChunkDocs[] = $document;
+            $currentChunkMap[] = [
                 'id_invoice' => $record->id_invoice,
                 'unique_id' => $record->unique_id,
                 'invoice_no' => $record->invoice_no,
@@ -739,26 +774,40 @@ public function submitBatch(array $invoiceIds)
                 'supplier_tin' => $supplier['tin_no'] ?? null,
                 'customer_tin' => $customer['tin_no'] ?? null,
             ];
+            $currentChunkSize += $docSizeBytes;
         }
 
-        // =====================================================
-        // 4. 5MB PAYLOAD SAFETY CHECK (LHDN LIMIT)
-        // =====================================================
-        $payloadSizeInBytes = strlen(json_encode(['documents' => $documents]));
-        $payloadSizeInMB = $payloadSizeInBytes / 1048576; // Convert bytes to MB
-
-        if ($payloadSizeInMB > 4.9) {
-            $roundedSize = round($payloadSizeInMB, 2);
-            throw new \Exception("Batch size ({$roundedSize} MB) exceeds LHDN 5MB limit. Please select fewer invoices.");
+        // Add any remaining invoices to the final chunk
+        if (!empty($currentChunkDocs)) {
+            $chunks[] = ['docs' => $currentChunkDocs, 'map' => $currentChunkMap];
         }
 
-        // 5. Submit all documents with retry logic
-        $response = $this->submitWithRetry($documents);
+        if (empty($chunks)) return [];
 
-        // 6. Process batch response and save to database
-        $this->processBatchResponse($response, $invoiceMap);
+        // =====================================================
+        // 4. SUBMIT ALL CHUNKS WITH ERROR CATCHING
+        // =====================================================
+        $allResponses = [];
+        
+        foreach ($chunks as $index => $chunk) {
+            try {
+                // Keep your exact submission logic
+                $response = $this->submitWithRetry($chunk['docs']);
+                
+                // Keep your exact database update logic
+                $this->processBatchResponse($response, $chunk['map']);
+                
+                $allResponses[] = $response;
+                
+            } catch (\Exception $e) {
+                $errorMessage = substr($e->getMessage(), 0, 300);
+                \Log::error("LHDN Chunk " . ($index + 1) . " Failed: " . $errorMessage);
+                
+                throw new \Exception("LHDN Processing Error (Chunk " . ($index + 1) . "): " . $errorMessage);
+            }
+        }
 
-        return $response;
+        return $allResponses;
     }
 
    /**
@@ -1754,7 +1803,7 @@ DB::table('invoice')
 
     }
 
-    public function processInvoice(array $payload, string $type)
+ public function processInvoice(array $payload, string $type)
     {
         DB::beginTransaction();
     
@@ -1792,8 +1841,6 @@ DB::table('invoice')
     
                 if ($tin === 'EI00000000010') {
                     $item_clasification_code = '004';
-                    //$identification_no = 'NA';
-                    //identification_type (NRIC/PASSPORT/BRN/ARMY) 
                     if($identification_no!='NA'){
                         return response()->json([
                             'status' => 'error',
@@ -1803,9 +1850,6 @@ DB::table('invoice')
     
                 } elseif ($tin === 'EI00000000020') {
                     $item_clasification_code = '022';
-                    //$identification_no = 'NA';
-                    //$identification_type = 'BRN';
-
                     if($identification_type!='PASSPORT' ){
                         return response()->json([
                             'status' => 'error',
@@ -1823,8 +1867,6 @@ DB::table('invoice')
     
                 } elseif ($tin === 'EI00000000040') {
                     $item_clasification_code = '022';
-                   // $identification_no = 'NA';
-                   // $identification_type = 'BRN';
 
                    if($identification_type!='BRN'){
                     return response()->json([
@@ -1839,7 +1881,6 @@ DB::table('invoice')
                             'message' => 'LHDN : EI00000000040 - Only support Identification No NA !'
                         ], 400);
                         }
-
                 }
     
             } else {
@@ -1986,6 +2027,7 @@ DB::table('invoice')
                 $customer = DB::table('customer')->where('id_customer', $customerId)->first();
                 $customerStatus = 'created';
             }
+
         }else{
 
             $customer = DB::table('customer')
@@ -2058,7 +2100,7 @@ DB::table('invoice')
             $items     = data_get($payload, 'items', []);
     
             if (!$invoiceNo || !$saleId || empty($items)) {
-               
+                
                 return response()->json([
                     'status' => 'error',
                     'message' => 'invoice_no, sale_id_integrate & items are required'
@@ -2156,7 +2198,8 @@ DB::table('invoice')
             ]);
     
             DB::commit();
-       // =====================================================
+
+        // =====================================================
         // 7. SUBMIT MyInvois
         // =====================================================
         $session= session([
@@ -2172,12 +2215,15 @@ DB::table('invoice')
         $isAutoToLHDN=data_get($payload, 'isAutoToLHDN');
 
         if( $isAutoToLHDN ==1){
-            $result = $model->submit($invoiceId);
+            
+            // 🚀 REPLACED OLD SUBMIT WITH BATCH SUBMIT
+            $batchResults = $model->submitBatch([$invoiceId]);
+            $result = !empty($batchResults) ? current($batchResults) : null;
+            
             $qr_lhdn = url('/qr_link/'.$uniqueId);
 
         }else{
             $qr_lhdn='No LHDN QR Link Provided';
-
             $result = "Please manualy submit in system, since isAutoLHDN = 0";
         }
         
@@ -2194,310 +2240,300 @@ DB::table('invoice')
             'qr_lhdn'         => $qr_lhdn,
             'result'          => $result
         ], 201);
-           DB::table('message_header')->where('id', session('message_id'))->update(['response_json' => json_encode($response_json)]);
-            $session= session([
+        
+        DB::table('message_header')->where('id', session('message_id'))->update(['response_json' => json_encode($response_json)]);
+        $session= session([
             'message_id' => ''
         ]);
+        
         return $response_json;
 
 
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
-          
         }
     }
     
 
 
-  public function processNote(array $payload, $mode = 'normal')
-{
-    DB::beginTransaction();
+ public function processNote(array $payload, $mode = 'normal')
+    {
+        DB::beginTransaction();
 
-    try {
-
-        if (!is_array($payload)) {
-           
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Invalid JSON payload'
-            ], 400);
-            exit();
-        }
-        $tin = data_get($payload, 'supplier.tin_no');
-
-       
-
-
-        /* =====================================================
-           1. AUTH
-        ===================================================== */
-        $apiKey    = data_get($payload, 'mysynctax_key');
-        $apiSecret = data_get($payload, 'mysynctax_secret');
-
-        if (!$apiKey || !$apiSecret) {
-          
-            return response()->json([
-                'status' => 'error',
-                'message' => 'mysynctax_key and mysynctax_secret are required'
-            ], 400);
-            exit();
-        }
-
-        $client = DB::table('connection_integrate')
-            ->where('mysynctax_key', $apiKey)
-            ->where('mysynctax_secret', $apiSecret)
-            ->first();
-
-        if (!$client) {
-            
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Invalid MySyncTax credentials'
-            ], 400);
-            exit();
-        }
-
-        $connCode = $client->code;
-
-        /* =====================================================
-           2. NOTE TYPE MAP
-        ===================================================== */
-        $noteType = data_get($payload, 'note_type');
-
-        $typeMap = [
-            'normal' => [
-                'credit' => ['code' => '02', 'sign' => -1, 'label' => 'Credit'],
-                'debit'  => ['code' => '03', 'sign' =>  1, 'label' => 'Debit'],
-                'refund' => ['code' => '04', 'sign' => -1, 'label' => 'Refund'],
-            ],
-            'selfbill' => [
-                'credit' => ['code' => '12', 'sign' => -1, 'label' => 'Credit'],
-                'debit'  => ['code' => '13', 'sign' =>  1, 'label' => 'Debit'],
-                'refund' => ['code' => '14', 'sign' => -1, 'label' => 'Refund'],
-            ],
-            'general' => [
-                'credit' => ['code' => '02', 'sign' => -1, 'label' => 'Credit'],
-                'debit'  => ['code' => '03', 'sign' =>  1, 'label' => 'Debit'],
-                'refund' => ['code' => '04', 'sign' => -1, 'label' => 'Refund'],
-            ],
-            'selfbill_general' => [
-                'credit' => ['code' => '12', 'sign' => -1, 'label' => 'Credit'],
-                'debit'  => ['code' => '13', 'sign' =>  1, 'label' => 'Debit'],
-                'refund' => ['code' => '14', 'sign' => -1, 'label' => 'Refund'],
-            ]
-        ];
-
-        if (!isset($typeMap[$mode][$noteType])) {
-           
-            return response()->json([
-                'status' => 'error',
-                'message' => "Invalid note_type for mode {$mode}"
-            ], 400);
-            exit();
-        }
-
-        $map = $typeMap[$mode][$noteType];
-        $invoiceTypeCode = $map['code'];
-        $sign            = $map['sign'];
-        $label           = $map['label'];
-
-        /* =====================================================
-           3. ORIGINAL INVOICE
-        ===================================================== */
-        $originalInvoiceId = data_get($payload, 'sale_id_integrate');
-        $mysynctax_uuid    = data_get($payload, 'mysynctax_uuid');
-
-        if (!is_numeric($originalInvoiceId) || !$mysynctax_uuid) {
-            
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Invalid original invoice reference'
-            ], 400);
-            exit();
-        }
-
-        $original = DB::table('invoice')
-            ->where('sale_id_integrate', $originalInvoiceId)
-            ->where('unique_id', $mysynctax_uuid)
-            ->first();
-
-        if (!$original) {
-   
-            return response()->json([
-                'status' => 'error',
-                'message' => "Original invoice not found"
-            ], 400);
-            exit();
-        }
-
-        $uniqueId = (string) \Illuminate\Support\Str::uuid();
-
-        /* =====================================================
-           4. CREATE NOTE INVOICE
-        ===================================================== */
-        $noteInvoiceId = DB::table('invoice')->insertGetId([
-            'unique_id'            => $uniqueId,
-            'connection_integrate' => $connCode,
-            'sale_id_integrate'    => $originalInvoiceId,
-            'id_developer'         => $client->id_developer,
-            'invoice_no'           => strtoupper($label).'-NOTE-'.now()->format('YmdHis'),
-            'invoice_type_code'    => $invoiceTypeCode,
-            'issue_date'           => now(),
-            'id_customer'          => $original->id_customer,
-            'id_supplier'          => $original->id_supplier,
-            'previous_id_invoice'  => $original->id_invoice,
-            'previous_invoice_no'  => $original->invoice_no,
-            'previous_uuid'        => $original->unique_id,
-            'payment_note_term'    => 'CASH',
-            'created_at'           => now(),
-            'updated_at'           => now(),
-        ]);
-
-
-        $customer = DB::table('customer')
-                ->where('id_customer', $original->id_customer)
-                ->first();
-        //echo $customer->tin_no;
-        //exit;
-        $item_clasification_value = '022';
-        if ($customer->tin_no == 'EI00000000010') {
-            $item_clasification_value = '004';
-        } elseif ($customer->tin_no== 'EI00000000020') {
-            $item_clasification_value = '022';
-        } elseif ($customer->tin_no == 'EI00000000030') {
-            $item_clasification_value ='022';
-        } elseif ($customer->tin_no == 'EI00000000040') {
-            $item_clasification_value = '022';
-        }
-
-        /* =====================================================
-           5. ITEMS
-        ===================================================== */
-        $items = data_get($payload, 'items', []);
-        if (!is_array($items) || count($items) === 0) {
-   
-            return response()->json([
-                'status' => 'error',
-                'message' => "'Items are required"
-            ], 400);
-            exit();
-        }
-
-        foreach ($items as $item) {
-
-            $itemId = data_get($item, 'item_id');
-
-            $oriItem = DB::table('invoice_item')
-                ->where('item_id_integrate', $itemId)
-                ->where('id_invoice', $original->id_invoice)
-                ->first();
-
-            if (!$oriItem) {
-              
-
+        try {
+            if (!is_array($payload)) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => "Invalid invoice previous item reference: {$itemId}"
+                    'message' => 'Invalid JSON payload'
+                ], 400);
+                exit();
+            }
+            $tin = data_get($payload, 'supplier.tin_no');
+
+            /* =====================================================
+               1. AUTH
+            ===================================================== */
+            $apiKey    = data_get($payload, 'mysynctax_key');
+            $apiSecret = data_get($payload, 'mysynctax_secret');
+
+            if (!$apiKey || !$apiSecret) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'mysynctax_key and mysynctax_secret are required'
                 ], 400);
                 exit();
             }
 
-            $qty      = (float) data_get($item, 'qty', 0);
-            $price    = (float) data_get($item, 'price', 0);
-            $discount = (float) data_get($item, 'discount', 0);
-            $tax      = (float) data_get($item, 'tax', 0);
+            $client = DB::table('connection_integrate')
+                ->where('mysynctax_key', $apiKey)
+                ->where('mysynctax_secret', $apiSecret)
+                ->first();
 
-            $lineAmount = (($qty * $price) - $discount) * $sign;
-
-            
-
-            DB::table('invoice_item')->insert([
-                'id_invoice'               => $noteInvoiceId,
-                'sale_id_integrate'        => $originalInvoiceId,
-                'item_id_integrate'        => $itemId,
-                'id_developer'             => $client->id_developer,
-                'unique_id'                => $uniqueId,
-                'connection_integrate'     => $connCode,
-                'previous_id_invoice'      => $original->id_invoice,
-                'previous_id_invoice_item' => $oriItem->id_invoice_item,
-                'previous_amount'          => $oriItem->line_extension_amount,
-                'line_id'                  => $oriItem->line_id,
-                'invoiced_quantity'        => $qty,
-                'price_amount'             => $price,
-                'price_discount'           => $discount,
-                'line_extension_amount'    => $lineAmount,
-                'price_extension_amount'   => $lineAmount,
-                'tax'                      => $tax * $sign,
-                'item_description'         => data_get($item, 'description', ''),
-                'item_clasification_value' => $item_clasification_value,
-                'created_at'               => now(),
-                'updated_at'               => now(),
-            ]);
-        }
-
-        /* =====================================================
-           6. TOTAL
-        ===================================================== */
-        $total    = DB::table('invoice_item')->where('id_invoice', $noteInvoiceId)->sum('line_extension_amount');
-        $taxTotal = DB::table('invoice_item')->where('id_invoice', $noteInvoiceId)->sum('tax');
-
-        DB::table('invoice')->where('id_invoice', $noteInvoiceId)->update([
-            'price'          => $total,
-            'taxable_amount' => $total,
-            'tax_amount'     => $taxTotal,
-            'updated_at'     => now(),
-        ]);
-
-         /* =====================================================
-                7. SUBMIT LHDN
-            ===================================================== */
-
-            if(!$original->uuid){
-            return response()->json([
-                'status' => 'error',
-                'message' => "This invoice not submited yet to LHDN"
-            ], 400);
-            exit();
+            if (!$client) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid MySyncTax credentials'
+                ], 400);
+                exit();
             }
 
-            session([
-                'invoice_unique_id'   => $uniqueId,
-                'previous_uuid'       => $original->uuid,
-                'previous_invoice_no' => $original->invoice_no,
-                'invoice_type_code'   => $invoiceTypeCode,
+            $connCode = $client->code;
+
+            /* =====================================================
+               2. NOTE TYPE MAP
+            ===================================================== */
+            $noteType = data_get($payload, 'note_type');
+
+            $typeMap = [
+                'normal' => [
+                    'credit' => ['code' => '02', 'sign' => -1, 'label' => 'Credit'],
+                    'debit'  => ['code' => '03', 'sign' =>  1, 'label' => 'Debit'],
+                    'refund' => ['code' => '04', 'sign' => -1, 'label' => 'Refund'],
+                ],
+                'selfbill' => [
+                    'credit' => ['code' => '12', 'sign' => -1, 'label' => 'Credit'],
+                    'debit'  => ['code' => '13', 'sign' =>  1, 'label' => 'Debit'],
+                    'refund' => ['code' => '14', 'sign' => -1, 'label' => 'Refund'],
+                ],
+                'general' => [
+                    'credit' => ['code' => '02', 'sign' => -1, 'label' => 'Credit'],
+                    'debit'  => ['code' => '03', 'sign' =>  1, 'label' => 'Debit'],
+                    'refund' => ['code' => '04', 'sign' => -1, 'label' => 'Refund'],
+                ],
+                'selfbill_general' => [
+                    'credit' => ['code' => '12', 'sign' => -1, 'label' => 'Credit'],
+                    'debit'  => ['code' => '13', 'sign' =>  1, 'label' => 'Debit'],
+                    'refund' => ['code' => '14', 'sign' => -1, 'label' => 'Refund'],
+                ]
+            ];
+
+            if (!isset($typeMap[$mode][$noteType])) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => "Invalid note_type for mode {$mode}"
+                ], 400);
+                exit();
+            }
+
+            $map = $typeMap[$mode][$noteType];
+            $invoiceTypeCode = $map['code'];
+            $sign            = $map['sign'];
+            $label           = $map['label'];
+
+            /* =====================================================
+               3. ORIGINAL INVOICE
+            ===================================================== */
+            $originalInvoiceId = data_get($payload, 'sale_id_integrate');
+            $mysynctax_uuid    = data_get($payload, 'mysynctax_uuid');
+
+            if (!is_numeric($originalInvoiceId) || !$mysynctax_uuid) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid original invoice reference'
+                ], 400);
+                exit();
+            }
+
+            $original = DB::table('invoice')
+                ->where('sale_id_integrate', $originalInvoiceId)
+                ->where('unique_id', $mysynctax_uuid)
+                ->first();
+
+            if (!$original) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => "Original invoice not found"
+                ], 400);
+                exit();
+            }
+
+            $uniqueId = (string) \Illuminate\Support\Str::uuid();
+
+            /* =====================================================
+               4. CREATE NOTE INVOICE
+            ===================================================== */
+            $noteInvoiceId = DB::table('invoice')->insertGetId([
+                'unique_id'            => $uniqueId,
+                'connection_integrate' => $connCode,
+                'sale_id_integrate'    => $originalInvoiceId,
+                'id_developer'         => $client->id_developer,
+                'invoice_no'           => strtoupper($label).'-NOTE-'.now()->format('YmdHis'),
+                'invoice_type_code'    => $invoiceTypeCode,
+                'issue_date'           => now(),
+                'id_customer'          => $original->id_customer,
+                'id_supplier'          => $original->id_supplier,
+                'previous_id_invoice'  => $original->id_invoice,
+                'previous_invoice_no'  => $original->invoice_no,
+                'previous_uuid'        => $original->uuid, // 🚀 CORRECT: Using official LHDN UUID
+                'payment_note_term'    => 'CASH',
+                
+                // 🚀 ADDED MISSING TAX FIELDS
+                'tax_category_id'      => '01',
+                'tax_scheme_id'        => 'OTH',
+                
+                'created_at'           => now(),
+                'updated_at'           => now(),
             ]);
 
-            $model  = new eInvoisModel($connCode);
-            $result = $model->submit($noteInvoiceId);
+            $customer = DB::table('customer')
+                    ->where('id_customer', $original->id_customer)
+                    ->first();
+                    
+            $item_clasification_value = '022';
+            if ($customer->tin_no == 'EI00000000010') {
+                $item_clasification_value = '004';
+            } elseif ($customer->tin_no== 'EI00000000020') {
+                $item_clasification_value = '022';
+            } elseif ($customer->tin_no == 'EI00000000030') {
+                $item_clasification_value ='022';
+            } elseif ($customer->tin_no == 'EI00000000040') {
+                $item_clasification_value = '022';
+            }
 
-            DB::commit();
+            /* =====================================================
+               5. ITEMS
+            ===================================================== */
+            $items = data_get($payload, 'items', []);
+            if (!is_array($items) || count($items) === 0) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => "'Items are required"
+                ], 400);
+                exit();
+            }
 
-$response_json = response()->json([
-                'status'         => 'ok',
-                'note_type'      => $noteType,
-                'invoice_id'     => $noteInvoiceId,
-                'mysynctax_uuid' => $uniqueId,
-                'qr_lhdn'        => url('/qr_link/'.$uniqueId),
-                'result'         => $result
-            ], 201);
+            foreach ($items as $item) {
+                $itemId = data_get($item, 'item_id');
 
-            // Update the API log with the exact response
-            DB::table('message_header')
-                ->where('id', session('message_id'))
-                ->update(['response_json' => json_encode($response_json)]);
+                $oriItem = DB::table('invoice_item')
+                    ->where('item_id_integrate', $itemId)
+                    ->where('id_invoice', $original->id_invoice)
+                    ->first();
 
-            // Clear the session
-            session(['message_id' => '']);
+                if (!$oriItem) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => "Invalid invoice previous item reference: {$itemId}"
+                    ], 400);
+                    exit();
+                }
 
-            return $response_json;
+                $qty      = (float) data_get($item, 'qty', 0);
+                $price    = (float) data_get($item, 'price', 0);
+                $discount = (float) data_get($item, 'discount', 0);
+                $tax      = (float) data_get($item, 'tax', 0);
 
-    } catch (\Throwable $e) {
-        DB::rollBack();
-        throw $e;
+                $lineAmount = (($qty * $price) - $discount) * $sign;
+
+                DB::table('invoice_item')->insert([
+                    'id_invoice'               => $noteInvoiceId,
+                    'sale_id_integrate'        => $originalInvoiceId,
+                    'item_id_integrate'        => $itemId,
+                    'id_developer'             => $client->id_developer,
+                    'unique_id'                => $uniqueId,
+                    'connection_integrate'     => $connCode,
+                    'previous_id_invoice'      => $original->id_invoice,
+                    'previous_id_invoice_item' => $oriItem->id_invoice_item,
+                    'previous_amount'          => $oriItem->line_extension_amount,
+                    'line_id'                  => $oriItem->line_id,
+                    'invoiced_quantity'        => $qty,
+                    'price_amount'             => $price,
+                    'price_discount'           => $discount,
+                    'line_extension_amount'    => $lineAmount,
+                    'price_extension_amount'   => $lineAmount,
+                    'tax'                      => $tax * $sign,
+                    'item_description'         => data_get($item, 'description', ''),
+                    'item_clasification_value' => $item_clasification_value,
+                    'created_at'               => now(),
+                    'updated_at'               => now(),
+                ]);
+            }
+
+            /* =====================================================
+               6. TOTAL
+            ===================================================== */
+            $total    = DB::table('invoice_item')->where('id_invoice', $noteInvoiceId)->sum('line_extension_amount');
+            $taxTotal = DB::table('invoice_item')->where('id_invoice', $noteInvoiceId)->sum('tax');
+
+            DB::table('invoice')->where('id_invoice', $noteInvoiceId)->update([
+                'price'          => $total,
+                'taxable_amount' => $total,
+                'tax_amount'     => $taxTotal,
+                'updated_at'     => now(),
+            ]);
+
+             /* =====================================================
+                    7. SUBMIT LHDN
+                ===================================================== */
+
+                if(!$original->uuid){
+                return response()->json([
+                    'status' => 'error',
+                    'message' => "This invoice not submited yet to LHDN"
+                ], 400);
+                exit();
+                }
+
+                session([
+                    'invoice_unique_id'   => $uniqueId,
+                    'previous_uuid'       => $original->uuid,
+                    'previous_invoice_no' => $original->invoice_no,
+                    'invoice_type_code'   => $invoiceTypeCode,
+                ]);
+
+                $model  = new eInvoisModel($connCode);
+                
+                // 🚀 REPLACED OLD SUBMIT WITH BATCH SUBMIT
+                $batchResults = $model->submitBatch([$noteInvoiceId]);
+                $result = !empty($batchResults) ? current($batchResults) : null;
+
+                DB::commit();
+
+                $response_json = response()->json([
+                    'status'         => 'ok',
+                    'note_type'      => $noteType,
+                    'invoice_id'     => $noteInvoiceId,
+                    'mysynctax_uuid' => $uniqueId,
+                    'qr_lhdn'        => url('/qr_link/'.$uniqueId),
+                    'result'         => $result
+                ], 201);
+
+                // Update the API log with the exact response
+                DB::table('message_header')
+                    ->where('id', session('message_id'))
+                    ->update(['response_json' => json_encode($response_json)]);
+
+                // Clear the session
+                session(['message_id' => '']);
+
+                return $response_json;
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
-}
 
 }
 ?>

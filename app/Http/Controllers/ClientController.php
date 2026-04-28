@@ -307,6 +307,7 @@ class ClientController extends Controller
         }
     }
 
+
     // -------------------------------------------
     // UPDATE CLIENT (MAIN FORM)
     // -------------------------------------------
@@ -314,64 +315,93 @@ class ClientController extends Controller
     {
         $user = Auth::user();
 
-        $request->validate([
-            'registration_name' => 'required|string|max:255',
-            'tin_no'            => 'required|string|max:50',
-            'identification_no' => 'required|string|max:50',
-            'phone'             => 'required|digits_between:9,15',
-            'email'             => 'required|email|max:100',
-            'address_line_1'    => 'required|string|max:255',
-            'address_line_2'    => 'required|string|max:255',
-            'city_name'         => 'required|string|max:100',
-            'postal_zone'       => 'required|string|max:20',
+        // 1. Define Basic Validation Rules
+        $rules = [
+            'registration_name'      => 'required|string|max:255',
+            'tin_no'                 => 'required|string|max:50',
+            'identification_no'      => 'required|string|max:50',
+            'phone'                  => 'required|digits_between:9,15',
+            'email'                  => 'required|email|max:100',
+            'address_line_1'         => 'required|string|max:255',
+            'address_line_2'         => 'required|string|max:255',
+            'city_name'              => 'required|string|max:100',
+            'postal_zone'            => 'required|string|max:20',
             'country_subentity_code' => 'required|string|max:10',
-        ]);
+        ];
 
+        // 2. Conditional Validation: Intermediary Dates (Mandatory if Version 1.1)
+        if ($request->is_version === '1.1') {
+            $rules['intermediary_start'] = 'required|date';
+            $rules['intermediary_end']   = 'required|date';
+        } else {
+            $rules['intermediary_start'] = 'nullable|date';
+            $rules['intermediary_end']   = 'nullable|date';
+        }
+
+        // 3. Conditional Validation: ERP LHDN Dates (Mandatory if Secret Keys are filled)
+        $hasSecretKeys = $request->filled('secret_key1') || 
+                         $request->filled('secret_key2') || 
+                         $request->filled('secret_key3');
+
+        if ($hasSecretKeys) {
+            $rules['erp_lhdn_start'] = 'required|date';
+            $rules['erp_lhdn_end']   = 'required|date';
+        } else {
+            $rules['erp_lhdn_start'] = 'nullable|date';
+            $rules['erp_lhdn_end']   = 'nullable|date';
+        }
+
+        // Run the validation
+        $request->validate($rules);
+
+        // Define Query
         $query = DB::table('customer')->where('id_customer', $id_customer);
 
+        // Security: Ensure non-admins only update their own records
         if ($user->role !== 'admin') {
             $query->where('id_developer', $user->id);
         }
 
         $isIpWhitelistEnabled = $request->has('is_ip_whitelist_enabled') ? 1 : 0;
 
+        // Perform Update
         $query->update([
-            'registration_name'  => $request->registration_name,
-            'tin_no'             => $request->tin_no,
-            'identification_no'  => $request->identification_no,
-            'identification_type'=> $request->identification_type,
-            'phone'              => $request->phone,
-            'email'              => $request->email,
-            'address_line_1'     => $request->address_line_1,
-            'address_line_2'     => $request->address_line_2,
-            'address_line_3'     => $request->address_line_3,
-            'city_name'          => $request->city_name,
-            'postal_zone'        => $request->postal_zone,
-            'country_subentity_code' => $request->country_subentity_code,
-            'secret_key1'        => $request->secret_key1,
-            'secret_key2'        => $request->secret_key2,
-            'secret_key3'        => $request->secret_key3,
+            'registration_name'       => $request->registration_name,
+            'tin_no'                  => $request->tin_no,
+            'identification_no'       => $request->identification_no,
+            'identification_type'     => $request->identification_type,
+            'phone'                   => $request->phone,
+            'email'                   => $request->email,
+            'address_line_1'          => $request->address_line_1,
+            'address_line_2'          => $request->address_line_2,
+            'address_line_3'          => $request->address_line_3,
+            'city_name'               => $request->city_name,
+            'postal_zone'             => $request->postal_zone,
+            'country_subentity_code'  => $request->country_subentity_code,
+            'secret_key1'             => $request->secret_key1,
+            'secret_key2'             => $request->secret_key2,
+            'secret_key3'             => $request->secret_key3,
             'is_ip_whitelist_enabled' => $isIpWhitelistEnabled,
-            'updated_at'         => now(),
+            'is_version'              => $request->is_version, // Ensure version is saved
+            
+            // New Date Fields
+            'erp_lhdn_start'          => $request->erp_lhdn_start,
+            'erp_lhdn_end'            => $request->erp_lhdn_end,
+            'intermediary_start'      => $request->intermediary_start,
+            'intermediary_end'        => $request->intermediary_end,
+            
+            'updated_at'              => now(),
         ]);
 
-        $route = ($user->role === 'admin') ? 'admin.subscribers.index' : 'developer.dashboard';
-
         return redirect()
-            ->route($route)
+            ->back()
             ->with('success', 'Client updated successfully.');
     }
 
     // -------------------------------------------
     // AJAX: SAVE CONSOLIDATION SETTINGS
     // -------------------------------------------
- // -------------------------------------------
-    // AJAX: SAVE CONSOLIDATION SETTINGS
-    // -------------------------------------------
- // -------------------------------------------
-    // AJAX: SAVE CONSOLIDATION SETTINGS
-    // -------------------------------------------
- public function saveConsolidation(Request $request, $id)
+    public function saveConsolidation(Request $request, $id)
     {
         try {
             $connectionKey = $this->getConnectionKey($id);
@@ -393,16 +423,13 @@ class ClientController extends Controller
             $freq = $request->freq;
             $specificDate = $request->specific_date;
             
-            // ---------------------------------------------------------
             // ✅ EXCEPTION CHECK: Catch missing date for "Specific" option
-            // ---------------------------------------------------------
             if ($freq === 'specific' && empty($specificDate)) {
                 return response()->json([
                     'success' => false, 
                     'message' => 'Specific Date must be inserted first.'
-                ], 422); // 422 Unprocessable Entity
+                ], 422);
             }
-            // ---------------------------------------------------------
 
             // Handle Boolean conversions
             $sendEmail = filter_var($request->email_notif, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
@@ -428,7 +455,6 @@ class ClientController extends Controller
                         }
                         break;
                     case 'specific':
-                        // We already checked !empty($specificDate) above, so safe to proceed
                         $candidateDate = $now->copy()->day($specificDate)->startOfDay();
                         if ($now->greaterThan($candidateDate)) {
                             $nextDate = $now->copy()->addMonth()->day($specificDate)->startOfDay();

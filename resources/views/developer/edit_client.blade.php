@@ -187,6 +187,16 @@
                 <input type="text" name="secret_key3" class="form-control" value="{{ old('secret_key3', $client->secret_key3) }}">
             </div>
 
+            <div class="row mt-4">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">ERP LHDN Start Date</label>
+                    <input type="date" name="erp_lhdn_start" class="form-control" value="{{ old('erp_lhdn_start', $client->erp_lhdn_start) }}">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">ERP LHDN End Date</label>
+                    <input type="date" name="erp_lhdn_end" class="form-control" value="{{ old('erp_lhdn_end', $client->erp_lhdn_end) }}">
+                </div>
+            </div>
             <div class="divider"></div>
 
             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -255,6 +265,16 @@
                 </div>
             </div>
 
+            <div class="row mb-4 mt-3">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Intermediary Start Date</label>
+                    <input type="date" name="intermediary_start" class="form-control" value="{{ old('intermediary_start', $client->intermediary_start) }}">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Intermediary End Date</label>
+                    <input type="date" name="intermediary_end" class="form-control" value="{{ old('intermediary_end', $client->intermediary_end) }}">
+                </div>
+            </div>
             <div class="divider"></div>
 
             <div class="section-title">
@@ -426,6 +446,49 @@ $(document).ready(function() {
         timer: 1500,
         timerProgressBar: true
     });
+
+    // ---------------------------------------------------------
+    // DYNAMIC MANDATORY LOGIC (NEW)
+    // ---------------------------------------------------------
+    function toggleMandatoryFields() {
+        // Condition 1: Intermediary Dates mandatory if API 1.1
+        const isVersion11 = $('#ver_1_1').is(':checked');
+        const $intStart = $('input[name="intermediary_start"]');
+        const $intEnd = $('input[name="intermediary_end"]');
+
+        if (isVersion11) {
+            $intStart.prop('required', true).closest('.col-md-6').find('.form-label').html('Intermediary Start Date <span class="text-danger">*</span>');
+            $intEnd.prop('required', true).closest('.col-md-6').find('.form-label').html('Intermediary End Date <span class="text-danger">*</span>');
+        } else {
+            $intStart.prop('required', false).closest('.col-md-6').find('.form-label').text('Intermediary Start Date');
+            $intEnd.prop('required', false).closest('.col-md-6').find('.form-label').text('Intermediary End Date');
+        }
+
+        // Condition 2: ERP Dates mandatory if Client Keys are filled
+        const key1 = $('input[name="secret_key1"]').val().trim();
+        const key2 = $('input[name="secret_key2"]').val().trim();
+        const key3 = $('input[name="secret_key3"]').val().trim();
+        const hasKeys = (key1 !== "" || key2 !== "" || key3 !== "");
+
+        const $erpStart = $('input[name="erp_lhdn_start"]');
+        const $erpEnd = $('input[name="erp_lhdn_end"]');
+
+        if (hasKeys) {
+            $erpStart.prop('required', true).closest('.col-md-6').find('.form-label').html('ERP LHDN Start Date <span class="text-danger">*</span>');
+            $erpEnd.prop('required', true).closest('.col-md-6').find('.form-label').html('ERP LHDN End Date <span class="text-danger">*</span>');
+        } else {
+            $erpStart.prop('required', false).closest('.col-md-6').find('.form-label').text('ERP LHDN Start Date');
+            $erpEnd.prop('required', false).closest('.col-md-6').find('.form-label').text('ERP LHDN End Date');
+        }
+    }
+
+    // Run on page load
+    toggleMandatoryFields();
+
+    // Trigger on input/change events
+    $('.api-version-radio').on('change', toggleMandatoryFields);
+    $('input[name="secret_key1"], input[name="secret_key2"], input[name="secret_key3"]').on('input', toggleMandatoryFields);
+
 
     // Simple clipboard copy functionality for user convenience
     $('.copy-btn').click(function() {
@@ -647,10 +710,8 @@ $(document).ready(function() {
         });
     });
 
-    $('#masterUpdateBtn').click(function(e) {
-        e.preventDefault();
-        $(this).prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-2"></i> Saving...');
-        $('#mainClientForm').submit();
+    $('#mainClientForm').on('submit', function() {
+        $('#masterUpdateBtn').prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-2"></i> Saving...');
     });
 
     $('#addIpBtn').click(function() {
@@ -717,6 +778,10 @@ $(document).ready(function() {
             }
         });
     });
+
+    @if(session('success'))
+        Toast.fire({ icon: 'success', title: "{{ session('success') }}" });
+    @endif
 });
 </script>
 @endsection

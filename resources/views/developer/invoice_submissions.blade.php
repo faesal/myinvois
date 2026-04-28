@@ -145,9 +145,7 @@
             <div class="text-end d-flex align-items-center gap-3">
                 <div>
                     <div class="fw-bold" id="progress-percentage">0%</div>
-                    <small class="text-success fw-bold" id="time-remaining-text">Est: Calculating...</small>
                 </div>
-                {{-- NEW STOP BUTTON --}}
                 <button id="stopSyncBtn" class="btn btn-sm btn-danger shadow-sm"><i class="fas fa-times me-1"></i> Stop Sync</button>
             </div>
         </div>
@@ -163,8 +161,7 @@
     {{-- Action Buttons Row --}}
     <div class="mb-3 d-flex gap-2 align-items-center action-buttons-wrapper">
         <button class="btn btn-success" id="submitSelectedBtn"><i class="fas fa-paper-plane me-1"></i> Submit Selected</button>
-        <button class="btn btn-warning text-white" id="resubmitSelectedBtn"><i class="fas fa-sync me-1"></i> Resubmit Selected</button>
-        <button class="btn btn-outline-danger" id="bulkCancelSelectedBtn"><i class="fas fa-ban me-1"></i> Cancel Selected</button>
+        <button class="btn btn-outline-warning" id="bulkCancelSelectedBtn"><i class="fas fa-ban me-1"></i> Cancel Selected</button>
         <button class="btn btn-danger" id="bulkDeleteSelectedBtn"><i class="fas fa-trash-alt me-1"></i> Delete Selected</button>
     </div>
 
@@ -191,7 +188,7 @@
                             @foreach($invoices as $inv)
                                 <tr>
                                     <td class="text-center">
-                                        <input type="checkbox" class="select-item" value="{{ $inv->id_invoice }}">
+                                        <input type="checkbox" class="select-item" value="{{ $inv->id_invoice }}" data-unique-id="{{ $inv->unique_id }}">
                                         <input type="hidden" class="supplier-id" value="{{ $inv->id_supplier }}">
                                     </td>
                                     <td class="fw-bold text-nowrap">{{ $inv->invoice_no }}</td>
@@ -251,11 +248,11 @@
 
 <script>
 $(document).ready(function() {
-    let invoiceTypes = @json($invoiceTypes);
+    let invoiceTypes = @json($invoiceTypes ?? []);
     let exportRoute = "{{ route('developer.invoices.export') }}";
     let isPinging = false; 
     let cardAjaxInterval = null;
-    let forceStop = false; // Emergency kill switch flag
+    let forceStop = false; 
 
     // --- 1. INITIALIZE CARD COUNTS ---
     if (window.statusCounts) {
@@ -265,14 +262,21 @@ $(document).ready(function() {
     }
 
     // --- 2. AUTO-RESUME ON REFRESH ---
-    let savedTotalBatches = localStorage.getItem('total_batches');
-    if (savedTotalBatches && parseInt(savedTotalBatches) > 0) {
+    let savedBatchId = localStorage.getItem('active_batch_id');
+    let savedTotal = localStorage.getItem('batch_total_count');
+    let savedIds = localStorage.getItem('active_invoice_ids');
+
+    if (savedBatchId && savedIds) {
+        resumeSync(savedBatchId, savedTotal, JSON.parse(savedIds));
+    }
+
+    function resumeSync(batchId, total, ids) {
         $("#background-progress-banner").show();
-        $("#progress-text").text("Resuming background sync with LHDN...");
+        $("#progress-text").text("Resuming background sync...");
         $("#progress-bar-fill").addClass('progress-bar-animated progress-bar-striped');
         
         startLiveCardUpdates(); 
-        pingWorker(parseInt(savedTotalBatches));
+        startMultiPinger(batchId, total, ids);
     }
 
     // --- 3. EXPORT BUTTONS ---
@@ -308,7 +312,7 @@ $(document).ready(function() {
 
     // --- 4. DATATABLE INIT ---
     var table = null;
-    @if(request()->filled('connection_integrate') && $invoices->isNotEmpty())
+    @if(request()->filled('connection_integrate') && isset($invoices) && $invoices->isNotEmpty())
         table = $('#invoiceTable').DataTable({
             pageLength: 30,
             lengthMenu: [[10, 30, 50, 100, -1], [10, 30, 50, 100, "All"]],
@@ -316,14 +320,230 @@ $(document).ready(function() {
             buttons: [{ extend: 'collection', text: '<button class="btn btn-secondary dropdown-toggle">Export Data</button>', buttons: dropdownButtons }],
             columnDefs: [{ orderable: false, targets: [0, 8] }]
         });
-        
-        let currentStatus = "{{ request('status', 'ALL') }}";
-        if (currentStatus !== 'ALL') {
-            $('.status-card[data-status="' + currentStatus + '"]').addClass('active');
-        }
     @endif
 
-    // --- 5. EVENT HANDLERS ---
+    // --- 5. EMERGENCY STOP ---
+    $("#stopSyncBtn").on("click", function() {
+        let activeBatchId = localStorage.getItem('active_batch_id');
+        Swal.fire({
+            title: 'Stop Sync?',
+            text: "This will kill the queue and stop processing remaining batches.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'Yes, stop it!'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                forceStop = true; 
+                stopLiveCardUpdates();
+                $("#banner-title").html(`<i class="fas fa-spinner fa-spin me-2"></i> Stopping...`);
+                
+                $.post("{{ url('/api/stop-worker') }}", { _token: "{{ csrf_token() }}", batch_id: activeBatchId }, function() {
+                    localStorage.clear();
+                    location.reload(); 
+                });
+            }
+        });
+    });
+
+    // --- 6. AUTO-RELAY & PINGER LOGIC ---
+    function triggerRelay(actionType, selectedIds, isFirstRun = false) {
+        let url = "{{ route('developer.invoices.submitSelected') }}";
+
+        forceStop = false;
+        $("#background-progress-banner").slideDown();
+        
+        if (!isFirstRun) {
+            $("#banner-title").html(`<i class="fas fa-satellite-dish fa-spin me-2"></i> Syncing Next Batch...`);
+            $("#progress-bar-fill").removeClass('bg-warning').addClass('bg-success progress-bar-animated progress-bar-striped').css('width', '0%');
+        }
+
+        $.post(url, {
+            _token: "{{ csrf_token() }}",
+            invoices: JSON.stringify(selectedIds), 
+            connection_integrate: $("select[name='connection_integrate']").val()
+        }, function(response) {
+            if (response.success && response.batch_id) {
+                
+                localStorage.setItem('active_batch_id', response.batch_id);
+                localStorage.setItem('active_invoice_ids', JSON.stringify(selectedIds));
+                localStorage.setItem('active_action_type', actionType);
+                localStorage.setItem('has_more', response.has_more ? '1' : '0');
+
+                if (response.leftover_count > 0) {
+                    $("#progress-text").text(`Processing up to 5,000 invoices (${response.leftover_count} remaining in queue...)`);
+                } else {
+                    $("#progress-text").text("Processing final batch.");
+                }
+
+                if (isFirstRun) startLiveCardUpdates();
+                
+                startMultiPinger(response.batch_id, selectedIds.length, selectedIds);
+            
+            } else if (response.success && !response.batch_id) {
+                if (!isFirstRun) handleComplete({status: 'complete', has_failures: false});
+            } else {
+                Swal.fire("Error", response.message || "Failed to start batch.", "error");
+            }
+        }).fail(function() {
+            Swal.fire("Error", "Network error starting batch.", "error");
+        });
+    }
+
+    function startMultiPinger(batchId, totalCount, invoiceIds) {
+        let isChecking = false;
+
+        function checkProgress() {
+            if (forceStop || isChecking) return;
+            isChecking = true;
+
+            $.post("{{ url('/api/check-batch') }}", { 
+                _token: "{{ csrf_token() }}", 
+                batch_id: batchId
+            }).done(function(res) {
+                if (res.has_failures && res.error_message) {
+                    forceStop = true;
+                    isChecking = false;
+                    
+                    $("#background-progress-banner").css('border-left', '5px solid #dc3545');
+                    $("#banner-title").removeClass('text-success text-warning').addClass('text-danger').html(`<i class="fas fa-exclamation-triangle me-2"></i> Sync Failed`);
+                    $("#progress-bar-fill").removeClass('bg-success bg-warning progress-bar-animated progress-bar-striped').addClass('bg-danger');
+                    
+                    Swal.fire({
+                        title: "LHDN Processing Error", 
+                        html: `<b>Sync halted. Error details:</b><br><br><div class="text-danger small text-start bg-light p-2 border rounded">${res.error_message}</div>`, 
+                        icon: "error",
+                        confirmButtonText: "Close & Refresh"
+                    }).then(() => {
+                        localStorage.clear();
+                        location.reload();
+                    });
+                    return; 
+                }
+
+                let p = res.progress || 0;
+                $("#progress-percentage").text(p + "%");
+                $("#progress-bar-fill").css('width', p + "%");
+                $("#batches-left-text").text(res.remaining_invoices || 0);
+
+                if (res.status === 'complete' || p >= 100) {
+                    handleComplete(res);
+                } else {
+                    isChecking = false;
+                    setTimeout(checkProgress, 2500); 
+                }
+            }).fail(function() {
+                isChecking = false;
+                setTimeout(checkProgress, 5000); 
+            });
+        }
+
+        checkProgress();
+
+        for (let i = 0; i < 3; i++) {
+            runWorkerLoop();
+        }
+    }
+
+    async function runWorkerLoop() {
+        while (!forceStop) {
+            let activeId = localStorage.getItem('active_batch_id');
+            if (!activeId) break;
+
+            try {
+                await $.post("{{ url('/api/trigger-worker') }}", { _token: "{{ csrf_token() }}" });
+                await new Promise(r => setTimeout(r, 1000));
+            } catch (e) {
+                await new Promise(r => setTimeout(r, 5000));
+            }
+        }
+    }
+
+    function handleComplete(res) {
+        let hasMore = localStorage.getItem('has_more') === '1';
+        let actionType = localStorage.getItem('active_action_type');
+        let savedIds = JSON.parse(localStorage.getItem('active_invoice_ids') || '[]');
+
+        if (hasMore && !res.has_failures && !forceStop) {
+            $("#banner-title").removeClass('text-success').addClass('text-warning').html(`<i class="fas fa-sync fa-spin me-2"></i> Auto-starting next batch...`);
+            $("#progress-text").text("Taking a 3-second breather before continuing...");
+            $("#progress-percentage").text("...");
+            $("#progress-bar-fill").css('width', '100%').removeClass('bg-success').addClass('bg-warning progress-bar-animated progress-bar-striped');
+
+            setTimeout(() => {
+                triggerRelay(actionType, savedIds, false);
+            }, 3000);
+            return; 
+        }
+
+        let startTime = localStorage.getItem('batch_start_time');
+        let totalCount = localStorage.getItem('batch_total_count') || 0;
+        let totalRM = parseFloat(localStorage.getItem('batch_total_rm') || 0);
+        let timeTaken = "Unknown";
+
+        if (startTime) {
+            let diff = Math.floor((Date.now() - parseInt(startTime)) / 1000);
+            timeTaken = diff > 60 ? `${Math.floor(diff/60)}m ${diff%60}s` : `${diff}s`;
+        }
+
+        localStorage.clear();
+        stopLiveCardUpdates();
+
+        Swal.fire({
+            title: res.has_failures ? "Finished with Errors" : "All Invoices Synced!",
+            icon: res.has_failures ? "warning" : "success",
+            html: `<div class="text-start mt-3"><b>Total Processed:</b> ${totalCount}<br><b>Total Amount:</b> RM ${totalRM.toLocaleString()}<br><b>Total Time:</b> ${timeTaken}</div>`,
+            confirmButtonText: "Refresh Page"
+        }).then(() => location.reload());
+    }
+
+    // --- 7. CORE SUBMISSION BOOTSTRAP ---
+    async function processInvoices(actionType) {
+        let selected = [];
+        let totalPrice = 0;
+        let $checkboxes = (table !== null) ? table.$(".select-item:checked") : $(".select-item:checked");
+        
+        $checkboxes.each(function() {
+            selected.push($(this).val());
+            let amountText = $(this).closest("tr").find("td:nth-child(6)").text().replace(/[^\d.-]/g, '');
+            totalPrice += parseFloat(amountText) || 0;
+        });
+
+        if (selected.length === 0) return Swal.fire("Warning", "No invoices selected", "warning");
+
+        Swal.fire({
+            title: "Start LHDN Sync?",
+            html: `Queueing ${selected.length} invoices (RM ${totalPrice.toLocaleString()})`,
+            showCancelButton: true,
+            confirmButtonText: "Start Sync"
+        }).then((res) => {
+            if (!res.isConfirmed) return;
+
+            localStorage.setItem('batch_start_time', Date.now());
+            localStorage.setItem('batch_total_count', selected.length);
+            localStorage.setItem('batch_total_rm', totalPrice);
+            
+            triggerRelay(actionType, selected, true);
+        });
+    }
+
+    // --- 8. UI HELPERS ---
+    function startLiveCardUpdates() {
+        if (cardAjaxInterval) clearInterval(cardAjaxInterval);
+        cardAjaxInterval = setInterval(() => {
+            $.get(window.location.href, function(data) {
+                let $html = $(data);
+                $('#count-submitted').text($html.find('#count-submitted').text());
+                $('#count-pending').text($html.find('#count-pending').text());
+                $('#count-failed').text($html.find('#count-failed').text());
+            });
+        }, 5000);
+    }
+
+    function stopLiveCardUpdates() { clearInterval(cardAjaxInterval); }
+
+    $("#submitSelectedBtn").on("click", () => processInvoices('submit'));
+    
     $('.status-card').on('click', function() {
         $('#statusFilter').val($(this).data('status'));
         $('#searchForm').submit();
@@ -335,237 +555,72 @@ $(document).ready(function() {
         else $(".select-item").prop('checked', isChecked);
     });
 
-    // =========================================================================
-    // EMERGENCY STOP HANDLER
-    // =========================================================================
-    $("#stopSyncBtn").on("click", function() {
+    // --- 9. CANCEL & DELETE FUNCTIONALITY ---
+    window.cancelDocument = function(uniqueId) {
         Swal.fire({
-            title: 'Stop Sync?',
-            text: "This will instantly kill the queue and stop processing any remaining batches.",
-            icon: 'warning',
+            title: "Cancel Document?",
+            text: "Are you sure you want to cancel this document in LHDN?",
+            icon: "warning",
             showCancelButton: true,
-            confirmButtonColor: '#d33',
-            confirmButtonText: 'Yes, stop it!'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                forceStop = true; // Stop the local JS loop
-                stopLiveCardUpdates();
-                
-                // Show stopping UI
-                $("#banner-title").html(`<i class="fas fa-spinner fa-spin me-2"></i> Stopping...`);
-                $("#progress-bar-fill").removeClass('bg-success').addClass('bg-danger');
-
-                // Hit backend to truncate jobs table
-                $.ajax({
-                    url: "{{ url('/api/stop-worker') }}",
-                    method: "POST",
-                    data: { _token: "{{ csrf_token() }}" },
-                    success: function() {
-                        localStorage.removeItem('total_batches');
-                        $("#background-progress-banner").slideUp();
-                        Swal.fire("Stopped", "Background sync has been aborted.", "info");
-                        setTimeout(() => location.reload(), 1500); // Reload to reflect correct DB state
-                    }
+            confirmButtonColor: '#f39c12',
+            confirmButtonText: "Yes, Cancel"
+        }).then((res) => {
+            if (res.isConfirmed) {
+                $.post("{{ route('developer.invoices.cancel') }}", { _token: "{{ csrf_token() }}", unique_id: uniqueId }, function(response) {
+                    if(response.success) Swal.fire("Cancelled", "Document cancelled successfully.", "success").then(()=>location.reload());
+                    else Swal.fire("Error", response.message || "Failed to cancel document.", "error");
                 });
             }
         });
-    });
+    };
 
-    // =========================================================================
-    // LIVE AJAX CARD UPDATER
-    // =========================================================================
-    function startLiveCardUpdates() {
-        if (cardAjaxInterval) clearInterval(cardAjaxInterval);
-        cardAjaxInterval = setInterval(() => {
-            $.ajax({
-                url: window.location.href,
-                method: "GET",
-                cache: false,
-                success: function(data) {
-                    let $html = $(data);
-                    let newSub = $html.find('#count-submitted').text().trim();
-                    let newPen = $html.find('#count-pending').text().trim();
-                    let newFail = $html.find('#count-failed').text().trim();
+    window.confirmDelete = function(invoiceId) {
+        Swal.fire({
+            title: "Delete Invoice?",
+            text: "Are you sure you want to delete this invoice? This cannot be undone.",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: "Yes, Delete"
+        }).then((res) => {
+            if (res.isConfirmed) {
+                $.post("{{ route('developer.invoices.delete') }}", { _token: "{{ csrf_token() }}", id_invoice: invoiceId }, function(response) {
+                    if(response.success) Swal.fire("Deleted", "Invoice deleted successfully.", "success").then(()=>location.reload());
+                    else Swal.fire("Error", response.message || "Failed to delete invoice.", "error");
+                });
+            }
+        });
+    };
 
-                    if($('#count-submitted').text() !== newSub) $('#count-submitted').fadeOut(100, function(){ $(this).text(newSub).fadeIn(100); });
-                    if($('#count-pending').text() !== newPen) $('#count-pending').fadeOut(100, function(){ $(this).text(newPen).fadeIn(100); });
-                    if($('#count-failed').text() !== newFail) $('#count-failed').fadeOut(100, function(){ $(this).text(newFail).fadeIn(100); });
-                }
-            });
-        }, 2000); 
-    }
-
-    function stopLiveCardUpdates() {
-        if (cardAjaxInterval) clearInterval(cardAjaxInterval);
-    }
-
-    // =========================================================================
-    // BACKGROUND QUEUE MANAGER
-    // =========================================================================
-    async function processInvoices(actionType) {
+    function handleBulkAction(url, title, text, confirmColor, btnText, useUniqueId = false) {
         let selected = [];
-        let totalPrice = 0;
-        let supplierCheck = null;
-        let supplierMismatch = false;
-
         let $checkboxes = (table !== null) ? table.$(".select-item:checked") : $(".select-item:checked");
         
         $checkboxes.each(function() {
-            let row = $(this).closest("tr");
-            selected.push($(this).val());
-            let amountText = row.find("td:nth-child(6)").text().replace(/[^\d.-]/g, '');
-            totalPrice += parseFloat(amountText) || 0;
-            let supplierId = row.find(".supplier-id").val();
-            if (supplierCheck === null) supplierCheck = supplierId;
-            else if (supplierId && supplierCheck !== supplierId) supplierMismatch = true;
+            selected.push(useUniqueId ? $(this).data('unique-id') : $(this).val());
         });
 
-        if (selected.length === 0) return Swal.fire({ icon: "warning", title: "No invoices selected" });
-        if (supplierMismatch) return Swal.fire({ icon: "error", title: "Supplier mismatch" });
-
-        let url = actionType === 'resubmit' ? "{{ url('api/invoices/bulk-resubmit') }}" : "{{ route('developer.invoices.submitSelected') }}";
+        if (selected.length === 0) return Swal.fire("Warning", "No invoices selected.", "warning");
 
         Swal.fire({
-            icon: "info",
-            title: "Confirm MySyncTax Sync",
-            html: `<b>Total:</b> ${selected.length} invoices<br><b>Total Amount:</b> RM ${totalPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}<br><br><small class="text-muted">This will run in the background. You can navigate away safely.</small>`,
+            title: title,
+            text: text.replace(':count', selected.length),
+            icon: "warning",
             showCancelButton: true,
-            confirmButtonText: "Start Sync",
-            confirmButtonColor: "#22c55e"
+            confirmButtonColor: confirmColor,
+            confirmButtonText: btnText
         }).then((res) => {
-            if (!res.isConfirmed) return;
-
-            forceStop = false; // Reset emergency stop flag
-            
-            $("#progress-text").text("Queuing invoices to MySyncTax server...");
-            $("#progress-percentage").text("0%");
-            $("#progress-bar-fill").css('width', "0%").removeClass('bg-danger').addClass('bg-success progress-bar-animated progress-bar-striped');
-            $("#batches-left-text").text("...");
-            $("#time-remaining-text").text("Est: Calculating...");
-            $("#background-progress-banner").stop(true, true).slideDown();
-
-            $.ajax({
-                url: url,
-                method: "POST",
-                data: { _token: "{{ csrf_token() }}", invoices: selected, connection_integrate: $("select[name='connection_integrate']").val(), id_supplier: supplierCheck, mode: actionType },
-                success: function(response) {
-                    if (response.success && parseInt(response.total_batches) > 0) {
-                        let totalBatches = parseInt(response.total_batches);
-                        localStorage.setItem('total_batches', totalBatches);
-                        $("#progress-text").html(`Processing batches with LHDN...`);
-                        
-                        startLiveCardUpdates(); 
-                        pingWorker(totalBatches);
-                    } else {
-                        $("#background-progress-banner").slideUp();
-                        Swal.fire("Notice", response.message || "No batches queued.", "info");
-                    }
-                },
-                error: function() {
-                    $("#background-progress-banner").slideUp();
-                    Swal.fire("Error", "Failed to reach the server.", "error");
-                }
-            });
-        });
-    }
-
-    function pingWorker(initialTotalBatches) {
-        if (isPinging || forceStop) return; // Halt if stop button was clicked
-        isPinging = true;
-
-        $.ajax({
-            url: "{{ url('/api/trigger-worker') }}", 
-            method: "POST",
-            data: { _token: "{{ csrf_token() }}" },
-            success: function(res) {
-                isPinging = false;
-                if (forceStop) return; // Prevent race conditions
-                
-                let remaining = parseInt(res.remaining) || 0;
-
-                if (res.status === 'complete' || remaining === 0) {
-                    localStorage.removeItem('total_batches');
-                    stopLiveCardUpdates(); 
-                    
-                    $("#progress-percentage").text("100%");
-                    $("#progress-bar-fill").css('width', "100%").removeClass('progress-bar-animated');
-                    $("#progress-text").html(`<span class="text-success fw-bold"><i class="fas fa-check-circle"></i> Sync Completed Successfully!</span>`);
-                    $("#time-remaining-text").text("Done");
-                    $("#batches-left-text").text("0");
-
-                    setTimeout(() => { $("#background-progress-banner").slideUp(); }, 4000);
-                } else {
-                    let completed = initialTotalBatches - remaining;
-                    
-                    // If the backend isn't processing jobs, warn the user
-                    if (completed === 0) {
-                        $("#time-remaining-text").text(`Stuck? Check error logs or hit Stop Sync.`);
-                    }
-
-                    if (completed < 0) {
-                        initialTotalBatches = remaining;
-                        localStorage.setItem('total_batches', initialTotalBatches);
-                        completed = 0;
-                    }
-                    
-                    let percent = Math.min(Math.round((completed / initialTotalBatches) * 100), 99);
-                    let secondsLeft = Math.ceil(remaining * 1.5);
-                    let timeStr = secondsLeft > 60 ? `${Math.floor(secondsLeft/60)}m ${secondsLeft%60}s` : `${secondsLeft}s`;
-
-                    // Move progress bar
-                    if(percent > 0) {
-                        $("#progress-percentage").text(`${percent}%`);
-                        $("#progress-bar-fill").css('width', `${percent}%`);
-                        $("#time-remaining-text").text(`Est: ${timeStr} left`);
-                    }
-                    $("#batches-left-text").text(remaining);
-                    
-                    setTimeout(() => { pingWorker(initialTotalBatches); }, 500); 
-                }
-            },
-            error: function() {
-                isPinging = false;
-                if (!forceStop) {
-                    $("#progress-text").html(`<span class="text-danger fw-bold"><i class="fas fa-exclamation-triangle"></i> Network lag. Retrying...</span>`);
-                    setTimeout(() => pingWorker(initialTotalBatches), 3000);
-                }
+            if (res.isConfirmed) {
+                $.post(url, { _token: "{{ csrf_token() }}", ids: selected }, function(response) {
+                    if (response.success) Swal.fire("Success", response.message || "Action completed.", "success").then(() => location.reload());
+                    else Swal.fire("Error", response.message || "Action failed.", "error");
+                }).fail(() => Swal.fire("Error", "Server or network error.", "error"));
             }
         });
     }
 
-    // --- DELETE / CANCEL HELPERS ---
-    $("#bulkDeleteSelectedBtn").on("click", function(e) { 
-        e.preventDefault(); 
-        let selected = [];
-        let $checkboxes = (table !== null) ? table.$(".select-item:checked") : $(".select-item:checked");
-        $checkboxes.each(function() { selected.push($(this).val()); });
-
-        if (selected.length === 0) return Swal.fire({ icon: "warning", title: "No invoices selected" });
-        Swal.fire({ title: 'Delete Selected?', text: "Hide record from MySyncTax dashboard?", icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33' })
-        .then((result) => {
-            if (result.isConfirmed) {
-                $.ajax({ url: "{{ route('developer.invoices.bulkDelete') }}", method: "POST", data: { _token: "{{ csrf_token() }}", invoices: selected }, success: function() { location.reload(); }});
-            }
-        });
-    }); 
-    
-    $("#submitSelectedBtn").on("click", function(e) { e.preventDefault(); processInvoices('submit'); });
-    $("#resubmitSelectedBtn").on("click", function(e) { e.preventDefault(); processInvoices('resubmit'); });
+    $("#bulkCancelSelectedBtn").on("click", () => handleBulkAction("{{ route('developer.invoices.bulkCancel') }}", "Cancel Selected?", "You are about to cancel :count selected documents in LHDN.", "#f39c12", "Yes, Cancel", true));
+    $("#bulkDeleteSelectedBtn").on("click", () => handleBulkAction("{{ route('developer.invoices.bulkDelete') }}", "Delete Selected?", "You are about to delete :count selected invoices.", "#d33", "Yes, Delete", false));
 });
-
-window.confirmDelete = function(id) {
-    Swal.fire({ title: 'Are you sure?', icon: 'warning', showCancelButton: true }).then((r) => {
-        if (r.isConfirmed) window.location.href = "{{ route('developer.invoices.delete', '') }}/" + id;
-    });
-};
-
-window.cancelDocument = function(uniqueId) {
-    Swal.fire({ title: 'Cancel Document?', icon: 'warning', input: 'select', inputOptions: { 'wrong_data': 'Incorrect Data', 'duplicate': 'Duplicate', 'order_cancelled': 'Cancelled', 'other': 'Other' }, showCancelButton: true, inputValidator: (v) => { if (!v) return 'Required!' }
-    }).then((r) => {
-        if (r.isConfirmed) {
-            $.ajax({ url: "{{ url('/api/myinvois/cancelDocument') }}/" + uniqueId, method: "POST", data: { _token: "{{ csrf_token() }}", reason: r.value }, beforeSend: function() { Swal.fire({ title: 'Processing...', didOpen: () => Swal.showLoading() }); }, success: function() { location.reload(); }});
-        }
-    });
-};
 </script>
 @endsection

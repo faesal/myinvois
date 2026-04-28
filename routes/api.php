@@ -2,12 +2,14 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\IntegrationInvoiceController;
 use App\Http\Controllers\IntegrationInvoiceController2;
 use App\Http\Controllers\SelfBillController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\InvoiceController2;
+use App\Http\Controllers\InvoiceSubmissionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -40,7 +42,7 @@ Route::get('/generate-test-invoices', function () {
     DB::disableQueryLog(); // CRITICAL: Stops Laravel from saving 10k queries to RAM
 
     $now = now();
-    $totalInvoices = 1000;
+    $totalInvoices = 5000;
     $batchSize = 500; // Process 500 at a time to keep memory totally clean
 
     // Clear out old test data
@@ -127,7 +129,7 @@ Route::get('/generate-test-invoices', function () {
             }
 
             // Bulk insert the 1,500 items for this batch
-            foreach (array_chunk($itemsToInsert, 500) as $chunk) {
+            foreach (array_chunk($itemsToInsert, 15000) as $chunk) {
                 DB::table('invoice_item')->insert($chunk);
             }
 
@@ -143,6 +145,106 @@ Route::get('/generate-test-invoices', function () {
     DB::enableQueryLog();
 
     return response()->json(['success' => true, 'message' => '10,000 Test Invoices (and 30,000 items) successfully generated!']);
+});
+// --- TESTING REAL LHDN API REJECTIONS ---
+Route::get('/generate-lhdn-rejects', function () {
+    // =========================================================
+    // 1. SERVER PROTECTION
+    // =========================================================
+    set_time_limit(0); 
+    ini_set('memory_limit', '1024M'); 
+    \Illuminate\Support\Facades\DB::disableQueryLog(); 
+
+    $now = now();
+    $totalInvoices = 10; // 🚀 Only generating 5 to test the flow
+    $batchSize = 10; 
+
+    // Clear out old failed test data
+    \Illuminate\Support\Facades\DB::table('invoice_item')->where('item_description', 'like', 'LHDN Reject Token%')->delete();
+    \Illuminate\Support\Facades\DB::table('invoice')->where('invoice_no', 'like', 'INV-LHDN-REJ-%')->delete();
+
+    // =========================================================
+    // 2. CHUNKED PROCESSING LOOP
+    // =========================================================
+    $totalBatches = ceil($totalInvoices / $batchSize);
+
+    for ($batch = 0; $batch < $totalBatches; $batch++) {
+        $itemsToInsert = []; 
+        \Illuminate\Support\Facades\DB::beginTransaction(); 
+
+        try {
+            for ($i = 1; $i <= $batchSize; $i++) {
+                $currentNumber = ($batch * $batchSize) + $i; 
+                
+                if ($currentNumber > $totalInvoices) break; 
+
+                $uniqueId = sha1(uniqid('', true) . 'LHDNREJ' . $currentNumber); 
+                $saleId = 8080000 + $currentNumber; 
+                
+                // 🚀 Insert Header (SET TO PENDING SO SUBMIT API PICKS IT UP)
+                $invoiceId = \Illuminate\Support\Facades\DB::table('invoice')->insertGetId([
+                    'unique_id' => $uniqueId,
+                    'sale_id_integrate' => $saleId,
+                    'connection_integrate' => 'CUST-0724294615',
+                    'id_developer' => 9,
+                    'id_customer' => 165,
+                    'id_supplier' => 73,
+                    'invoice_status' => 'Valid',
+                    'submission_status' => 'Failed', // 🟢 Set to Pending normally!
+                    'is_processing' => 0,
+                    'invoice_no' => 'INV-LHDN-REJ-' . $currentNumber,
+                    'invoice_type_code' => '99', // 🔴 FATAL LHDN ERROR: Invalid Invoice Type Code
+                    'issue_date' => $now,
+                    'price' => '100.00',
+                    'total_price_discount' => '0.00',
+                    'taxable_amount' => '100.00',
+                    'tax_amount' => '50000.00', // 🔴 FATAL LHDN ERROR: Impossible Tax Math
+                    'tax_category_id' => '01',
+                    'tax_scheme_id' => 'OTH',
+                    'include_signature' => 0,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                    'is_failed' => 1, // Starts normal
+                    'retry_count' => 0, // Starts at 0
+                    'is_failed_email_sent' => 0,
+                    'is_deleted' => 0,
+                ]);
+
+                // Prepare 1 Sabotaged Item
+                $itemsToInsert[] = [
+                    'id_developer' => 9,
+                    'item_id_integrate' => 'LHDNREJ-' . $currentNumber,
+                    'unique_id' => $uniqueId,
+                    'sale_id_integrate' => $saleId,
+                    'connection_integrate' => 'CUST-0724294615',
+                    'id_customer' => 165,
+                    'id_invoice' => $invoiceId, 
+                    'line_id' => '1',
+                    'invoiced_quantity' => 1.00,
+                    'line_extension_amount' => 100.00, 
+                    'item_description' => 'LHDN Reject Token ' . $currentNumber,
+                    'price_amount' => 100.00,
+                    'price_discount' => 0.00,
+                    'price_extension_amount' => 100.00,
+                    'tax' => 50000.00, // 🔴 Bad Math
+                    'item_clasification_value' => '022',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+
+            \Illuminate\Support\Facades\DB::table('invoice_item')->insert($itemsToInsert);
+            \Illuminate\Support\Facades\DB::commit(); 
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\DB::rollBack(); 
+            return response()->json(['success' => false, 'message' => 'Failed at invoice #'.$currentNumber.': ' . $e->getMessage()], 500);
+        }
+    }
+
+    \Illuminate\Support\Facades\DB::enableQueryLog();
+
+    return response()->json(['success' => true, 'message' => '5 Sabotaged LHDN Invoices successfully generated! Ready for realistic testing.']);
 });
 
 /**
@@ -201,3 +303,39 @@ Route::prefix('customers')->group(function () {
     Route::put('/{id}', [CustomerController::class, 'update']);
     Route::delete('/{id}', [CustomerController::class, 'destroy']);
 });
+
+// ====================================================================
+// 👉 NEW: BATCH API ROUTES (No Prefix)
+// These are perfectly stateless and bypass CSRF protection automatically.
+// ====================================================================
+    
+    // 1. The Main Submission Route (Uses ANY to accept POST from UI and GET from Cron)
+    Route::any('/submit', [InvoiceSubmissionController::class, 'SubmitApi']);
+
+    // 2. The Worker Trigger (Points to the newly upgraded triggerWorkerAPI)
+    Route::any('/worker/trigger-api', [InvoiceSubmissionController::class, 'triggerWorkerAPI']);
+
+    // 3. The Progress Tracker (Original visual tracker)
+    Route::get('/submit/progress', [InvoiceSubmissionController::class, 'checkBatchProgress']);
+    
+    // 4. The Final Batch Sweeper (Forces statuses to Submitted/Failed at 100%)
+    Route::post('/check-batch', [InvoiceSubmissionController::class, 'checkBatchApi']);
+
+    // 5. The Auto Consolidate Route (Uses ANY for Cron compatibility)
+    Route::any('/cron/consolidate', [InvoiceSubmissionController::class, 'autoConsolidate']);
+
+    // 6. Status tracking
+    Route::get('/consolidate/status', [InvoiceSubmissionController::class, 'consolidateStatus']);
+
+    // 7. Background fallback route
+    Route::post('/internal/submit-batch-background', [InvoiceSubmissionController::class, 'submitBatchBackground']);
+
+    // 8. Auto Retry Failed (Uses ANY for Cron compatibility)
+    Route::any('/cron/retry-failed', [InvoiceSubmissionController::class, 'retryFailedApi']);
+
+    // ==============================================================================
+    // 🚀 DYNAMIC CRON JOB WORKER LINK (Handles unlimited workers automatically)
+    // ==============================================================================
+    // Points to triggerWorkerAPI so it gets the "unstoppable sweeper" crash protection
+    Route::any('/cron/worker-{worker_id}', [InvoiceSubmissionController::class, 'triggerWorkerAPI']);
+    

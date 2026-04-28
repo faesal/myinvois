@@ -1,5 +1,7 @@
 <?php
 
+
+
 use Illuminate\Support\Facades\DB;
 
 use Illuminate\Support\Facades\Schema;
@@ -340,7 +342,9 @@ Route::post('/developer/register', [DeveloperController::class, 'register'])->na
 
 Route::get('/developer/cron/consolidate', [InvoiceSubmissionController::class, 'autoConsolidate']);
 
-Route::get('/developer/submit', [InvoiceSubmissionController::class, 'SubmitApi']);
+Route::any('/developer/submit', [InvoiceSubmissionController::class, 'SubmitApi']);
+
+Route::get('/developer/submit/progress', [InvoiceSubmissionController::class, 'checkApiBatchProgress']);
 
 Route::post('/internal/submit-batch-background', [InvoiceSubmissionController::class, 'submitBatchBackground']);
 
@@ -514,21 +518,34 @@ Route::post('/client/settings/consolidate/{id}', [ClientController::class, 'save
 
 
 
+// ==========================================
+    // INVOICES & SUBMISSIONS
+    // ==========================================
+    Route::any('/invoices', [InvoiceSubmissionController::class, 'index'])
+        ->name('developer.invoices.index');
+
+    Route::get('/developer/invoices/export', [InvoiceSubmissionController::class, 'export'])
+        ->name('developer.invoices.export');
+
+    Route::get('/invoices/{id_invoice}/view', [InvoiceSubmissionController::class, 'view'])
+        ->name('developer.invoices.view');
 
     Route::post('/developer/invoices/submit-selected', [InvoiceSubmissionController::class, 'submitSelectedInvoices'])
-
         ->name('developer.invoices.submitSelected');
 
-
-    Route::get('/developer/invoice/delete/{id}', [InvoiceSubmissionController::class, 'deleteInvoice'])
-    
+    // --- INDIVIDUAL ACTIONS (Updated to POST for JS SweetAlerts) ---
+    Route::post('/developer/invoice/delete', [InvoiceSubmissionController::class, 'deleteInvoice'])
         ->name('developer.invoices.delete');
 
-    Route::post('/api/stop-worker', [InvoiceSubmissionController::class, 'stopWorker']);
+    Route::post('/developer/invoice/cancel', [InvoiceSubmissionController::class, 'cancelDocument'])
+        ->name('developer.invoices.cancel');
 
+    // --- BULK ACTIONS ---
     Route::post('/developer/invoices/bulk-delete', [InvoiceSubmissionController::class, 'bulkDeleteInvoices'])
-    ->name('developer.invoices.bulkDelete');
-
+        ->name('developer.invoices.bulkDelete');
+        
+    Route::post('/developer/invoices/bulk-cancel', [InvoiceSubmissionController::class, 'bulkCancelInvoices'])
+        ->name('developer.invoices.bulkCancel');
 
 
 
@@ -729,84 +746,51 @@ Route::middleware(['auth'])->group(function () {
 Route::get('/cron/check-expired/{secret}', [App\Http\Controllers\SubscriberController::class, 'autoCheckExpired']);
 
 // ==============================================================================
-// 🚨 MOVED INSIDE AUTH MIDDLEWARE FOR SECURITY 🚨
+// 🚨 SYSTEM SETUP & QUEUE MANAGEMENT 🚨
 // ==============================================================================
 Route::middleware(['auth'])->group(function () {
 
-    Route::post('/api/trigger-worker', function () {
-        // 1. Check if there are actually jobs left to process
-        $pendingJobs = DB::table('jobs')->count();
-        
-        if ($pendingJobs === 0) {
-            return response()->json(['status' => 'complete', 'remaining' => 0]);
+    // 1. Core Worker & Batch Routes
+    Route::post('/api/trigger-worker', [App\Http\Controllers\InvoiceSubmissionController::class, 'triggerWorker']);
+    Route::post('/api/check-batch', [App\Http\Controllers\InvoiceSubmissionController::class, 'checkBatchProgress']);
+
+    
+    // 2. Database Schema Builders (Run these once in the browser, then ignore)
+    Route::get('/setup-job-batches', function () {
+        // Creates the required table for Laravel Bus::batch()
+        if (!Schema::hasTable('job_batches')) {
+            Schema::create('job_batches', function (Blueprint $table) {
+                $table->string('id')->primary();
+                $table->string('name');
+                $table->integer('total_jobs');
+                $table->integer('pending_jobs');
+                $table->integer('failed_jobs');
+                $table->longText('failed_job_ids');
+                $table->mediumText('options')->nullable();
+                $table->integer('cancelled_at')->nullable();
+                $table->integer('created_at');
+                $table->integer('finished_at')->nullable();
+            });
+            return 'job_batches table created perfectly!';
         }
-
-        // 2. Spin up the worker! It will stop automatically after 20 seconds
-        Artisan::call('queue:work', [
-            '--stop-when-empty' => true,
-            '--max-time' => 20 
-        ]);
-
-        // 3. Report back to the JavaScript how many batches are left
-        return response()->json([
-            'status' => 'processing',
-            'remaining' => DB::table('jobs')->count()
-        ]);
+        return 'job_batches table already exists!';
     });
 
-
-/**Route::get('/setup-database-queue', function () {
-    
-    // 1. Create the 'jobs' table
-    if (!Schema::hasTable('jobs')) {
-        Schema::create('jobs', function (Blueprint $table) {
-            $table->bigIncrements('id');
-            $table->string('queue')->index();
-            $table->longText('payload');
-            $table->unsignedTinyInteger('attempts');
-            $table->unsignedInteger('reserved_at')->nullable();
-            $table->unsignedInteger('available_at');
-            $table->unsignedInteger('created_at');
-        });
-    }**/
-
-    // 2. Create the 'failed_jobs' table
-    if (!Schema::hasTable('failed_jobs')) {
-        Schema::create('failed_jobs', function (Blueprint $table) {
-            $table->id();
-            $table->string('uuid')->unique();
-            $table->text('connection');
-            $table->text('queue');
-            $table->longText('payload');
-            $table->longText('exception');
-            $table->timestamp('failed_at')->useCurrent();
-        });
-    }
-
-    return 'Queue tables created perfectly using the Schema Builder!';
-});
-Route::get('/test-shell-exec', function () {
-    try {
-        // 1. First, let's see if the server even allows basic terminal commands.
-        // We use 2>&1 to catch any terminal errors and print them to the screen.
-        $phpVersion = shell_exec('php -v 2>&1'); 
-
-        if (empty($phpVersion)) {
-            return "<h3>Bummer!</h3> shell_exec() is strictly disabled by your hosting provider. The AJAX method is your only option!";
+    Route::get('/setup-failed-jobs', function () {
+        if (!Schema::hasTable('failed_jobs')) {
+            Schema::create('failed_jobs', function (Blueprint $table) {
+                $table->id();
+                $table->string('uuid')->unique();
+                $table->text('connection');
+                $table->text('queue');
+                $table->longText('payload');
+                $table->longText('exception');
+                $table->timestamp('failed_at')->useCurrent();
+            });
+            return 'failed_jobs table created perfectly!';
         }
-
-        // 2. If it works, let's try running ONE background job safely.
-        // The --once flag guarantees it will stop and not become a zombie process.
-        $artisanOutput = shell_exec('php artisan queue:work --once 2>&1');
-
-        return "<h3>Success! shell_exec is ALIVE!</h3>" .
-               "<strong>1. Server PHP Check:</strong><br><pre>" . $phpVersion . "</pre><hr>" .
-               "<strong>2. Artisan Queue Output:</strong><br><pre>" . ($artisanOutput ?: 'No jobs in queue to process.') . "</pre>";
-
-    } catch (\Exception $e) {
-        return "Failed: " . $e->getMessage();
-    }
-
+        return 'failed_jobs table already exists!';
+    });
 
 });
 
@@ -819,4 +803,9 @@ Route::get('/clear-everything', function () {
     } catch (\Exception $e) {
         return "ERROR: " . $e->getMessage();
     }
+
+});
+Route::get('/queue-restart', function () {
+    Artisan::call('queue:restart');
+    return "Queue workers have been signaled to restart. New code will be loaded on the next job.";
 });
