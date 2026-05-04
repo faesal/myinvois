@@ -1150,7 +1150,7 @@ fetch("{{url('')}}/invoice/view/" + mysynctax_uuid)
     <h3>Response (Success)</h3>
     <div class="code-block"><pre>{
   "success": true,
-  "message": "Email sent to customer@email.com and CC to faesal09@gmail.com, fjusrin@gmail.com",
+  "message": "Email sent to customer@email.com ",
   "link": "{{url('')}}/invoice/view/5a59f5ba7a4f65b47b844ae6671c833c0d5c8b16"
 }</pre></div>
 
