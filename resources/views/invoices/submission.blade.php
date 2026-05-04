@@ -52,17 +52,7 @@
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3 class="mb-0">{{ $pageTitle }}</h3>
-        <div class="d-flex gap-2">
-            
-            {{-- Bulk Import --}}
-            <button type="button" class="btn btn-light border shadow-sm" data-bs-toggle="modal" data-bs-target="#importModal">
-                <i class="ph ph-file-arrow-up me-2"></i> Bulk Import
-            </button>
-
-            <button class="btn btn-success shadow-sm" id="submitSelectedBtn">
-                <i class="ph ph-paper-plane-tilt me-2"></i> Submit Selected to LHDN
-            </button>
-        </div>
+        {{-- Buttons used to be here, moved down to the table card --}}
     </div>
 
     {{-- Filter Form --}}
@@ -108,9 +98,52 @@
         </div>
     </form>
 
+    {{-- ========================================================= --}}
+    {{-- 🚀 BATCH SYNC PROGRESS BAR CONTAINER (HIDDEN BY DEFAULT) --}}
+    {{-- ========================================================= --}}
+    <div id="sync-progress-container" class="card mb-4 border-0 shadow-sm" style="display: none; border-left: 5px solid #007bff !important;">
+        <div class="card-body">
+            <h5 id="sync-status-text" class="text-primary font-weight-bold mb-1">Processing Invoices to LHDN...</h5>
+            
+            <div class="progress mt-3 mb-2" style="height: 25px;">
+                <div id="sync-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+                     role="progressbar" style="width: 0%; font-size: 14px; font-weight: bold;" 
+                     aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+            </div>
+            
+            <div class="d-flex justify-content-between align-items-center mt-2">
+                <span id="sync-detail-text" class="text-muted fw-bold small">Waiting for server response...</span>
+                <button type="button" id="btn-stop-sync" class="btn btn-danger btn-sm shadow-sm">
+                    <i class="ph ph-x-circle me-1"></i> Cancel Process
+                </button>
+            </div>
+        </div>
+    </div>
+    {{-- ========================================================= --}}
+
     {{-- Table Card --}}
     <div class="card border-0 shadow-sm">
         <div class="card-body">
+            
+            {{-- MOVED BUTTONS: Now placed directly above the table --}}
+            <div class="d-flex justify-content-end gap-2 mb-3 pb-3 border-bottom">
+                {{-- Bulk Import --}}
+                <button type="button" class="btn btn-light border shadow-sm" data-bs-toggle="modal" data-bs-target="#importModal">
+                    <i class="ph ph-file-arrow-up me-2"></i> Bulk Import
+                </button>
+
+                {{-- Delete Selected --}}
+                <button type="button" class="btn btn-outline-danger shadow-sm" id="deleteSelectedBtn">
+                    <i class="ph ph-trash me-2"></i> Delete Selected
+                </button>
+
+                {{-- Submit Selected --}}
+                <button class="btn btn-success shadow-sm" id="submitSelectedBtn">
+                    <i class="ph ph-paper-plane-tilt me-2"></i> Submit Selected to LHDN
+                </button>
+            </div>
+            {{-- END MOVED BUTTONS --}}
+
             <div class="table-responsive">
                 <table id="invoice-table" class="table table-hover align-middle">
                     <thead class="table-light">
@@ -363,8 +396,177 @@ $(document).ready(function () {
         });
     });
 
-    // 6. Submit Selected Logic (Also fixed for pagination)
+    // ==========================================================
+    // 🚀 6. NEW ASYNCHRONOUS BATCH SUBMISSION LOGIC
+    // ==========================================================
+    let checkProgressInterval;
+    let pingWorkerInterval;
+    let currentBatchId = null;
+    let allSelectedInvoices = [];
+
+    // 🚀 UPDATED: Pointing to the new secure Subscriber Routes
+    const submitRoute = "{{ route('invoices.submitSelected') }}"; 
+    const checkProgressRoute = "{{ route('invoices.checkBatch') }}";
+    const triggerWorkerRoute = "{{ route('invoices.triggerWorker') }}"; 
+    const stopWorkerRoute = "{{ route('invoices.stopWorker') }}";
+
     $('#submitSelectedBtn').on('click', function() {
+        allSelectedInvoices = [];
+        
+        table.rows({ search: 'applied' }).every(function() {
+            let rowNode = this.node();
+            let checkbox = $(rowNode).find('input.select-item');
+            if (checkbox.prop('checked')) {
+                allSelectedInvoices.push(checkbox.val());
+            }
+        });
+
+        if (allSelectedInvoices.length === 0) return Swal.fire("Selection Empty", "Please select at least one invoice.", "warning");
+
+        Swal.fire({
+            title: 'Start Sync Process?',
+            text: `You are about to process ${allSelectedInvoices.length} invoice(s) to LHDN.`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Start Process',
+            confirmButtonColor: '#198754'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                startSubmissionBatch();
+            }
+        });
+    });
+
+    function startSubmissionBatch() {
+        // Show progress UI
+        $('#sync-progress-container').slideDown();
+        $('#sync-progress-bar').css('width', '0%').text('0%').removeClass('bg-success bg-warning bg-danger').addClass('bg-primary progress-bar-animated');
+        $('#sync-status-text').text('Initiating batch sync... Please wait.');
+        $('#sync-detail-text').text('Sending payload to server...');
+        $('#btn-stop-sync').prop('disabled', false).html('<i class="ph ph-x-circle me-1"></i> Cancel Process');
+
+        $.ajax({
+            url: submitRoute, 
+            type: 'POST',
+            data: { 
+                _token: "{{ csrf_token() }}",
+                invoices: allSelectedInvoices 
+            },
+            success: function(response) {
+                if (response.success && response.batch_id) {
+                    currentBatchId = response.batch_id;
+                    $('#sync-status-text').text(response.message);
+                    
+                    // Start tracking and pinging worker
+                    startTrackingProgress(currentBatchId, response.has_more);
+                    startPinger();
+                } else if (response.success) {
+                    // Handled already submitted invoices or empty payload
+                    $('#sync-progress-bar').css('width', '100%').removeClass('bg-primary progress-bar-animated').addClass('bg-success').text('Complete');
+                    $('#sync-status-text').text(response.message);
+                    setTimeout(() => { $('#sync-progress-container').slideUp(); location.reload(); }, 3000);
+                } else {
+                    // Fallback for custom logic that might return success: false
+                    Swal.fire("System Error", response.message || "Failed to start process.", "error");
+                    $('#sync-progress-container').slideUp();
+                }
+            },
+            error: function(xhr) {
+                Swal.fire("System Error", xhr.responseJSON?.message || "Failed to connect to the server.", "error");
+                $('#sync-progress-container').slideUp();
+            }
+        });
+    }
+
+    function startTrackingProgress(batchId, hasMore) {
+        clearInterval(checkProgressInterval);
+
+        checkProgressInterval = setInterval(function() {
+            $.ajax({
+                url: checkProgressRoute, 
+                type: 'GET',
+                data: { batch_id: batchId },
+                success: function(response) {
+                    let progress = Math.round(response.progress);
+                    
+                    $('#sync-progress-bar').css('width', progress + '%').text(progress + '%');
+                    $('#sync-detail-text').text(`Processing Queue: ${response.remaining_batch} / ${response.total_batch} jobs remaining.`);
+
+                    // If batch encounters a failure but keeps running
+                    if (response.has_failures) {
+                        $('#sync-progress-bar').removeClass('bg-primary').addClass('bg-warning');
+                        if (response.error_message) {
+                            $('#sync-detail-text').text('Warning: ' + response.error_message);
+                        }
+                    }
+
+                    // Batch finished
+                    if (response.status === 'complete' || progress >= 100) {
+                        clearInterval(checkProgressInterval);
+                        clearInterval(pingWorkerInterval);
+                        
+                        $('#sync-progress-bar').removeClass('progress-bar-animated bg-warning bg-primary').addClass('bg-success');
+                        
+                        if (hasMore) {
+                            // AUTO-RELAY: Loop again for next batch if > 5000 limit
+                            $('#sync-status-text').text('Batch finished. Continuing with remaining queue...');
+                            setTimeout(startSubmissionBatch, 2000);
+                        } else {
+                            $('#sync-status-text').text('All Invoices Successfully Dispatched!');
+                            $('#sync-detail-text').text('Sync process has ended.');
+                            $('#btn-stop-sync').prop('disabled', true);
+                            
+                            setTimeout(() => {
+                                $('#sync-progress-container').slideUp();
+                                location.reload(); 
+                            }, 3000);
+                        }
+                    }
+                }
+            });
+        }, 2000); 
+    }
+
+    function startPinger() {
+        clearInterval(pingWorkerInterval);
+        
+        // Pings every 15 seconds to keep the worker alive on shared hosting
+        pingWorkerInterval = setInterval(function() {
+            $.ajax({
+                url: triggerWorkerRoute, 
+                type: 'GET',
+                success: function() { console.log('Worker pulse sent.'); }
+            });
+        }, 15000); 
+    }
+
+    $('#btn-stop-sync').on('click', function() {
+        if (!currentBatchId) return;
+        
+        $(this).html('<i class="fas fa-spinner fa-spin"></i> Stopping...').prop('disabled', true);
+        clearInterval(checkProgressInterval);
+        clearInterval(pingWorkerInterval);
+
+        $.ajax({
+            url: stopWorkerRoute, 
+            type: 'POST',
+            data: { 
+                _token: "{{ csrf_token() }}",
+                batch_id: currentBatchId 
+            },
+            success: function(response) {
+                $('#sync-progress-bar').removeClass('bg-primary progress-bar-animated').addClass('bg-danger');
+                $('#sync-status-text').text('Process Terminated by User.');
+                $('#sync-detail-text').text(response.message);
+                setTimeout(() => location.reload(), 2000);
+            }
+        });
+    });
+
+    // 6b. Delete Selected Logic
+    $('#deleteSelectedBtn').on('click', function(e) {
+        e.preventDefault(); // Stops the browser from doing anything stupid
+
         let selected = [];
         table.rows({ search: 'applied' }).every(function() {
             let rowNode = this.node();
@@ -374,33 +576,36 @@ $(document).ready(function () {
             }
         });
 
-        if (selected.length === 0) return Swal.fire("Selection Empty", "Please select at least one invoice.", "warning");
+        if (selected.length === 0) return Swal.fire("Selection Empty", "Please select at least one invoice to delete.", "warning");
 
         Swal.fire({
-            title: 'Submit to LHDN?',
-            text: `Processing ${selected.length} invoice(s).`,
-            icon: 'question',
+            title: 'Delete Selected?',
+            text: `Are you sure you want to soft-delete ${selected.length} invoice(s)?`,
+            icon: 'warning',
             showCancelButton: true,
-            confirmButtonText: 'Confirm Submission',
-            confirmButtonColor: '#198754'
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, delete them!'
         }).then((result) => {
             if (result.isConfirmed) {
                 $.ajax({
-                    url: "{{ route('invoice.submit_selected_lhdn') }}",
+                    url: "{{ url('/delete_selected_invoices') }}", 
                     method: "POST",
-                    data: { _token: "{{ csrf_token() }}", invoices: selected },
-                    beforeSend: function() { Swal.fire({ title: 'Connecting...', didOpen: () => { Swal.showLoading(); } }); },
-                    success: function(response) {
-                        if (response.errors && response.errors.length > 0) {
-                            let errorHtml = '<ul class="text-danger text-start">';
-                            response.errors.forEach(err => { errorHtml += `<li>${err}</li>`; });
-                            errorHtml += '</ul>';
-                            Swal.fire({ icon: 'warning', title: 'Completed with Errors', html: errorHtml }).then(() => location.reload());
-                        } else {
-                            Swal.fire({ icon: 'success', title: 'Success', text: response.message, timer: 2000, showConfirmButton: false }).then(() => location.reload());
-                        }
+                    data: { 
+                        _token: "{{ csrf_token() }}", 
+                        invoices: selected 
                     },
-                    error: function() { Swal.fire("System Error", "Could not reach server.", "error"); }
+                    beforeSend: function() { Swal.fire({ title: 'Deleting...', didOpen: () => { Swal.showLoading(); } }); },
+                    success: function(response) {
+                        Swal.fire({ 
+                            icon: 'success', 
+                            title: 'Deleted!', 
+                            text: response.message || 'Invoices have been soft-deleted.', 
+                            timer: 2000, 
+                            showConfirmButton: false 
+                        }).then(() => location.reload());
+                    },
+                    error: function() { Swal.fire("System Error", "Could not reach server to delete invoices.", "error"); }
                 });
             }
         });
@@ -451,11 +656,11 @@ $(document).ready(function () {
         });
     });
 
-    // 8. Delete Logic
+    // 8. Single Delete Logic
     window.confirmDelete = function(id) {
         Swal.fire({
             title: 'Delete Invoice?',
-            text: "This will remove the record.",
+            text: "This will soft-delete the record.",
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#dc3545',

@@ -23,6 +23,8 @@ Route::post('/myinvois/add_customer', [IntegrationInvoiceController::class, 'add
 Route::post('/myinvois/add_supplier', [IntegrationInvoiceController::class, 'addSupplier']);
 Route::post('/myinvois/validate', [IntegrationInvoiceController::class, 'validate']);
 
+Route::post('/myinvois/cancel-document/{unique_id}', [IntegrationInvoiceController2::class, 'cancelDocumentExternal']);
+
 // --- NORMAL INVOICE ---
 Route::any('/myinvois/invoice', [IntegrationInvoiceController2::class, 'invoice']);
 Route::any('/myinvois/note', [IntegrationInvoiceController2::class, 'note']);
@@ -30,7 +32,7 @@ Route::any('/myinvois/note', [IntegrationInvoiceController2::class, 'note']);
 // --- EMAIL API ---
 Route::post('/invoice/send-email', [InvoiceController2::class, 'sendInvoiceEmail']);
 
-Route::post('/v1/external/cancel-document/{unique_id}', [IntegrationInvoiceController2::class, 'cancelDocumentExternal']);
+
 
 // --- TESTING INVOICES ---
 Route::get('/generate-test-invoices', function () {

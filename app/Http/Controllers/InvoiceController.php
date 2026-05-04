@@ -1429,6 +1429,7 @@ public function apiResubmit($unique_id)
 
         return view('consolidate.select', compact('items', 'start', 'end', 'availableConnections'));
     }
+    
 
 
 public function submitSelected(Request $request)
@@ -1536,6 +1537,186 @@ public function submitSelected(Request $request)
     ]);
 
 }  
+/**
+     * ROUTE: SUBSCRIBER PUSHER (Optimized with 5,000 Hard Cap & Auto-Relay)
+     * Uses Fixed Session instead of Frontend Dropdown.
+     */
+    public function submitSubscriberInvoices(Request $request)
+    {
+        if (!$request->ajax()) return response()->json(['error' => 'Invalid request'], 400);
+
+        $rawInvoices = $request->input('invoices');
+        $selectedIds = is_string($rawInvoices) ? json_decode($rawInvoices, true) : (array) $rawInvoices;
+        
+        if (empty($selectedIds)) {
+            return response()->json(['success' => false, 'message' => 'No invoices selected.'], 400);
+        }
+
+        // 🚀 THE KEY DIFFERENCE: Lock the connection to the subscriber's session
+        $connectionIntegrate = session('connection_integrate');
+        $consolidateStatus = session('consolidate_status');
+
+        if (empty($connectionIntegrate)) {
+            return response()->json(['success' => false, 'message' => 'Session expired. Please refresh the page.'], 401);
+        }
+
+        // Filter valid invoices AND secure them to this specific connection
+        $validIdsToSubmit = \Illuminate\Support\Facades\DB::table('invoice')
+            ->whereIn('id_invoice', $selectedIds)
+            ->where('connection_integrate', $connectionIntegrate) // Security lock
+            ->whereNotIn('submission_status', ['submitted', 'accepted'])
+            ->pluck('id_invoice')
+            ->toArray();
+
+        $totalValid = count($validIdsToSubmit);
+
+        if ($totalValid === 0) {
+            return response()->json(['success' => true, 'message' => 'Selected invoices are already submitted or invalid.'], 200);
+        }
+
+        // ====================================================================
+        // 🚀 THE 5,000 SPEED LIMIT: Prevent LHDN Stampedes
+        // ====================================================================
+        $limit = 5000;
+        $processingIds = array_slice($validIdsToSubmit, 0, $limit);
+        $queuedCount = count($processingIds);
+        $leftoverCount = $totalValid - $queuedCount;
+
+        /**
+         * 🚀 CONCURRENCY STRATEGY (Unchanged):
+         * 1. Create Micro-chunks of 100
+         * 2. Group into Macro-chunks of 2
+         */
+        $microChunks = array_chunk($processingIds, 100); 
+        $macroChunks = array_chunk($microChunks, 2); 
+
+        $jobs = [];
+        foreach ($macroChunks as $chunkSet) {
+            // Uses your exact existing job!
+            $jobs[] = new \App\Jobs\SubmitInvoicesBatch($chunkSet, $consolidateStatus, $connectionIntegrate);
+        }
+
+        // Dispatch as a Laravel Batch
+        $batch = \Illuminate\Support\Facades\Bus::batch($jobs)
+            ->name('Sync LHDN Subscriber (' . $connectionIntegrate . ') - ' . now()->format('Y-m-d H:i:s'))
+            ->onConnection('database')
+            ->allowFailures() 
+            ->dispatch();
+
+        // Dynamically build the success message
+        $message = "Processing {$queuedCount} invoices... ";
+        if ($leftoverCount > 0) {
+            $message .= "({$leftoverCount} remaining. Will auto-continue!)";
+        } else {
+            $message .= "across " . count($macroChunks) . " concurrent jobs.";
+        }
+
+        // 🚀 AUTO-RELAY RESPONSE
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'batch_id' => $batch->id,
+            'has_more' => $leftoverCount > 0,      
+            'leftover_count' => $leftoverCount
+        ], 200);
+    }
+
+    /**
+     * ROUTE: THE TRACKER 
+     * Tracks the specific batch ID given to the frontend.
+     */
+    public function checkBatchProgress(Request $request)
+    {
+        // Close session to allow parallel AJAX requests from the frontend
+        if (session_id()) {
+            session_write_close();
+        }
+
+        $batchId = $request->input('batch_id');
+
+        if (!$batchId) {
+            return response()->json(['error' => 'No batch ID provided.'], 400);
+        }
+
+        $batch = \Illuminate\Support\Facades\Bus::findBatch($batchId);
+
+        if (!$batch) {
+            return response()->json(['error' => 'Batch not found.'], 404);
+        }
+
+        // FETCH CACHED ERROR IF EXISTS
+        $errorMsg = null;
+        if ($batch->hasFailures()) {
+            $errorMsg = \Illuminate\Support\Facades\Cache::get('batch_error_' . $batchId);
+        }
+
+        $progress = $batch->progress();
+        $isFinished = $batch->finished() || $progress >= 100;
+
+        return response()->json([
+            'status' => $isFinished ? 'complete' : 'processing',
+            'progress' => $progress, 
+            'remaining_batch' => $batch->pendingJobs, 
+            'total_batch' => $batch->totalJobs,
+            'has_failures' => $batch->hasFailures(),
+            'error_message' => $errorMsg 
+        ]);
+    }
+
+    /**
+     * ROUTE: THE PINGER
+     * Optimized for shared hosting to process more per tick.
+     */
+    public function triggerWorker()
+    {
+        // THE FIX: Release the PHP session lock immediately!
+        if (session_id()) {
+            session_write_close();
+        }
+
+        try {
+            // Increased timeout to 300 to give the concurrent HTTP requests enough time to finish
+            \Illuminate\Support\Facades\Artisan::call('queue:work', [
+                'database', 
+                '--stop-when-empty' => true,
+                '--max-jobs' => 3, 
+                '--timeout' => 300
+            ]);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Worker Crash: " . $e->getMessage());
+        }
+
+        return response()->json(['status' => 'processed_tick']);
+    }
+
+    /**
+     * ROUTE: THE KILL SWITCH
+     */
+    public function stopWorker(Request $request)
+    {
+        try {
+            if ($request->has('batch_id') && !empty($request->input('batch_id'))) {
+                $batch = \Illuminate\Support\Facades\Bus::findBatch($request->input('batch_id'));
+                if ($batch) {
+                    $batch->cancel();
+                }
+            }
+            
+            // FIX: Replaced truncate() with delete() to prevent the 500 error on shared hosting
+            \Illuminate\Support\Facades\DB::table('jobs')->delete();
+            
+            return response()->json([
+                'success' => true, 
+                'message' => 'Sync stopped and queue cleared.'
+            ]);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Failed to stop worker: " . $e->getMessage());
+            return response()->json([
+                'success' => false, 
+                'message' => 'Failed to stop worker: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
 public function show_invoice($unique_id)
 {

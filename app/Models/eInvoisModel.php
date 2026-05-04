@@ -548,11 +548,7 @@ public function qr_link($uuid)
             throw new \Exception("System busy authenticating with LHDN. Automatically retrying...");
         }
     }
-/**
-     * =====================================================
-     * BATCH SUBMISSION WITH RETRY LOGIC & SMART CHUNKING
-     * =====================================================
-     */
+
  /**
      * =====================================================
      * BATCH SUBMISSION WITH RETRY LOGIC & SMART CHUNKING

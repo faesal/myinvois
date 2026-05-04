@@ -1,305 +1,141 @@
 @extends('layouts.developer')
 
-
-
 @section('content')
 
-
-
 <style>
-
 /* ====== Documentation Page ====== */
-
 .doc-page {
-
     padding: 25px 35px;
-
 }
-
-
 
 .doc-section {
-
     margin-bottom: 60px;
-
 }
-
-
 
 .doc-section h2 {
-
     font-size: 26px;
-
     padding-bottom: 10px;
-
     border-bottom: 2px solid #eee;
-
 }
-
-
 
 .doc-section h3 {
-
     margin-top: 25px;
-
 }
-
-
 
 .code-block {
-
     background: #1e1e1e;
-
     color: #dcdcdc;
-
     padding: 18px;
-
     border-radius: 6px;
-
     font-size: 14px;
-
     overflow-x: auto;
-
     margin-top: 12px;
-
 }
-
-
 
 pre {
-
     margin: 0;
-
     white-space: pre;
-
 }
-
-
 
 /* Smooth scroll anchor */
-
 html {
-
     scroll-behavior: smooth;
-
 }
-
 </style>
-
 <script src="https://cdn.tailwindcss.com"></script>
 
-
-
 <style>
-
 .intro-purple {
-
     background: linear-gradient(135deg, #6A11CB 0%, #2575FC 100%) !important;
-
 }
-
 </style>
 
-
-
 <section class="intro-purple w-full py-20 px-8 text-white rounded-[40px] shadow-lg">
-
     <div class="max-w-6xl mx-auto">
-
         <h1 class="text-2xl font-bold mb-4">
-
             Developer Documentation
-
         </h1>
 
-
-
         <p class="text-l opacity-95 max-w-3xl">
-
             Build powerful integrations with our comprehensive API. Connect your 
-
             POS, ERP, or third-party system to automate invoice submission, 
-
             manage credentials, and streamline financial compliance.
-
         </p>
 
-
-
         <div class="mt-10 flex gap-5">
-
             <a href="#quickstart"
-
                 class="bg-white text-purple-700 px-7 py-3 rounded-2xl font-semibold shadow">
-
                 Quick Start
-
             </a>
-
-
 
             <a href="#api"
-
                 class="border border-white text-white px-7 py-3 rounded-2xl font-semibold">
-
                 API Reference
-
             </a>
-
         </div>
-
     </div>
-
 </section>
-
-
-
-
 
 <div class="doc-page">
 
-
-
-
-
-    <!-- ===================== INTRODUCTION ===================== -->
-
     <div class="doc-section" id="introduction">
-
     <h2 class="text-2xl font-semibold text-gray-800 mt-6 mb-2">Introduction</h2> 
-
     <ol class="list-decimal list-inside text-gray-700 space-y-2"> 
-
         <li>Validating integration tokens</li> <li>Receiving invoice header + items</li> 
-
         <li>Preventing duplicate submissions</li> <li>Auto-calculating invoice totals</li> 
-
         <li>Storing invoice & items into the MySyncTax database</li> </ol> 
-
         <p class="text-gray-700 mt-4"> For more information, visit 
-
             <a href="https://mysynctax.com" target="_blank" class="text-blue-600 hover:underline">mysynctax.com</a>. </p>
-
     </div>
-
-
-
-
-
-
-
-    <!-- ===================== AUTHENTICATION ===================== -->
 
     <div class="doc-section" id="authentication">
-
         <h2>Authentication</h2>
 
-
-
         <p>
-
             All integration requests must contain two parameters inside the JSON body:
-
         </p>
-
-
 
         <ul>
-
             <li><strong>mysynctax_key</strong></li>
-
             <li><strong>mysynctax_secret</strong></li>
-
         </ul>
 
-
-
         <p>
-
             These identify the integration and must match the credentials assigned to your company.
-
         </p>
-
-
 
         <p>
-
             Requests without both fields will be rejected with <code>401 Unauthorized</code>.
-
         </p>
-
     </div>
 
-
-
-
-
-
-
-    <!-- ===================== JSON STRUCTURE ===================== -->
-
     <div class="doc-section" id="json-structure">
-
         <h2>JSON Structure</h2>
-
-
 
         <h3>Header-Level Fields</h3>
 
-
-
         <ul>
-
             <li><strong>invoice_no</strong> – The external invoice number.</li>
-
             <li><strong>issue_date</strong> – Date of invoice (YYYY-MM-DD HH:MM:SS).</li>
-
             <li><strong>sale_id_integrate</strong> – ID of the transaction in your system.</li>
-
             <li><strong>total_amount</strong> – Total invoice amount BEFORE item breakdown (amount_before).</li>
-
             <li><strong>payment_note_term</strong> – CASH / TRANSFER / CHEQUE / etc.</li>
-
         </ul>
-
-
 
         <h3>Item-Level Fields</h3>
-
         <ul>
-
             <li><strong>item_id</strong> – ID of each item in the invoice.</li>
-
             <li><strong>sorting_id</strong> – Item sorting or line order.</li>
-
             <li><strong>invoiced_quantity</strong> – Quantity purchased.</li>
-
             <li><strong>unit_price</strong> – Unit price.</li>
-
             <li><strong>price_discount</strong> – Discount per unit.</li>
-
             <li><strong>total</strong> – Total price for this item (quantity × price).</li>
-
             <li><strong>item_description</strong> – Item name or description.</li>
-
         </ul>
-
-
-
-        
-
     </div>
 
-
-
-
-
-    <!-- ===================== SAMPLE JSON (COMPLETED) ===================== -->
-
     <div class="doc-section" id="sample-json-completed">
-
     <h2>Normal Invoice with Receipt QR</h2>
-
 <p>
 This API generates a normal invoice together with a <strong>receipt QR code</strong>.
 If the customer <strong>does not scan the QR code</strong>, the transaction will be
@@ -307,10 +143,7 @@ If the customer <strong>does not scan the QR code</strong>, the transaction will
 LHDN MyInvois rules.
 </p>
 
-
-
         <div class="code-block">
-
 <pre>
 {
   "mysynctax_key": "oHwIxxxx",
@@ -340,141 +173,67 @@ LHDN MyInvois rules.
   ]
 }
 
-
 </pre>
-
         </div>
-
-
 
     </div>
 
-
     <div class="doc-section" id="send-data">
-
         <h2>Send Data</h2>
-
-
 
         <p>Submit data using the following endpoint:</p>
 
-
-
         <div class="code-block"><pre>POST {{url('')}}/api/myinvois</pre></div>
 
-
-
         <h3>Key Notes</h3>
-
         <ul>
-
             <li>Duplicate JSON payloads (same hashed content) are rejected with <strong>409</strong>.</li>
-
             <li>All amounts must be numerical.</li>
-
             <li>Date formats must use <strong>YYYY-MM-DD HH:MM:SS</strong>.</li>
-
         </ul>
-
     </div>
-
-
-
-
-
-
-
-    <!-- ===================== RESPONSES ===================== -->
 
     <div class="doc-section" id="responses">
-
         <h2>Response Examples</h2>
 
-
-
         <h3>Success</h3>
-
         <div class="code-block">
-
 <pre>{
-
   "status": "ok",
-
   "mysynctax_uuid": "generated-unique-id"
-
   "qr_url": "{{url('')}}/redirect/9QqIe39"
-
 }</pre>
-
         </div>
-
-
 
         <h3>Duplicate</h3>
-
         <div class="code-block">
-
 <pre>{
-
   "status": "duplicate_ignored",
-
   "mysynctax_uuid": "existing-unique-id"
-
 }</pre>
-
         </div>
-
-
 
         <h3>Unauthorized</h3>
-
         <div class="code-block">
-
 <pre>{
-
   "status": "unauthorized",
-
   "message": "Invalid mysynctax_key or mysynctax_secret"
-
 }</pre>
-
         </div>
-
     </div>
-
-
-
-
-
-
-
-    <!-- ===================== ERROR CODES ===================== -->
 
     <div class="doc-section" id="errors">
-
         <h2>Error Codes</h2>
 
-
-
         <table class="table table-bordered">
-
             <tr><th>HTTP Code</th><th>Description</th></tr>
-
             <tr><td>400</td><td>Invalid or malformed JSON</td></tr>
-
             <tr><td>401</td><td>API key or secret missing/invalid</td></tr>
-
             <tr><td>409</td><td>Duplicate invoice submission</td></tr>
-
             <tr><td>500</td><td>Server processing error</td></tr>
-
         </table>
-
     </div>
 
-
-
-<!-- ===================== NEW API: NORMAL INVOICE (WITH CUSTOMER) ===================== -->
 <div class="doc-section" id="invoice-with-customer">
 <h2>ERP - Invoice (With Customer)</h2>
 
@@ -562,7 +321,6 @@ master data and require direct submission to LHDN.
 }</pre></div>
 </div>
 
-<!-- ===================== NEW API: CREDIT / DEBIT / REFUND ===================== -->
 <div class="doc-section" id="note-api">
 <h2>Credit Note / Debit Note / Refund</h2>
 
@@ -620,7 +378,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 </pre></div>
 </div>
 
-<!-- ===================== ERROR CODES ===================== -->
 <div class="doc-section" id="errors">
 <h2>Error Codes</h2>
 <table class="table table-bordered">
@@ -634,9 +391,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 </table>
 </div>
 
-</div>
-
-<!-- ===================== SELF-BILLED INVOICE ===================== -->
 <div class="doc-section" id="selfbill-invoice">
     <h2>Self-Billed Invoice</h2>
 
@@ -731,7 +485,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 
     </pre></div>
 </div>
-<!-- ===================== SELF-BILLED NOTE ===================== -->
 <div class="doc-section" id="selfbill-note">
     <h2>Self-Billed Credit / Debit / Refund</h2>
 
@@ -792,7 +545,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 </div>
 
 
-<!-- ===================== ADD NEW CUSTOMER ===================== -->
 <div class="doc-section" id="add-customer">
     <h2>Add New Customer</h2>
 
@@ -829,7 +581,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
     }
   ]
 }</pre></div>
-<!-- ===================== LHDN STATE CODE REFERENCE ===================== -->
 <div class="doc-section" id="state-code-reference">
     <h2>LHDN State Code Reference</h2>
 
@@ -883,7 +634,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 </div>
 
 
-<!-- ===================== GENERAL TIN TYPES ===================== -->
 <div class="doc-section" id="general-tin-types">
     <h2>General TIN Types (LHDN Standard)</h2>
 
@@ -931,7 +681,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 </div>
 
 
-<!-- ===================== GENERAL TIN INVOICE ===================== -->
 <div class="doc-section">
     <h2>General TIN Invoice</h2>
 
@@ -1020,7 +769,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 </div>
 
 
-<!-- ===================== GENERAL TIN NOTE ===================== -->
 <div class="doc-section">
     <h2>General TIN Credit / Debit / Refund</h2>
 
@@ -1079,7 +827,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 </div>
 
 
-<!-- ===================== GENERAL TIN SELFBILL ===================== -->
 <div class="doc-section">
     <h2>General TIN Self-Billed Invoice</h2>
 
@@ -1167,7 +914,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 </div>
 
 
-<!-- ===================== GENERAL TIN SELFBILL NOTE ===================== -->
 <div class="doc-section">
     <h2>General TIN Self-Billed Note</h2>
 
@@ -1222,7 +968,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 
 
 
-<!-- ===================== ADD / UPDATE SUPPLIER ===================== -->
 <div class="doc-section" id="add-supplier">
     <h2>Add / Update Supplier</h2>
 
@@ -1274,7 +1019,6 @@ Used to submit adjustments for invoices that have already been submitted to LHDN
 }</pre></div>
 </div>
 
-<!-- ===================== GENERATE PDF ===================== -->
 <div class="doc-section" id="generate-pdf">
 
     <h2>Generate PDF e-Invoice</h2>
@@ -1349,10 +1093,74 @@ fetch("{{url('')}}/invoice/view/" + mysynctax_uuid)
     </ul>
 
 </div>
-    <!-- ===================== SEND DATA API ===================== -->
 
 
-    <!-- ===================== CODE SAMPLES ===================== -->
+<div class="doc-section" id="cancel-document">
+    <h2>Cancel Document API</h2>
+
+    <p>
+        This endpoint allows you to cleanly cancel an e-Invoice that has already been submitted to LHDN.
+        <strong>Note:</strong> LHDN strictly enforces a 72-hour window for document cancellations.
+    </p>
+
+    <h3>Endpoint</h3>
+    <div class="code-block">
+        <pre>POST {{url('')}}/api/v1/external/cancel-document/{unique_id}</pre>
+    </div>
+
+    <h3>Payload</h3>
+    <div class="code-block"><pre>{
+  "mysynctax_key": "YOUR_API_KEY",
+  "mysynctax_secret": "YOUR_API_SECRET",
+  "reason": "Wrong item quantity entered"
+}</pre></div>
+
+    <h3>Response (Success)</h3>
+    <div class="code-block"><pre>{
+  "success": true,
+  "message": "Document cancelled on LHDN via External API and status reset."
+}</pre></div>
+
+    <h3>Response (Error - Outside 72 Hours)</h3>
+    <div class="code-block"><pre>{
+  "success": false,
+  "message": "Failed: 72-hour cancellation window has expired."
+}</pre></div>
+</div>
+
+
+<div class="doc-section" id="send-email">
+    <h2>Send Invoice Email API</h2>
+
+    <p>
+        This endpoint triggers the system to send an email notification containing the PDF e-Invoice link directly to the customer's registered email address, with BCC/CC routing to administrators.
+    </p>
+
+    <h3>Endpoint</h3>
+    <div class="code-block">
+        <pre>POST {{url('')}}/api/invoice/send-email</pre>
+    </div>
+
+    <h3>Payload</h3>
+    <div class="code-block"><pre>{
+  "mysynctax_uuid": "5a59f5ba7a4f65b47b844ae6671c833c0d5c8b16"
+}</pre></div>
+    <p class="mt-2 text-sm text-gray-600"><em>Note: You can pass either the LHDN UUID or the internal unique_id as the parameter.</em></p>
+
+    <h3>Response (Success)</h3>
+    <div class="code-block"><pre>{
+  "success": true,
+  "message": "Email sent to customer@email.com and CC to faesal09@gmail.com, fjusrin@gmail.com",
+  "link": "{{url('')}}/invoice/view/5a59f5ba7a4f65b47b844ae6671c833c0d5c8b16"
+}</pre></div>
+
+    <h3>Response (Error)</h3>
+    <div class="code-block"><pre>{
+  "success": false,
+  "message": "Customer does not have an email address."
+}</pre></div>
+</div>
+
 
     <div class="doc-section" id="samples">
 
@@ -1537,4 +1345,3 @@ axios.post("{{url('')}}/api/myinvois", payload)
 
 
 @endsection
-

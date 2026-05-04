@@ -271,7 +271,7 @@ class SelfInvoiceController extends Controller
         ]);
     }
 
- /**
+/**
      * 7. IMPORT CSV
      */
     public function import(Request $request)
@@ -316,7 +316,24 @@ class SelfInvoiceController extends Controller
 
                     $invoiceNo   = trim($row[0] ?? '');
                     $companyName = trim($row[1] ?? '');
-                    $issueDate   = trim($row[2] ?? '');
+
+                    // --- NEW DATE PARSING LOGIC ---
+                    $issueDateRaw = trim($row[2] ?? '');
+                    $issueDate    = null;
+
+                    if (!empty($issueDateRaw)) {
+                        try {
+                            // PHP strtotime gets confused by slashes (thinks it's MM/DD/YYYY). 
+                            // Replacing '/' with '-' forces it to read as DD-MM-YYYY.
+                            $cleanDate = str_replace('/', '-', $issueDateRaw);
+                            $issueDate = \Carbon\Carbon::parse($cleanDate)->format('Y-m-d');
+                        } catch (\Exception $e) {
+                            // If the date is completely invalid, fallback to null so the query uses now() later
+                            $issueDate = null;
+                        }
+                    }
+                    // ------------------------------
+
                     $description = trim($row[3] ?? '');
                     $qty         = floatval(trim($row[4] ?? 0));
                     $unitPrice   = floatval(trim($row[5] ?? 0));
@@ -363,7 +380,9 @@ class SelfInvoiceController extends Controller
                         // Assign correct LHDN Type Code
                         'invoice_type_code' => $rowIsSelfBill ? '11' : '01',
                         
-                        'issue_date' => $issueDate ?: now(),
+                        // Use parsed issueDate, fallback to today's date if null
+                        'issue_date' => $issueDate ? $issueDate : now()->format('Y-m-d'),
+                        
                         'price' => $lineExtensionAmount, 
                         'taxable_amount' => $lineExtensionAmount - $discount,
                         'tax_amount' => $taxAmount,

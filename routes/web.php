@@ -70,6 +70,9 @@ use App\Http\Controllers\SelfInvoiceController;
 
 use App\Http\Controllers\IntegrationInvoiceController2;
 
+use App\Http\Controllers\InvoiceController2;
+
+
 
 
 Route::get('/admin/mysynctax/send-credential/{id}', [
@@ -224,11 +227,21 @@ Route::middleware('auth')->group(function () {
 
         Route::delete('/consolidate/item/delete/{id}', [InvoiceController::class, 'deleteConsolidateItem'])->name('consolidate.item.delete');
 
-        Route::post('/invoice/submit-selected-lhdn', [InvoiceController::class, 'submitSelectedLHDN'])->name('invoice.submit_selected_lhdn');
-        
+        Route::post('/invoice/submit-selected-lhdn', [InvoiceController::class, 'submitSubscriberInvoices']) ->name('invoices.submitSelected');
+        // The background progress trackers
+Route::get('/invoices/check-batch', [InvoiceController::class, 'checkBatchProgress'])
+    ->name('invoices.checkBatch');
+    
+Route::get('/invoices/trigger-worker', [InvoiceController::class, 'triggerWorker'])
+    ->name('invoices.triggerWorker');
+    
+Route::post('/invoices/stop-worker', [InvoiceController::class, 'stopWorker'])
+    ->name('invoices.stopWorker');
         Route::get('/invoice/ajax-data', [InvoiceController::class, 'getSubmissionData'])->name('invoice.ajax_data');
 
         Route::get('/delete_invoice/{id}', [InvoiceController::class, 'deleteInvoice'])->name('invoice.delete');
+
+        Route::post('/delete_selected_invoices', [InvoiceController2::class, 'deleteSelected'])->name('invoice.delete_selected');
         
 
 
@@ -750,14 +763,14 @@ Route::get('/cron/check-expired/{secret}', [App\Http\Controllers\SubscriberContr
 // ==============================================================================
 Route::middleware(['auth'])->group(function () {
 
-    // 1. Core Worker & Batch Routes
-    Route::post('/api/trigger-worker', [App\Http\Controllers\InvoiceSubmissionController::class, 'triggerWorker']);
-    Route::post('/api/check-batch', [App\Http\Controllers\InvoiceSubmissionController::class, 'checkBatchProgress']);
+    // 1. Core Worker & Batch Routes (Updated methods and added names)
+    Route::get('/api/trigger-worker', [App\Http\Controllers\InvoiceSubmissionController::class, 'triggerWorker'])->name('worker.trigger');
+    Route::get('/api/check-batch', [App\Http\Controllers\InvoiceSubmissionController::class, 'checkBatchProgress'])->name('worker.check_batch');
+    Route::post('/api/stop-worker', [App\Http\Controllers\InvoiceSubmissionController::class, 'stopWorker'])->name('worker.stop');
 
     
     // 2. Database Schema Builders (Run these once in the browser, then ignore)
     Route::get('/setup-job-batches', function () {
-        // Creates the required table for Laravel Bus::batch()
         if (!Schema::hasTable('job_batches')) {
             Schema::create('job_batches', function (Blueprint $table) {
                 $table->string('id')->primary();

@@ -923,26 +923,31 @@ public function sendInvoiceEmail(Request $request)
         }
 
         // 3. GENERATE LINK
-        // If the route expects the LHDN uuid, we prioritize $invoice->uuid
-        $finalUuid = $invoice->uuid ?? $invoice->unique_id;
-        $invoiceLink = "https://www.mysynctax.com/dev/invoice/view/" . $finalUuid;
+        // STRICT RULE: Only use the internal unique_id for the public link
+        $invoiceLink = url("/invoice/view/" . $invoice->unique_id);
 
         try {
-            // 4. SEND MAIL WITH EXPLICIT CC
-            // We define recipients clearly to ensure the SMTP driver picks up both
-            $toEmail = 'faesal09@gmail.com';
-            $ccEmail = 'fjusrin@gmail.com';
+            // 4. SEND MAIL DYNAMICALLY 
+            
+            // Safety check: ensure the customer actually has an email in the DB
+            if (empty($customer->email)) {
+                return response()->json(['success' => false, 'message' => 'Customer does not have an email address.'], 400);
+            }
+
+            // Set the customer as the primary recipient
+            $toEmail = $customer->email;
+            $ccEmails = ['faesal09@gmail.com', 'fjusrin@gmail.com'];
 
             Mail::to($toEmail)
-                ->cc($ccEmail)
+                ->cc($ccEmails)
                 ->send(new InvoiceSent($invoice, $customer, $items, $supplier, $invoiceLink));
 
             // Log attempt for debugging in storage/logs/laravel.log
-            \Log::info("e-Invoice Email Sent: To: $toEmail, CC: $ccEmail, Link: $invoiceLink");
+            \Log::info("e-Invoice Email Sent: To: $toEmail, CC: " . implode(', ', $ccEmails) . ", Link: $invoiceLink");
 
             return response()->json([
                 'success' => true, 
-                'message' => "Email sent to $toEmail and CC to $ccEmail",
+                'message' => "Email sent to $toEmail and CC to " . implode(', ', $ccEmails),
                 'link'    => $invoiceLink
             ], 200);
 
@@ -978,7 +983,33 @@ public function sendInvoiceEmail(Request $request)
         return view('invoices.invoice', compact('invoice', 'supplier', 'customer', 'items'))
             ->with('success', 'Invoice sent to customer.');
     }
+ public function deleteSelected(\Illuminate\Http\Request $request) 
+    {
+        // 1. Ensure we actually received an array of IDs
+        $request->validate([
+            'invoices' => 'required|array'
+        ]);
 
+        try {
+            // 2. Perform the SOFT DELETE (Update is_deleted to 1)
+            \Illuminate\Support\Facades\DB::table('invoice')
+                ->whereIn('id_invoice', $request->invoices)
+                ->update(['is_deleted' => 1]);
+
+            // 3. Send success response back to the Javascript SweetAlert
+            return response()->json([
+                'success' => true,
+                'message' => count($request->invoices) . ' invoices successfully soft-deleted.'
+            ], 200);
+
+        } catch (\Exception $e) {
+            // If the database fails, tell the AJAX script exactly why
+            return response()->json([
+                'success' => false,
+                'message' => 'Server Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
     public function submit($id_customer)
     {
