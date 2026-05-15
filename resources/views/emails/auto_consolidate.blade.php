@@ -125,7 +125,7 @@
                 <table width="100%" border="0" cellspacing="0" cellpadding="0" class="btn-table">
                     <tr>
                         <td align="left">
-                            <a href="https://www.mysynctax.com/dashboard" class="btn">
+                            <a href="https://mysynctax.com/dev/login" class="btn">
                                 View Detailed Report &rarr;
                             </a>
                         </td>
@@ -161,4 +161,3 @@
     </div>
 </body>
 </html>
-```

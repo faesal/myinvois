@@ -198,25 +198,25 @@ public function test4()
         
         // Display results
         echo "Comparison Results:\n";
-        echo "<pre>JSON Paths: " . $comparison['summary']['json_paths_count'] . "</pre>\<br>";
-        echo "<pre>DB Paths: " . $comparison['summary']['db_paths_count'] . "</pre>\<br>";
-        echo "Missing in DB: " . $comparison['summary']['missing_in_db_count'] . "</pre>\<br>";
-        echo "Missing in JSON: " . $comparison['summary']['missing_in_json_count'] . "</pre>\<br>";
+        echo "<pre>JSON Paths: " . $comparison['summary']['json_paths_count'] . "</pre><br>";
+        echo "<pre>DB Paths: " . $comparison['summary']['db_paths_count'] . "</pre><br>";
+        echo "Missing in DB: " . $comparison['summary']['missing_in_db_count'] . "</pre><br>";
+        echo "Missing in JSON: " . $comparison['summary']['missing_in_json_count'] . "</pre><br>";
         
         // Show details of missing paths in database
         if (!empty($comparison['missing_in_database'])) {
             echo "Paths found in JSON but missing in database:\n";
             foreach ($comparison['missing_in_database'] as $item) {
-                echo "- " . $item['field_path'] . " (Type: " . $item['type'] . ")\<br>";
+                echo "- " . $item['field_path'] . " (Type: " . $item['type'] . ")<br>";
             }
-            echo "\<br><br>";
+            echo "<br><br>";
         }
         
         // Show details of paths in database but not in JSON
         if (!empty($comparison['missing_in_json'])) {
             echo "Paths in database but not found in JSON (possibly deprecated):\n";
             foreach ($comparison['missing_in_json'] as $item) {
-               echo "- " . $item['field_path'] . " (Type: " . $item['type'] . ")\<br>";
+               echo "- " . $item['field_path'] . " (Type: " . $item['type'] . ")<br>";
             }
         }
         
@@ -240,7 +240,7 @@ public function test4()
         return $data;
     }
 
-    public function presubmit($id)
+ public function presubmit($id)
     {
         $session = session('invoice_unique_id');
         $id_supplier = session('id_supplier');
@@ -250,12 +250,19 @@ public function test4()
             ->where('unique_id', $session)
             ->update(['id_customer' => $id]);
 
-            DB::table('invoice_item')
+        DB::table('invoice_item')
             ->where('unique_id', $session)
             ->update(['id_customer' => $id]);
 
         // Fetch updated records
         $invoice = DB::table('invoice')->where('unique_id', $session)->first();
+        
+        // 🚀 THE FIX: Safely lock the items from the consolidate queue
+        // We trigger our helper right here before the view even loads.
+        if ($invoice) {
+            $this->blockFromConsolidate($invoice);
+        }
+
         $supplier = DB::table('customer')->where('id_customer', $id_supplier)->first();
         $customer = DB::table('customer')->where('id_customer', $id)->first();
         $items = DB::table('invoice_item')->where('unique_id', $session)->get();
@@ -265,38 +272,74 @@ public function test4()
     }
 
     
-    public function show($id)
+ public function show($id)
     {
-    
-    $session = session('invoice_unique_id');
-    $id_supplier=session('id_supplier');
-    $invoiceId = session('id_invoice');
-    //$this->resubmit($invoiceId);
+        $session = session('invoice_unique_id');
+        $id_supplier = session('id_supplier');
+        $invoiceId = session('id_invoice');
 
-    $invoice = $record = DB::table('invoice')->where('unique_id', $session)->first();
-    //echo $invoice->id_invoice;
-    if(empty($invoice->uuid))
-    $this->resubmit($invoice->id_invoice);
+        try {
+            // 1. Fetch initial main invoice record
+            $invoice = \Illuminate\Support\Facades\DB::table('invoice')->where('unique_id', $session)->first();
 
-    $invoice = $record = DB::table('invoice')->where('unique_id', $session)->first();
+            if (!$invoice) {
+                throw new \Exception("Main invoice record not found for this session.");
+            }
 
-    $supplier = DB::table('customer')->where('id_customer', $id_supplier)->first(); // Adjust ID as needed
-    $customer = DB::table('customer')->where('id_customer', $id)->first(); // Adjust ID as needed
-    $items = DB::table('invoice_item')->where('unique_id', $session)->get();
+            // 2. If it hasn't been submitted to LHDN (missing UUID), process it now
+            if (empty($invoice->uuid)) {
+                
+                // 🚀 CRITICAL RECOVERY: Force the session to remember the type code
+                // This guarantees the variable is never empty when it hits line 1159 in your Model
+                session([
+                    'invoice_unique_id' => $invoice->unique_id,
+                    'invoice_type_code' => $invoice->invoice_type_code
+                ]);
 
+                // Initialize the model with the correct database connection
+                $eInvoisModel = new \App\Models\eInvoisModel($invoice->connection_integrate);
+                
+                // Call submit directly, completely bypassing the problematic resubmit() function
+                $eInvoisModel->submit($id);
+                
+                // Re-fetch the invoice to grab the newly generated UUID and status
+                $invoice = \Illuminate\Support\Facades\DB::table('invoice')->where('unique_id', $session)->first();
+            }
 
-    // Generate PDF
-    //$pdf = PDF::loadView('invoices.show', compact('invoice', 'customer', 'items'));
+            // 🚀 ANTI-DUPLICATION FIX (Unified): 
+            // Instead of permanently deleting the consolidate records, we use our new 
+            // helper to safely mark them as "Submitted individually" so they disappear from the queue.
+            $this->blockFromConsolidate($invoice);
 
-    // Save PDF temporarily
-    $pdfPath = storage_path("app/public/invoice_{$invoice->invoice_no}.pdf");
-   // $pdf->save($pdfPath);
-    
-    // Send Email
-    Mail::to($customer->email)->send((new InvoiceSent($invoice, $customer, $items,$supplier )));
-    
-    return redirect(url('/invoice/view/'.$invoice->unique_id));
-   
+            // 3. Fetch related data for the email
+            $supplier = \Illuminate\Support\Facades\DB::table('customer')->where('id_customer', $id_supplier)->first(); 
+            $customer = \Illuminate\Support\Facades\DB::table('customer')->where('id_customer', $id)->first(); 
+            $items = \Illuminate\Support\Facades\DB::table('invoice_item')->where('unique_id', $session)->get();
+
+            // Generate PDF
+            // $pdf = PDF::loadView('invoices.show', compact('invoice', 'customer', 'items'));
+
+            // Save PDF temporarily
+            // $pdfPath = storage_path("app/public/invoice_{$invoice->invoice_no}.pdf");
+            // $pdf->save($pdfPath);
+            
+            // 4. Send Email (Only if customer has an email to prevent Mailer crashes)
+            if ($customer && !empty($customer->email)) {
+                \Illuminate\Support\Facades\Mail::to($customer->email)->send(new \App\Mail\InvoiceSent($invoice, $customer, $items, $supplier));
+            }
+            
+            // 5. Redirect to view with success message
+            return redirect(url('/invoice/view/'.$invoice->unique_id))->with('success', 'Successfully submitted to LHDN.');
+
+        } catch (\Exception $e) {
+            
+            // 🚀 EXCEPTION HANDLING: 
+            // Log the actual error to your storage/logs/laravel.log file so you can investigate it secretly
+            \Illuminate\Support\Facades\Log::error("Submit to LHDN Error: " . $e->getMessage() . " at line " . $e->getLine());
+
+            // Instead of a 500 white screen, redirect the user back with a readable error message
+            return redirect()->back()->with('error', 'Failed to submit to LHDN: ' . $e->getMessage());
+        }
     }
 
     public function submit($id_customer)
@@ -1460,8 +1503,14 @@ public function submitSelected(Request $request)
     $version = 1;
 
     foreach ($chunks as $chunk) {
+        $firstItem = $chunk->first();
         // 🔥 Get sale_id_integrate from first item in chunk (Following reference)
-        $saleId = $chunk->first()->sale_id_integrate;
+        $saleId = $firstItem->sale_id_integrate;
+
+        // 🔥 THE LONG-TERM FIX: Fetch the parent consolidate_invoice to get the TRUE invoice_type_code
+        $idConsolidate = $firstItem->id_consolidate_invoice ?? null;
+        $consolidateHeader = DB::table('consolidate_invoice')->where('id_invoice', $idConsolidate)->first();
+        $invoiceTypeCode = $consolidateHeader ? $consolidateHeader->invoice_type_code : '01';
 
         // Calculate total
         $total = (float) $chunk->sum('line_extension_amount');
@@ -1479,9 +1528,9 @@ public function submitSelected(Request $request)
             'submission_status' => 'Pending', // Mark as Pending for Step 2
             'id_developer' => $developerId,
             'id_customer' => 6, 
-            'id_supplier' => $customer->id_customer,
+            'id_supplier' => $customer ? $customer->id_customer : null, // Prevent crash if missing
             'invoice_no' => $invoiceNo,
-            'invoice_type_code' => '01',
+            'invoice_type_code' => $invoiceTypeCode, // 🔥 DYNAMICALLY INJECTED HERE
             'issue_date' => now(),
             'tax_scheme_id' => 'OTH',
             'tax_category_id' => '01',
@@ -2377,4 +2426,30 @@ public function getSubmissionData(Request $request)
             "data" => $data
         ]);
     }
-}
+    // ... all your other functions are up here ...
+
+    // Paste this right here!
+private function blockFromConsolidate($invoiceRecord)
+    {
+        if (!$invoiceRecord || (empty($invoiceRecord->unique_id) && empty($invoiceRecord->sale_id_integrate))) {
+            return;
+        }
+        
+        \Illuminate\Support\Facades\DB::table('consolidate_invoice_item')
+            ->whereNull('submission_status') // Only touch pending items
+            ->where(function($q) use ($invoiceRecord) {
+                if (!empty($invoiceRecord->unique_id)) {
+                    $q->where('unique_id', $invoiceRecord->unique_id);
+                }
+                if (!empty($invoiceRecord->sale_id_integrate)) {
+                    $q->orWhere('sale_id_integrate', $invoiceRecord->sale_id_integrate);
+                }
+            })
+            ->update([
+                // THE FIX: Shortened to fit the database column length limit
+                'submission_status' => 'Submitted', 
+                'updated_at' => now()
+            ]);
+    }
+
+} // <-- THIS IS THE FINAL BRACKET OF THE ENTIRE FILE

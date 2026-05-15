@@ -33,7 +33,7 @@
                             <h1 style="font-size: 22px; color: #0f172a; margin-top: 0; margin-bottom: 20px;">Hello {{ $customer->registration_name ?? 'Valued Customer' }},</h1>
                             
                             <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 30px;">
-                                You have received a new verified e-Invoice from <strong>{{ $supplier->registration_name ?? 'Waja Global Services' }}</strong>. 
+                                You have received a new verified e-Invoice from <strong>{{ $supplier->registration_name ?? 'ABC Trading SDN BHD' }}</strong>. 
                             </p>
 
                             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 35px;">
@@ -62,13 +62,12 @@
                                     </td>
                                 </tr>
                             </table>
+                            
 
                             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 35px;">
                                 <tr>
                                     <td align="center">
-                                        <a href="{{ $invoiceLink }}" style="display: inline-block; background-color: #0ea5e9; color: #ffffff; font-size: 16px; font-weight: bold; text-decoration: none; padding: 14px 32px; border-radius: 6px; text-align: center;">
-                                            View / Download Invoice
-                                        </a>
+                                       <a href="{{ url('/invoice/view/' . $invoice->unique_id) }}">Click here to view your invoice</a>
                                     </td>
                                 </tr>
                             </table>

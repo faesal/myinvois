@@ -229,7 +229,7 @@ Route::middleware('auth')->group(function () {
 
         Route::post('/invoice/submit-selected-lhdn', [InvoiceController::class, 'submitSubscriberInvoices']) ->name('invoices.submitSelected');
         // The background progress trackers
-Route::get('/invoices/check-batch', [InvoiceController::class, 'checkBatchProgress'])
+        Route::get('/invoices/check-batch', [InvoiceController::class, 'checkBatchProgress'])
     ->name('invoices.checkBatch');
     
 Route::get('/invoices/trigger-worker', [InvoiceController::class, 'triggerWorker'])

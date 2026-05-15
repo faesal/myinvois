@@ -44,7 +44,7 @@ Route::get('/generate-test-invoices', function () {
     DB::disableQueryLog(); // CRITICAL: Stops Laravel from saving 10k queries to RAM
 
     $now = now();
-    $totalInvoices = 5000;
+    $totalInvoices = 10;
     $batchSize = 500; // Process 500 at a time to keep memory totally clean
 
     // Clear out old test data
@@ -131,7 +131,7 @@ Route::get('/generate-test-invoices', function () {
             }
 
             // Bulk insert the 1,500 items for this batch
-            foreach (array_chunk($itemsToInsert, 15000) as $chunk) {
+            foreach (array_chunk($itemsToInsert, 20) as $chunk) {
                 DB::table('invoice_item')->insert($chunk);
             }
 
@@ -158,7 +158,7 @@ Route::get('/generate-lhdn-rejects', function () {
     \Illuminate\Support\Facades\DB::disableQueryLog(); 
 
     $now = now();
-    $totalInvoices = 10; // 🚀 Only generating 5 to test the flow
+    $totalInvoices = 5; // 🚀 Only generating 5 to test the flow
     $batchSize = 10; 
 
     // Clear out old failed test data

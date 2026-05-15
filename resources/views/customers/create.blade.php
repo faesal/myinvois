@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
+    <!-- SweetAlert2 for the Popups -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -417,6 +420,22 @@
 <script>
     $(document).ready(function() {
         
+        // 🚀 THE GATEKEEPER POPUP LOGIC
+        // If the Controller says this invoice is locked, show popup and disable inputs!
+        @if(isset($isLocked) && $isLocked)
+            Swal.fire({
+                icon: 'warning',
+                title: 'Action Blocked',
+                text: 'This receipt has already been processed or consolidated manually by the system. It can no longer be modified.',
+                confirmButtonColor: '#0F172A',
+                allowOutsideClick: false
+            });
+
+            // Disable all forms and buttons so they can't force their way through
+            $('input, button, select').prop('disabled', true);
+            $('.selection-label').css({'pointer-events': 'none', 'opacity': '0.6'});
+        @endif
+
         // --- 1. Auto-fill and Lock TIN logic based on 4 Customer Types ---
         @if(!request()->isMethod('post'))
             $('input[name="customer_type"]').on('change', function() {

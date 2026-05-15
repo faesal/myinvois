@@ -16,6 +16,8 @@ use Modules\Product\App\Models\Product;
 use Modules\Currency\App\Models\Currency;
 use Modules\Language\App\Models\Language;
 use Modules\GlobalSetting\App\Models\GlobalSetting;
+use Illuminate\Support\Facades\Schema; // <-- 1. ADDED SCHEMA FACADE
+use Illuminate\Support\Facades\URL;    // <-- 2. ADDED URL FACADE FOR HTTPS FIX
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -32,6 +34,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // -------------------------------------------------------------
+        // FIX: Force HTTPS to prevent POST requests converting to GET
+        // -------------------------------------------------------------
+        if(config('app.env') !== 'local') {
+            URL::forceScheme('https');
+        }
+
+        // 2. ADDED FIX FOR MySQL "1071 Specified key was too long" ERROR
+        Schema::defaultStringLength(191); 
 
         try{
             Cache::rememberForever('setting', function(){

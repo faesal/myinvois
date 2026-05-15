@@ -19,7 +19,7 @@
     }
     
     .status-card:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-    .status-card.active { border: 2px solid #333; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+    .status-card.active { border: 2px solid #333; box-shadow: 0 5px 15px rgba(0,0,0,0.3); transform: translateY(-2px); }
     .status-card .card-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
     .status-card .card-count { font-size: 2.5rem; font-weight: 700; margin: 0; transition: color 0.3s ease; }
     
@@ -57,27 +57,77 @@
     }
 </style>
 
+@php
+    // ========================================================================
+    // 🚀 BLADE-LEVEL FILTERING & COUNTING
+    // Fixes 1: Prevents cards dropping to 0 by using backend $statusCounts
+    // Fixes 2: Catches Unrecognized/NULL statuses and maps them to 'Pending'
+    // Fixes 3: Enforces strict table filtering
+    // ========================================================================
+    $reqStatus = strtoupper(request('status', 'ALL'));
+    
+    // 1. Process Status Cards from the global backend variable
+    $scSubmitted = 0;
+    $scPending = 0;
+    $scFailed = 0;
+    
+    $rawCounts = $statusCounts ?? [];
+    if (is_iterable($rawCounts)) {
+        foreach($rawCounts as $key => $count) {
+            $k = strtoupper(trim((string)$key));
+            if ($k === 'SUBMITTED' || $k === 'ACCEPTED') {
+                $scSubmitted += (int)$count;
+            } elseif ($k === 'FAILED' || $k === 'REJECTED' || $k === 'ERROR') {
+                $scFailed += (int)$count;
+            } else {
+                // Safely catches 'PENDING', '', NULL, or any weird database artifacts
+                $scPending += (int)$count;
+            }
+        }
+    }
+
+    // 2. Strict Filter for the Table Rows
+    $filteredInvoices = [];
+    if(isset($invoices) && $invoices->isNotEmpty()) {
+        foreach($invoices as $inv) {
+            $rawStatus = strtoupper(trim($inv->submission_status ?: 'PENDING'));
+            
+            if($rawStatus === 'SUBMITTED' || $rawStatus === 'ACCEPTED') {
+                $mappedStatus = 'SUBMITTED';
+            } elseif($rawStatus === 'FAILED' || $rawStatus === 'REJECTED' || $rawStatus === 'ERROR') {
+                $mappedStatus = 'FAILED';
+            } else {
+                $mappedStatus = 'PENDING';
+            }
+
+            if($reqStatus === 'ALL' || $reqStatus === $mappedStatus) {
+                $filteredInvoices[] = $inv;
+            }
+        }
+    }
+@endphp
+
 <div class="container-fluid">
     <h3 class="mb-4">Invoice Submissions</h3>
 
-    {{-- Status Cards --}}
+    {{-- Status Cards (Now strictly using the cleaned StatusCounts variable) --}}
     <div class="row mb-4">
         <div class="col-md-4 col-12 mb-3 mb-md-0">
-            <div class="status-card card-submitted" data-status="Submitted" id="card-submitted">
+            <div class="status-card card-submitted {{ $reqStatus === 'SUBMITTED' ? 'active' : '' }}" data-status="Submitted" id="card-submitted">
                 <div class="card-title"><i class="fas fa-check-circle me-2"></i>Submitted</div>
-                <h2 class="card-count" id="count-submitted">0</h2>
+                <h2 class="card-count" id="count-submitted">{{ $scSubmitted }}</h2>
             </div>
         </div>
         <div class="col-md-4 col-12 mb-3 mb-md-0">
-            <div class="status-card card-pending" data-status="Pending" id="card-pending">
+            <div class="status-card card-pending {{ $reqStatus === 'PENDING' ? 'active' : '' }}" data-status="Pending" id="card-pending">
                 <div class="card-title"><i class="fas fa-clock me-2"></i>Pending</div>
-                <h2 class="card-count" id="count-pending">0</h2>
+                <h2 class="card-count" id="count-pending">{{ $scPending }}</h2>
             </div>
         </div>
         <div class="col-md-4 col-12 mb-3 mb-md-0">
-            <div class="status-card card-failed" data-status="Failed" id="card-failed">
+            <div class="status-card card-failed {{ $reqStatus === 'FAILED' ? 'active' : '' }}" data-status="Failed" id="card-failed">
                 <div class="card-title"><i class="fas fa-times-circle me-2"></i>Failed</div>
-                <h2 class="card-count" id="count-failed">0</h2>
+                <h2 class="card-count" id="count-failed">{{ $scFailed }}</h2>
             </div>
         </div>
     </div>
@@ -184,8 +234,9 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @if(request()->filled('connection_integrate') && $invoices->isNotEmpty())
-                            @foreach($invoices as $inv)
+                        {{-- 🚀 Render using our strictly filtered array --}}
+                        @if(request()->filled('connection_integrate') && !empty($filteredInvoices))
+                            @foreach($filteredInvoices as $inv)
                                 <tr>
                                     <td class="text-center">
                                         <input type="checkbox" class="select-item" value="{{ $inv->id_invoice }}" data-unique-id="{{ $inv->unique_id }}">
@@ -197,7 +248,13 @@
                                     <td>{{ $inv->registration_name }}</td>
                                     @php
                                         $total = $inv->taxable_amount + $inv->tax_amount;
-                                        $status = strtoupper(trim($inv->submission_status ?: 'PENDING'));
+                                        $rawStatus = strtoupper(trim($inv->submission_status ?: 'PENDING'));
+                                        
+                                        // Standardize status for the badge display
+                                        if($rawStatus === 'SUBMITTED' || $rawStatus === 'ACCEPTED') $status = 'SUBMITTED';
+                                        elseif($rawStatus === 'FAILED' || $rawStatus === 'REJECTED' || $rawStatus === 'ERROR') $status = 'FAILED';
+                                        else $status = 'PENDING';
+
                                         $map = ['SUBMITTED'=>'primary','FAILED'=>'danger','PENDING'=>'warning'];
                                     @endphp
                                     <td class="text-nowrap">{{ number_format($total ?? 0, 2) }}</td>
@@ -228,10 +285,6 @@
     </div>
 </div>
 
-<script>
-    window.statusCounts = @json($statusCounts ?? ['Submitted' => 0, 'Pending' => 0, 'Failed' => 0]);
-</script>
-
 @endsection
 
 @section('scripts')
@@ -255,11 +308,11 @@ $(document).ready(function() {
     let forceStop = false; 
 
     // --- 1. INITIALIZE CARD COUNTS ---
-    if (window.statusCounts) {
-        $('#count-submitted').text(window.statusCounts.Submitted || 0);
-        $('#count-pending').text(window.statusCounts.Pending || 0);
-        $('#count-failed').text(window.statusCounts.Failed || 0);
-    }
+    window.statusCounts = {
+        Submitted: {{ $scSubmitted }},
+        Pending: {{ $scPending }},
+        Failed: {{ $scFailed }}
+    };
 
     // --- 2. AUTO-RESUME ON REFRESH ---
     let savedBatchId = localStorage.getItem('active_batch_id');
@@ -312,7 +365,7 @@ $(document).ready(function() {
 
     // --- 4. DATATABLE INIT ---
     var table = null;
-    @if(request()->filled('connection_integrate') && isset($invoices) && $invoices->isNotEmpty())
+    @if(request()->filled('connection_integrate') && !empty($filteredInvoices))
         table = $('#invoiceTable').DataTable({
             pageLength: 30,
             lengthMenu: [[10, 30, 50, 100, -1], [10, 30, 50, 100, "All"]],
@@ -397,37 +450,45 @@ $(document).ready(function() {
             if (forceStop || isChecking) return;
             isChecking = true;
 
+            let savedIds = JSON.parse(localStorage.getItem('active_invoice_ids') || '[]');
+
             $.post("{{ url('/api/check-batch') }}", { 
                 _token: "{{ csrf_token() }}", 
-                batch_id: batchId
+                batch_id: batchId,
+                invoice_ids: savedIds
             }).done(function(res) {
-                if (res.has_failures && res.error_message) {
-                    forceStop = true;
+                
+                // If a manual force stop occurred, break out
+                if (res.has_failures && res.error_message && forceStop) {
                     isChecking = false;
-                    
-                    $("#background-progress-banner").css('border-left', '5px solid #dc3545');
-                    $("#banner-title").removeClass('text-success text-warning').addClass('text-danger').html(`<i class="fas fa-exclamation-triangle me-2"></i> Sync Failed`);
-                    $("#progress-bar-fill").removeClass('bg-success bg-warning progress-bar-animated progress-bar-striped').addClass('bg-danger');
-                    
-                    Swal.fire({
-                        title: "LHDN Processing Error", 
-                        html: `<b>Sync halted. Error details:</b><br><br><div class="text-danger small text-start bg-light p-2 border rounded">${res.error_message}</div>`, 
-                        icon: "error",
-                        confirmButtonText: "Close & Refresh"
-                    }).then(() => {
-                        localStorage.clear();
-                        location.reload();
-                    });
                     return; 
                 }
 
                 let p = res.progress || 0;
                 $("#progress-percentage").text(p + "%");
                 $("#progress-bar-fill").css('width', p + "%");
-                $("#batches-left-text").text(res.remaining_invoices || 0);
+                $("#batches-left-text").text(res.remaining_batch || 0);
 
-                if (res.status === 'complete' || p >= 100) {
-                    handleComplete(res);
+                // 🚀 THE FIX IS RIGHT HERE: || res.is_cancelled guarantees the loop breaks!
+                if (res.status === 'complete' || res.is_cancelled || p >= 100) {
+                    
+                    $("#banner-title").removeClass('text-success').addClass('text-info').html(`<i class="fas fa-database fa-spin me-2"></i> Fetching Error Logs...`);
+                    $("#progress-text").text("Batch finished. Gathering error logs from the database...");
+                    $("#progress-bar-fill").removeClass('bg-success progress-bar-animated').addClass('bg-info').css('width', '100%');
+                    
+                    setTimeout(() => {
+                        $.post("{{ url('/api/check-batch') }}", { 
+                            _token: "{{ csrf_token() }}", 
+                            batch_id: batchId,
+                            invoice_ids: savedIds 
+                        }).done(function(finalRes) {
+                            if(!finalRes.error_message && res.error_message) finalRes.error_message = res.error_message;
+                            handleComplete(finalRes);
+                        }).fail(function() {
+                            handleComplete(res); 
+                        });
+                    }, 3500); 
+
                 } else {
                     isChecking = false;
                     setTimeout(checkProgress, 2500); 
@@ -451,7 +512,7 @@ $(document).ready(function() {
             if (!activeId) break;
 
             try {
-                await $.post("{{ url('/api/trigger-worker') }}", { _token: "{{ csrf_token() }}" });
+                await $.get("{{ url('/api/trigger-worker') }}", { _token: "{{ csrf_token() }}" });
                 await new Promise(r => setTimeout(r, 1000));
             } catch (e) {
                 await new Promise(r => setTimeout(r, 5000));
@@ -459,16 +520,17 @@ $(document).ready(function() {
         }
     }
 
+    // 🚀 FULLY UPDATED COMPLETE HANDLER (WITH SMART COUNTING)
     function handleComplete(res) {
         let hasMore = localStorage.getItem('has_more') === '1';
         let actionType = localStorage.getItem('active_action_type');
         let savedIds = JSON.parse(localStorage.getItem('active_invoice_ids') || '[]');
 
         if (hasMore && !res.has_failures && !forceStop) {
-            $("#banner-title").removeClass('text-success').addClass('text-warning').html(`<i class="fas fa-sync fa-spin me-2"></i> Auto-starting next batch...`);
+            $("#banner-title").removeClass('text-success text-info').addClass('text-warning').html(`<i class="fas fa-sync fa-spin me-2"></i> Auto-starting next batch...`);
             $("#progress-text").text("Taking a 3-second breather before continuing...");
             $("#progress-percentage").text("...");
-            $("#progress-bar-fill").css('width', '100%').removeClass('bg-success').addClass('bg-warning progress-bar-animated progress-bar-striped');
+            $("#progress-bar-fill").css('width', '100%').removeClass('bg-success bg-info').addClass('bg-warning progress-bar-animated progress-bar-striped');
 
             setTimeout(() => {
                 triggerRelay(actionType, savedIds, false);
@@ -476,8 +538,9 @@ $(document).ready(function() {
             return; 
         }
 
+        // 1. GATHER DATA METRICS
         let startTime = localStorage.getItem('batch_start_time');
-        let totalCount = localStorage.getItem('batch_total_count') || 0;
+        let totalCount = parseInt(localStorage.getItem('batch_total_count')) || 0;
         let totalRM = parseFloat(localStorage.getItem('batch_total_rm') || 0);
         let timeTaken = "Unknown";
 
@@ -486,15 +549,61 @@ $(document).ready(function() {
             timeTaken = diff > 60 ? `${Math.floor(diff/60)}m ${diff%60}s` : `${diff}s`;
         }
 
+        // 🚀 SMART COUNTING: Fail-safe to ensure counts match reality even if DB lags
+        let successCount = parseInt(res.success_count) || 0;
+        let failedCount = parseInt(res.failed_count) || 0;
+
+        if (totalCount > 0 && (successCount + failedCount) === 0) {
+            if (res.has_failures || res.is_cancelled) {
+                failedCount = totalCount;
+            } else {
+                successCount = totalCount;
+            }
+        }
+
         localStorage.clear();
         stopLiveCardUpdates();
 
+        // 2. BUILD THE UI TEMPLATE
+        let modalHtml = `
+            <div style="text-align: left; font-size: 15px; margin-top: 10px;">
+                <p style="margin: 5px 0;"><strong>Total Processed:</strong> ${totalCount}</p>
+                <p style="margin: 5px 0;"><strong>Total Amount:</strong> RM ${totalRM.toLocaleString()}</p>
+                <p style="margin: 5px 0;"><strong>Total Time:</strong> ${timeTaken}</p>
+                <hr style="margin: 10px 0; border-color: #e5e7eb;">
+                <p style="margin: 5px 0; color: #10b981;"><strong><i class="fas fa-check-circle me-1"></i> Successful:</strong> ${successCount}</p>
+                <p style="margin: 5px 0; color: #ef4444;"><strong><i class="fas fa-times-circle me-1"></i> Failed:</strong> ${failedCount}</p>
+            </div>
+        `;
+
+        // 3. ATTACH THE ERROR REMINDER BOX IF FAILURES OCCURRED
+        if (res.has_failures || failedCount > 0 || res.is_cancelled) {
+            let errorMsg = res.error_message ? res.error_message : "Invoices rejected by LHDN API. Check validation requirements.";
+            
+            modalHtml += `
+                <div style="margin-top: 15px; padding: 12px; background-color: #fee2e2; border-left: 4px solid #ef4444; border-radius: 4px; color: #991b1b; text-align: left; font-size: 13px; max-height: 250px; overflow-y: auto;">
+                    <strong>Specific Failure Reasons:</strong><br>
+                    <div style="margin-top: 8px;">${errorMsg}</div>
+                </div>
+                <p style="margin-top: 15px; font-size: 13px; color: #6b7280; text-align: left; line-height: 1.4;">
+                    <em>Reminder: The valid invoices were safely submitted. Please fix the data for the failed invoices and resubmit them.</em>
+                </p>
+            `;
+        }
+
+        // 4. FIRE THE SWEETALERT
         Swal.fire({
-            title: res.has_failures ? "Finished with Errors" : "All Invoices Synced!",
-            icon: res.has_failures ? "warning" : "success",
-            html: `<div class="text-start mt-3"><b>Total Processed:</b> ${totalCount}<br><b>Total Amount:</b> RM ${totalRM.toLocaleString()}<br><b>Total Time:</b> ${timeTaken}</div>`,
-            confirmButtonText: "Refresh Page"
-        }).then(() => location.reload());
+            icon: res.has_failures || failedCount > 0 || res.is_cancelled ? 'warning' : 'success',
+            title: res.has_failures || failedCount > 0 || res.is_cancelled ? 'Finished with Errors' : 'Sync Complete!',
+            html: modalHtml,
+            confirmButtonText: 'Refresh Page',
+            confirmButtonColor: '#6366f1',
+            allowOutsideClick: false
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.reload(); 
+            }
+        });
     }
 
     // --- 7. CORE SUBMISSION BOOTSTRAP ---
@@ -544,6 +653,7 @@ $(document).ready(function() {
 
     $("#submitSelectedBtn").on("click", () => processInvoices('submit'));
     
+    // Status Card click logic strictly tied to the dropdown value
     $('.status-card').on('click', function() {
         $('#statusFilter').val($(this).data('status'));
         $('#searchForm').submit();

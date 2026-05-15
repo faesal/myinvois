@@ -591,9 +591,8 @@ class InvoiceSubmissionController extends Controller
         ));
     }
     
-    /**
+/**
      * ROUTE 1: THE PUSHER (Optimized with 5,000 Hard Cap & Auto-Relay)
-     * This preserves your original logic of grouping sets of 100 into Macro-chunks.
      */
     public function submitSelectedInvoices(Request $request)
     {
@@ -601,12 +600,13 @@ class InvoiceSubmissionController extends Controller
 
         $rawInvoices = $request->input('invoices');
         $selectedIds = is_string($rawInvoices) ? json_decode($rawInvoices, true) : (array) $rawInvoices;
+        
         if (empty($selectedIds)) {
             return response()->json(['success' => false, 'message' => 'No invoices selected.'], 400);
         }
 
         // Filter valid invoices
-        $validIdsToSubmit = DB::table('invoice')
+        $validIdsToSubmit = \Illuminate\Support\Facades\DB::table('invoice')
             ->whereIn('id_invoice', $selectedIds)
             ->whereNotIn('submission_status', ['submitted', 'accepted'])
             ->pluck('id_invoice')
@@ -620,7 +620,6 @@ class InvoiceSubmissionController extends Controller
 
         // ====================================================================
         // 🚀 THE 5,000 SPEED LIMIT: Prevent LHDN Stampedes
-        // Slice the array so we NEVER send more than 5000 invoices per batch
         // ====================================================================
         $limit = 5000;
         $processingIds = array_slice($validIdsToSubmit, 0, $limit);
@@ -630,114 +629,234 @@ class InvoiceSubmissionController extends Controller
         $consolidateStatus = session('consolidate_status');
         $connectionIntegrate = $request->connection_integrate;
 
-        /**
-         * 🚀 CONCURRENCY STRATEGY:
-         * 1. Create Micro-chunks of 100 (LHDN limit per single API call).
-         * 2. Group those into Macro-chunks of 2 (Total 200 invoices per Job).
-         * 3. The Job will process these 2 sets concurrently via Http::pool.
-         */
-        $microChunks = array_chunk($processingIds, 100); 
-        $macroChunks = array_chunk($microChunks, 2); 
+        // Lock the invoices immediately so they show as "Processing"
+        \Illuminate\Support\Facades\DB::table('invoice')
+            ->whereIn('id_invoice', $processingIds)
+            ->update([
+                'submission_status' => 'Processing',
+                'is_processing' => 1
+            ]);
+
+        // Micro-chunks of 10 to isolate bad invoices and limit blast radius
+        $microChunks = array_chunk($processingIds, 10); 
+        $macroChunks = array_chunk($microChunks, 1); 
 
         $jobs = [];
         foreach ($macroChunks as $chunkSet) {
-            // We pass the set of micro-chunks into the Job
             $jobs[] = new \App\Jobs\SubmitInvoicesBatch($chunkSet, $consolidateStatus, $connectionIntegrate);
         }
 
-        // Dispatch as a Laravel Batch
-        $batch = Bus::batch($jobs)
+        // Dispatch as a Laravel Batch allowing failures
+        $batch = \Illuminate\Support\Facades\Bus::batch($jobs)
             ->name('Sync LHDN Concurrent - ' . now()->format('Y-m-d H:i:s'))
             ->onConnection('database')
             ->allowFailures() 
             ->dispatch();
 
-        // Dynamically build the success message
         $message = "Processing {$queuedCount} invoices... ";
         if ($leftoverCount > 0) {
             $message .= "({$leftoverCount} remaining. Will auto-continue!)";
-        } else {
-            $message .= "across " . count($macroChunks) . " concurrent jobs.";
         }
 
-        // 🚀 AUTO-RELAY RESPONSE: Tell the frontend if it needs to loop again
         return response()->json([
             'success' => true,
             'message' => $message,
             'batch_id' => $batch->id,
-            'has_more' => $leftoverCount > 0,      // Tells JS to auto-loop
+            'has_more' => $leftoverCount > 0, 
             'leftover_count' => $leftoverCount
         ], 200);
     }
 
-    /**
-     * ROUTE 2: THE TRACKER
-     * Updated to strictly use Laravel Bus Batch progress instead of DB counting.
+
+/**
+     * ROUTE 2: THE TRACKER (With Timezone-Proof Kill Switch & Exact Counting)
      */
     public function checkBatchProgress(Request $request)
     {
-        // Close session to allow parallel AJAX requests from the frontend
+        $developerId = auth()->id();
+
         if (session_id()) {
             session_write_close();
         }
 
         $batchId = $request->input('batch_id');
+        $invoiceIds = $request->input('invoice_ids', []); 
 
         if (!$batchId) {
             return response()->json(['error' => 'No batch ID provided.'], 400);
         }
 
-        $batch = Bus::findBatch($batchId);
+        $batch = \Illuminate\Support\Facades\Bus::findBatch($batchId);
 
         if (!$batch) {
-            return response()->json(['error' => 'Batch not found.'], 404);
-        }
+            if ($developerId) {
+                $query = \Illuminate\Support\Facades\DB::table('invoice')
+                    ->where('id_developer', $developerId)
+                    ->where('is_processing', 1);
+                    
+                if (!empty($invoiceIds)) {
+                    $query->whereIn('id_invoice', $invoiceIds);
+                }
 
-        // 🚀 FETCH CACHED ERROR IF EXISTS
-        $errorMsg = null;
-        if ($batch->hasFailures()) {
-            $errorMsg = \Illuminate\Support\Facades\Cache::get('batch_error_' . $batchId);
+                $query->update([
+                    'submission_status' => 'Pending',
+                    'is_failed' => 0,
+                    'is_processing' => 0,
+                    'updated_at' => now()
+                ]);
+            }
+            return response()->json([
+                'status' => 'complete', 'progress' => 100, 'is_cancelled' => true, 'has_failures' => false,
+                'error_message' => 'Batch completed or cleared from server.', 'success_count' => 0, 'failed_count' => 0
+            ]);
         }
 
         $progress = $batch->progress();
-        $isFinished = $batch->finished() || $progress >= 100;
+        $isCancelled = $batch->canceled(); 
+        $isFinished = $batch->finished() || $progress >= 100 || $isCancelled;
+        
+        $errorMessages = [];
+        $successCount = 0;
+        $failedCount = 0;
+
+        // ====================================================================
+        // 🚀 THE FIX: TIMEZONE-PROOF 2-MINUTE KILL SWITCH
+        // ====================================================================
+        if (!$isFinished) {
+            // Safely parse the timestamp and get absolute difference to bypass timezone bugs
+            $createdAt = \Carbon\Carbon::parse($batch->createdAt);
+            $elapsedSeconds = abs(now()->diffInSeconds($createdAt));
+            
+            $pendingDbJobs = \Illuminate\Support\Facades\DB::table('jobs')->count();
+            $isPhantom = ($pendingDbJobs === 0 && $batch->pendingJobs > 0);
+
+            if ($elapsedSeconds >= 120 || $isPhantom) {
+                $isFinished = true;
+                $isCancelled = true;
+                $progress = 100;
+                $batch->cancel(); 
+                $errorMessages[] = "<b>Timeout (120s)</b>: The API took too long to respond. The batch has been safely stopped.";
+            }
+        }
+
+        if ($isFinished && $developerId) {
+            
+            // THE SWEEPER: Revert stuck invoices back to Pending
+            $revertQuery = \Illuminate\Support\Facades\DB::table('invoice')
+                ->where('id_developer', $developerId)
+                ->where('is_processing', 1);
+                
+            if (!empty($invoiceIds)) {
+                $revertQuery->whereIn('id_invoice', $invoiceIds);
+            }
+
+            $revertQuery->update([
+                'submission_status' => 'Pending', 
+                'is_failed' => 0,
+                'is_processing' => 0,
+                'updated_at' => now()
+            ]);
+
+            // ====================================================================
+            // 🚀 THE FIX: EXACT COUNTING & ERROR FETCHING
+            // ====================================================================
+            if (!empty($invoiceIds)) {
+                // Get exact Success count
+                $successCount = \Illuminate\Support\Facades\DB::table('invoice')
+                    ->whereIn('id_invoice', $invoiceIds)
+                    ->whereIn('submission_status', ['SUBMITTED', 'ACCEPTED', 'VALID', 'Submitted', 'Accepted', 'Valid'])
+                    ->count();
+
+                // Get exact Failed count
+                $failedCount = \Illuminate\Support\Facades\DB::table('invoice')
+                    ->whereIn('id_invoice', $invoiceIds)
+                    ->whereIn('submission_status', ['FAILED', 'ERROR', 'REJECTED', 'Failed', 'Error', 'Rejected'])
+                    ->count();
+
+                // Fetch specific errors
+                $failedDetails = \Illuminate\Support\Facades\DB::table('invoice')
+                    ->leftJoin('message_header', 'invoice.id_invoice', '=', 'message_header.id_invoice')
+                    ->whereIn('invoice.id_invoice', $invoiceIds)
+                    ->whereIn('invoice.submission_status', ['FAILED', 'ERROR', 'REJECTED', 'Failed', 'Error', 'Rejected'])
+                    ->select('invoice.invoice_no', 'message_header.error_message')
+                    ->get()
+                    ->unique('invoice_no'); 
+
+                foreach ($failedDetails as $fail) {
+                    $invNo = $fail->invoice_no ?: 'Unknown Invoice';
+                    $msg = $fail->error_message ?: "Validation failed. Please check LHDN requirements.";
+                    $errorMessages[] = "<b>{$invNo}</b>: {$msg}"; 
+                }
+            } else {
+                // Fallback calculations
+                $successCount = \Illuminate\Support\Facades\DB::table('invoice')
+                    ->where('id_developer', $developerId)
+                    ->whereIn('submission_status', ['SUBMITTED', 'ACCEPTED', 'VALID', 'Submitted', 'Accepted', 'Valid'])
+                    ->where('updated_at', '>=', now()->subMinutes(15))->count();
+                    
+                $failedCount = \Illuminate\Support\Facades\DB::table('invoice')
+                    ->where('id_developer', $developerId)
+                    ->whereIn('submission_status', ['FAILED', 'ERROR', 'REJECTED', 'Failed', 'Error', 'Rejected'])
+                    ->where('updated_at', '>=', now()->subMinutes(15))->count();
+            }
+
+            if ($batch->hasFailures()) {
+                $cachedError = \Illuminate\Support\Facades\Cache::get('batch_error_' . $batchId);
+                if ($cachedError) $errorMessages[] = "<b>System Error</b>: " . $cachedError;
+            }
+        }
+
+        $finalErrorMessage = null;
+        if (!empty($errorMessages)) {
+            $finalErrorMessage = implode("<br><hr style='margin: 5px 0;'>", array_unique($errorMessages));
+        }
 
         return response()->json([
             'status' => $isFinished ? 'complete' : 'processing',
             'progress' => $progress, 
-            'remaining_batch' => $batch->pendingJobs, 
-            'total_batch' => $batch->totalJobs,
-            'has_failures' => $batch->hasFailures(),
-            'error_message' => $errorMsg 
+            'is_cancelled' => $isCancelled, // Breaks JS loop instantly
+            'remaining_batch' => $batch ? $batch->pendingJobs : 0, 
+            'total_batch' => $batch ? $batch->totalJobs : 0,
+            'has_failures' => ($batch && $batch->hasFailures()) || !empty($errorMessages) || $failedCount > 0,
+            'error_message' => $finalErrorMessage,
+            'success_count' => $successCount,     
+            'failed_count' => $failedCount        
         ]);
     }
 
     /**
-     * ROUTE 3: THE PINGER
-     * Optimized for shared hosting to process more per tick.
+     * ROUTE 3: THE PINGER (Optimized for Web Hosting Limits)
      */
     public function triggerWorker()
     {
-        // 🚀 THE FIX: Release the PHP session lock immediately!
-        // This allows the browser to ask for progress updates while this worker runs.
         if (session_id()) {
             session_write_close();
         }
 
+        if (\Illuminate\Support\Facades\Cache::has('lhdn_worker_running')) {
+            return response()->json(['status' => 'worker_already_active']);
+        }
+
+        // Lock for 20 seconds
+        \Illuminate\Support\Facades\Cache::put('lhdn_worker_running', true, 20);
+
         try {
-            // Increased timeout to 300 to give the concurrent HTTP requests enough time to finish
-            Artisan::call('queue:work', [
-                'database', 
+            \Illuminate\Support\Facades\Artisan::call('queue:work', [
+                'connection' => 'database', 
                 '--stop-when-empty' => true,
-                '--max-jobs' => 3, 
-                '--timeout' => 300
+                // 🚀 THE FIX: Reduced to survive PHP's hard max_execution_time limits
+                '--max-jobs' => 20, 
+                '--max-time' => 20  
             ]);
         } catch (\Exception $e) {
-            Log::error("Worker Crash: " . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error("Worker Crash: " . $e->getMessage());
+        } finally {
+            \Illuminate\Support\Facades\Cache::forget('lhdn_worker_running');
         }
 
         return response()->json(['status' => 'processed_tick']);
     }
+
 
     /**
      * ROUTE 4: THE KILL SWITCH
@@ -746,28 +865,41 @@ class InvoiceSubmissionController extends Controller
     {
         try {
             if ($request->has('batch_id') && !empty($request->input('batch_id'))) {
-                $batch = Bus::findBatch($request->input('batch_id'));
+                $batch = \Illuminate\Support\Facades\Bus::findBatch($request->input('batch_id'));
                 if ($batch) {
                     $batch->cancel();
                 }
             }
             
-            // 🚀 FIX: Replaced truncate() with delete() to prevent the 500 error on shared hosting
-            DB::table('jobs')->delete();
+            // Delete all pending jobs
+            \Illuminate\Support\Facades\DB::table('jobs')->delete();
+            
+            // 🚀 THE STOP FIX: ONLY target invoices currently stuck in 'Processing'.
+            // Leave 'Submitted', 'Failed', and 'Pending' completely alone!
+            if (auth()->id()) {
+                \Illuminate\Support\Facades\DB::table('invoice')
+                    ->where('id_developer', auth()->id())
+                    ->where('submission_status', 'Processing') // Shield 1: Only touch Processing status
+                    ->where('is_processing', 1)                // Shield 2: Only touch processing flags
+                    ->update([
+                        'submission_status' => 'Pending',      // Send only the stuck ones back to waiting line
+                        'is_failed' => 0,
+                        'is_processing' => 0,
+                    ]);
+            }
             
             return response()->json([
                 'success' => true, 
-                'message' => 'Sync stopped and queue cleared.'
+                'message' => 'Sync stopped. Unprocessed invoices have been reverted to Pending.'
             ]);
         } catch (\Exception $e) {
-            Log::error("Failed to stop worker: " . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error("Failed to stop worker: " . $e->getMessage());
             return response()->json([
                 'success' => false, 
                 'message' => 'Failed to stop worker: ' . $e->getMessage()
             ], 500);
         }
     }
-
     /**
      * Delete Invoice (Only if Pending or Failed)
      */
@@ -1112,8 +1244,12 @@ class InvoiceSubmissionController extends Controller
      * ROUTE: THE BATCH CHECKER & SWEEPER
      * Safely checks the batch and finalizes invoice statuses when 100% complete.
      */
-    public function checkBatchApi(Request $request)
+public function checkBatchApi(Request $request)
     {
+        // 🚀 FIX 1: Grab the User ID BEFORE closing the session!
+        // Using auth()->id() is safer because it won't crash if the user is somehow unauthenticated.
+        $developerId = auth()->id();
+
         // Close session to allow parallel AJAX requests from the frontend
         if (session_id()) {
             session_write_close();
@@ -1125,12 +1261,38 @@ class InvoiceSubmissionController extends Controller
             return response()->json(['error' => 'No batch ID provided.'], 400);
         }
 
-        $batch = Bus::findBatch($batchId);
+        $batch = \Illuminate\Support\Facades\Bus::findBatch($batchId);
 
+        // ====================================================================
+        // 🚀 FIX 2: NULL-SAFETY & SUCCESS SWEEPER
+        // If batch is null, it finished perfectly and Laravel pruned it.
+        // We still need to clean up the 'is_processing' flags.
+        // ====================================================================
         if (!$batch) {
-            return response()->json(['error' => 'Batch not found.'], 404);
+            if ($developerId) {
+                \Illuminate\Support\Facades\DB::table('invoice')
+                    ->where('id_developer', $developerId)
+                    ->where('is_processing', 1)
+                    ->update([
+                        'submission_status' => 'Submitted',
+                        'is_failed' => 0,
+                        'is_processing' => 0,
+                        'updated_at' => now()
+                    ]);
+            }
+
+            return response()->json([
+                'status' => 'complete',
+                'progress' => 100, 
+                'remaining_batch' => 0, 
+                'remaining_invoices' => 0, 
+                'total_batch' => 0,
+                'has_failures' => false,
+                'error_message' => null 
+            ]);
         }
 
+        // FETCH CACHED ERROR IF EXISTS
         $errorMsg = null;
         if ($batch->hasFailures()) {
             $errorMsg = \Illuminate\Support\Facades\Cache::get('batch_error_' . $batchId);
@@ -1142,12 +1304,10 @@ class InvoiceSubmissionController extends Controller
         // ====================================================================
         // 🚀 THE FINAL SWEEPER LOGIC
         // ====================================================================
-        if ($isFinished) {
-            $developerId = auth()->user()->id; // Scope to current user for safety
-
+        if ($isFinished && $developerId) {
             if ($batch->hasFailures()) {
                 // Batch failed: Force any stuck processing invoices to Failed
-                DB::table('invoice')
+                \Illuminate\Support\Facades\DB::table('invoice')
                     ->where('id_developer', $developerId)
                     ->where('is_processing', 1)
                     ->update([
@@ -1158,7 +1318,7 @@ class InvoiceSubmissionController extends Controller
                     ]);
             } else {
                 // Batch succeeded perfectly: Force any remaining processing invoices to Submitted
-                DB::table('invoice')
+                \Illuminate\Support\Facades\DB::table('invoice')
                     ->where('id_developer', $developerId)
                     ->where('is_processing', 1)
                     ->update([
@@ -1174,12 +1334,12 @@ class InvoiceSubmissionController extends Controller
             'status' => $isFinished ? 'complete' : 'processing',
             'progress' => $progress, 
             'remaining_batch' => $batch->pendingJobs, 
+            'remaining_invoices' => $batch->pendingJobs, // Added for frontend compatibility
             'total_batch' => $batch->totalJobs,
             'has_failures' => $batch->hasFailures(),
             'error_message' => $errorMsg 
         ]);
     }
-
 public function SubmitApi(Request $request)
     {
         set_time_limit(0);
@@ -1731,7 +1891,7 @@ public function SubmitApi(Request $request)
         ], 200);
     }
 
-    public function autoConsolidate(Request $request)
+ public function autoConsolidate(Request $request)
     {
         set_time_limit(0);
         ini_set('memory_limit', '-1');
@@ -1780,6 +1940,7 @@ public function SubmitApi(Request $request)
             $developerId = $candidate->id_developer;
             $connection = $candidate->connection_integrate;
             $hasMoreItems = true;
+            $createdInvoicesForCandidate = 0; // Track invoices created in this specific run
 
             while ($hasMoreItems) {
                 $itemsToProcess = null;
@@ -1809,7 +1970,8 @@ public function SubmitApi(Request $request)
 
                 if (empty($itemsToProcess)) {
                     $hasMoreItems = false;
-                    $this->checkAndFinalize($developerId, $connection);
+                    // Pass the local counter to checkAndFinalize
+                    $this->checkAndFinalize($developerId, $connection, $createdInvoicesForCandidate);
                     break;
                 }
 
@@ -1905,6 +2067,7 @@ public function SubmitApi(Request $request)
                             }
 
                             $createdInvoices++;
+                            $createdInvoicesForCandidate++; // Increment local counter
                         }
 
                         if (!empty($processedItemIds)) {
@@ -1937,7 +2100,7 @@ public function SubmitApi(Request $request)
         ]);
     }
 
-    private function checkAndFinalize($developerId, $connection) {
+    private function checkAndFinalize($developerId, $connection, $createdInvoicesForCandidate = 0) {
         $remainingCount = DB::table('consolidate_invoice_item')
             ->where('id_developer', $developerId)
             ->where(function($q) {
@@ -1949,11 +2112,11 @@ public function SubmitApi(Request $request)
             ->count();
 
         if ($remainingCount === 0) {
-            $this->finalizeConsolidation($developerId, $connection);
+            $this->finalizeConsolidation($developerId, $connection, $createdInvoicesForCandidate);
         }
     }
 
-    private function finalizeConsolidation($developerId, $connection) {
+    private function finalizeConsolidation($developerId, $connection, $createdInvoicesForCandidate = 0) {
         $supplier = DB::table('customer')
             ->where('id_developer', $developerId)
             ->where('customer_type', 'SUPPLIER')
@@ -1977,11 +2140,12 @@ public function SubmitApi(Request $request)
             $count = $todayInvoices->count();
             $amount = $todayInvoices->sum('price');
 
-            if ($setting && $setting->is_send_email == 1 && $count > 0) {
+            // Ensure we ONLY send an email if new invoices were actually created during THIS specific cron run
+            if ($setting && $setting->is_send_email == 1 && $createdInvoicesForCandidate > 0) {
                  try {
                     $emailData = [
                         'name' => $supplier->registration_name,
-                        'count' => $count,
+                        'count' => $count, // We still pass the total daily count to the email body
                         'amount' => number_format($amount, 2),
                         'date' => now()->format('d M Y')
                     ];
@@ -1992,6 +2156,8 @@ public function SubmitApi(Request $request)
                         } else {
                             Log::warning("No email found to notify supplier {$supplier->registration_name}");
                         }
+                        // --> ADD THIS LINE for your admin email
+                          $message->bcc('fjusrin@gmail.com');
                         $message->subject('Auto-Consolidation Completed');
                     });
                 } catch (\Exception $e) {

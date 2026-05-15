@@ -65,25 +65,53 @@ class CustomerController extends Controller
     {
         session(['invoice_unique_id' => $invoice_unique_id]);
         
-        // 1. Find the invoice to see which business (connection) it belongs to
-        $invoice = DB::table('invoice')
+        // 🚀 1. CHECK LOCK STATUS
+        // Look at the consolidate items. If they are gone or marked submitted, lock the page.
+        $consolidateItems = DB::table('consolidate_invoice_item')
             ->where('unique_id', $invoice_unique_id)
-            ->first();
+            ->get();
 
+        $isLocked = false;
+        
+        if ($consolidateItems->isEmpty()) {
+            // Admin already processed/moved the items manually
+            $isLocked = true;
+        } else {
+            foreach ($consolidateItems as $item) {
+                if ($item->is_sent_invoice == 1 || 
+                    strtolower($item->submission_status) === 'submitted' || 
+                    strtolower($item->submission_status) === 'consolidated') {
+                    $isLocked = true;
+                    break;
+                }
+            }
+        }
+
+        // 2. Fetch the invoice to get connection details (Checking API table first)
+        $invoice = DB::table('consolidate_invoice')->where('unique_id', $invoice_unique_id)->first();
+        if (!$invoice) {
+            $invoice = DB::table('invoice')->where('unique_id', $invoice_unique_id)->first();
+        }
+
+        // 3. Dual-Compatible Supplier Fetch (Works for POS & API)
         $supplier = null;
-
         if ($invoice) {
-            // 2. Fetch the SUPPLIER record matching the invoice's connection
-            $supplier = DB::table('customer')
-                ->where('connection_integrate', $invoice->connection_integrate)
-                ->where('customer_type', 'SUPPLIER')
-                ->first();
+            if (!empty($invoice->id_supplier)) {
+                $supplier = DB::table('customer')->where('id_customer', $invoice->id_supplier)->first();
+            }
+            if (!$supplier && !empty($invoice->connection_integrate)) {
+                $supplier = DB::table('customer')
+                    ->where('connection_integrate', $invoice->connection_integrate)
+                    ->where('customer_type', 'SUPPLIER')
+                    ->first();
+            }
         }
 
         return view('customers.create', [
             'supplier' => $supplier, 
             'invoice' => $invoice,
-            'invoice_unique_id' => $invoice_unique_id
+            'invoice_unique_id' => $invoice_unique_id,
+            'isLocked' => $isLocked
         ]);
     }
 
@@ -112,18 +140,46 @@ class CustomerController extends Controller
         $findTin = $request->input('tin_no_check');
         $invHash = $request->input('invoice_unique_id');
         
-        // 1. Find the buyer (Customer) by their TIN
+        // 🚀 1. CHECK LOCK STATUS AGAIN (Security check)
+        $consolidateItems = DB::table('consolidate_invoice_item')
+            ->where('unique_id', $invHash)
+            ->get();
+
+        $isLocked = false;
+        
+        if ($consolidateItems->isEmpty()) {
+            $isLocked = true;
+        } else {
+            foreach ($consolidateItems as $item) {
+                if ($item->is_sent_invoice == 1 || 
+                    strtolower($item->submission_status) === 'submitted' || 
+                    strtolower($item->submission_status) === 'consolidated') {
+                    $isLocked = true;
+                    break;
+                }
+            }
+        }
+
+        // 2. Find the buyer (Customer) by their TIN
         $customer = DB::table('customer')->where('tin_no', $findTin)->first();
 
-        // 2. Re-fetch Invoice and Supplier info to keep the header context
-        $invoice = DB::table('invoice')->where('unique_id', $invHash)->first();
-        $supplier = null;
+        // 3. Re-fetch Invoice and Supplier info to keep the header context
+        $invoice = DB::table('consolidate_invoice')->where('unique_id', $invHash)->first();
+        if (!$invoice) {
+            $invoice = DB::table('invoice')->where('unique_id', $invHash)->first();
+        }
 
+        $supplier = null;
         if ($invoice) {
-            $supplier = DB::table('customer')
-                ->where('connection_integrate', $invoice->connection_integrate)
-                ->where('customer_type', 'SUPPLIER')
-                ->first();
+            if (!empty($invoice->id_supplier)) {
+                $supplier = DB::table('customer')->where('id_customer', $invoice->id_supplier)->first();
+            }
+            if (!$supplier && !empty($invoice->connection_integrate)) {
+                $supplier = DB::table('customer')
+                    ->where('connection_integrate', $invoice->connection_integrate)
+                    ->where('customer_type', 'SUPPLIER')
+                    ->first();
+            }
         }
 
         return view('customers.create', [
@@ -131,7 +187,8 @@ class CustomerController extends Controller
             'supplier' => $supplier, 
             'invoice' => $invoice,
             'tin_no' => $findTin,
-            'invoice_unique_id' => $invHash
+            'invoice_unique_id' => $invHash,
+            'isLocked' => $isLocked
         ]);
     }
 
