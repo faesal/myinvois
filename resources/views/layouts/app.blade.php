@@ -191,7 +191,6 @@
                                 <li class="nav-item"><a href="{{url('debit_note/listing')}}" class="nav-link {{ request()->is('debit_note/listing') ? 'active' : '' }}">Listing Debit Note</a></li>
                                 <li class="nav-item"><a href="{{url('refund_note/listing')}}" class="nav-link {{ request()->is('refund_note/listing') ? 'active' : '' }}">Listing Refund</a></li>
                                 <li class="nav-item"><a href="{{url('select_items')}}" class="nav-link {{ request()->is('select_items') ? 'active' : '' }}">Consolidate List</a></li>
-                                <li class="nav-item"><a href="{{url('compare')}}" class="nav-link {{ request()->is('compare') ? 'active' : '' }}">Compare List</a></li>
                             </ul>
                         </li>
                     </ul>

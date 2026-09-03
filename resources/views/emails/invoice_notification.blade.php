@@ -18,7 +18,7 @@
                             <table cellpadding="0" cellspacing="0" border="0" width="100%">
                                 <tr>
                                     <td width="36" height="36" style="background-color: #0ea5e9; border-radius: 6px; text-align: center; vertical-align: middle;">
-                                        <img src="https://cdn-icons-png.flaticon.com/512/2830/2830305.png" width="20" height="20" style="display: inline-block; filter: brightness(0) invert(1); margin-top: 2px;" alt="Logo">
+                                       
                                     </td>
                                     <td style="padding-left: 15px;">
                                         <strong style="font-size: 22px; color: #0f172a; letter-spacing: -0.5px;">MySyncTax</strong>
@@ -53,9 +53,21 @@
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="border-top: 1px solid #e2e8f0; padding-top: 12px; color: #64748b; font-size: 14px;">Total Amount</td>
+                                                <td style="border-top: 1px solid #e2e8f0; padding-top: 12px; color: #64748b; font-size: 14px;">Subtotal</td>
                                                 <td align="right" style="border-top: 1px solid #e2e8f0; padding-top: 12px; color: #0ea5e9; font-size: 18px; font-weight: bold;">
                                                     RM {{ number_format($invoice->price ?? 0, 2) }}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="border-top: 1px solid #e2e8f0; padding-top: 12px; color: #64748b; font-size: 14px;">Tax</td>
+                                                <td align="right" style="border-top: 1px solid #e2e8f0; padding-top: 12px; color: #0ea5e9; font-size: 18px; font-weight: bold;">
+                                                    RM {{ number_format($invoice->tax_amount ?? 0, 2) }}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="border-top: 1px solid #e2e8f0; padding-top: 12px; color: #64748b; font-size: 14px;">Total</td>
+                                                <td align="right" style="border-top: 1px solid #e2e8f0; padding-top: 12px; color: #0ea5e9; font-size: 18px; font-weight: bold;">
+                                                    RM {{ number_format($invoice->price+$invoice->tax_amount ?? 0, 2) }}
                                                 </td>
                                             </tr>
                                         </table>

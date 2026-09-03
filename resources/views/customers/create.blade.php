@@ -405,10 +405,10 @@
                 </div>
             </div>
             <div class="text-end mt-4">
-                @if(!isset($customer)) 
-                    <button type="submit" class="btn btn-success px-5 py-2 fw-bold">Register Customer</button>
+                @if(!isset($customer)|| $customer->registration_name=='CONSOLIDATE' || request('tin_no_check')=='EI00000000020' || request('tin_no_check')=='EI00000000010') 
+                    <button onclick="return confirm('This action cannot be undo. Please check everything before proceeding.\n\nDo you want to continue?');" type="submit" class="btn btn-success px-5 py-2 fw-bold">Register Customer</button>
                 @else
-                    <a href="{{ url('/presubmit/') }}/{{$customer->id_customer}}" class="btn btn-success px-5 py-2">Next Step</a>
+                <a href="{{ url('/presubmit/') }}/{{$customer->id_customer}}" id="next-step-btn" class="btn btn-success px-5 py-2">Next Step</a>
                 @endif
             </div>
         </form>
@@ -419,20 +419,53 @@
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
     $(document).ready(function() {
+      
         
+
+
+        $('#next-step-btn').on('click', function(e) {
+        // Prevent the default link navigation
+        e.preventDefault();
+        
+        // Grab the URL from the href attribute
+        var targetUrl = $(this).attr('href');
+
+        // Launch SweetAlert2
+        Swal.fire({
+            title: 'Are you sure?',
+            text: 'This action cannot be undo. Please check everything before proceeding.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#0F172A',
+            cancelButtonColor: '#64748B',
+            confirmButtonText: 'Yes, proceed',
+            cancelButtonText: 'No, let me check',
+            allowOutsideClick: false
+        }).then((result) => {
+            // If user clicked "Yes", handle the redirection
+            if (result.isConfirmed) {
+                window.location.href = targetUrl;
+            }
+        });
+    });
+
         // 🚀 THE GATEKEEPER POPUP LOGIC
         // If the Controller says this invoice is locked, show popup and disable inputs!
         @if(isset($isLocked) && $isLocked)
-            Swal.fire({
-                icon: 'warning',
-                title: 'Action Blocked',
-                text: 'This receipt has already been processed or consolidated manually by the system. It can no longer be modified.',
-                confirmButtonColor: '#0F172A',
-                allowOutsideClick: false
-            });
+        Swal.fire({
+            icon: 'warning',
+            title: 'Action Blocked',
+            text: 'This receipt has already been processed or consolidated manually by the system. It can no longer be modified.',
+            confirmButtonColor: '#0F172A',
+            allowOutsideClick: false
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = "{{ url('/presubmit/') }}/{{$customer->id_customer}}";
+            }
+        });
 
             // Disable all forms and buttons so they can't force their way through
-            $('input, button, select').prop('disabled', true);
+            $('input,  select').prop('disabled', true);
             $('.selection-label').css({'pointer-events': 'none', 'opacity': '0.6'});
         @endif
 
@@ -476,10 +509,14 @@
 
         // --- 3. Pre-fill Data (If Customer Exists) ---
         @if(isset($customer))
+            if($('input[name="registration_name"]').val()!='CONSOLIDATE' && $('input[name="registration_name"]').val()!=''){
             $('input[name="registration_name"]').val("{{ $customer->registration_name }}").prop('readonly', true);
             $('input[name="identification_no"]').val("{{ $customer->identification_no }}").prop('readonly', true);
             $('select[name="identification_type"]').val("{{ $customer->identification_type }}").prop('disabled', true);
+                  
             $('input[name="sst_registration"]').val("{{ $customer->sst_registration }}").prop('readonly', true);
+            }
+            @if(request('tin_no_check')!='EI00000000020' && request('tin_no_check')!='EI00000000010')
             $('input[name="phone"]').val("{{ $customer->phone }}").prop('readonly', true);
             $('input[name="email"]').val("{{ $customer->email }}").prop('readonly', true);
             $('input[name="city_name"]').val("{{ $customer->city_name }}").prop('readonly', true);
@@ -489,6 +526,7 @@
             $('input[name="address_line_2"]').val("{{ $customer->address_line_2 }}").prop('readonly', true);
             $('input[name="address_line_3"]').val("{{ $customer->address_line_3 }}").prop('readonly', true);
             $('#tin_no_display').val("{{ $customer->tin_no }}");
+            @endif
         @endif
     });
 </script>

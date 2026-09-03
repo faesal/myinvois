@@ -54,7 +54,8 @@
                 <div class="col-12 col-md-4">
                     <label class="form-label fw-bold small text-muted">Invoice Type</label>
                     @if($isSelfBill)
-                        <select name="invoice_type_code" class="form-select fw-bold text-primary">
+                        {{-- UPDATED: Changed name to invoice_type --}}
+                        <select name="invoice_type" class="form-select fw-bold text-primary">
                             <option value="11" selected>11 - Self-Billed Invoice</option>
                             <option value="12">12 - Self-Billed Credit Note</option>
                             <option value="13">13 - Self-Billed Debit Note</option>
@@ -62,7 +63,8 @@
                         </select>
                     @else
                         <div class="form-control bg-light border-0">Standard Invoice</div>
-                        <input type="hidden" name="invoice_type_code" value="01">
+                        {{-- UPDATED: Changed name to invoice_type --}}
+                        <input type="hidden" name="invoice_type" value="01">
                     @endif
                 </div>
 
@@ -130,7 +132,7 @@
                         <div class="col-12 col-md-4">
                             <select name="country_subentity_code" class="form-select" disabled>
                                 <option value="">-- Select State --</option>
-                               
+                                
                                 <option value="01">Johor</option>
                                 <option value="02">Kedah</option>
                                 <option value="03">Kelantan</option>

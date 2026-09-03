@@ -24,6 +24,17 @@ class SelfBillController extends Controller
             ], 400);
         }
     
+
+        $validator = validateMyInvoisSdkFormat($payload);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Payload does not comply with LHDN MyInvois SDK standards',
+                'errors'  => $validator->errors()
+            ], 422);
+        }
+
         /*
         |--------------------------------------------------------------------------
         | TIN RULE BASED ON MODE
@@ -41,7 +52,7 @@ class SelfBillController extends Controller
 
         $identification_no = data_get($customerPayload, 'identification_no');
         $identification_type = data_get($customerPayload, 'identification_type');
-
+       
 
         if ($mode === 'normal') {
             // normal invoice → TIN ini tak dibenarkan
@@ -64,11 +75,16 @@ class SelfBillController extends Controller
 
             // SELFBILL
             if ($tin_no === 'EI00000000010') {
-                $item_clasification_code = '004';
-                if($identification_no == ''){
-                    $identification_no = 'NA';
+                $item_clasification_code = '022';
+               
+                if($identification_no==''){
+                     $identification_no = 'NA';
+                     $identification_type = 'BRN';
+                }else{
+                    
+                     $identification_type = 'BRN';
                 }
-    
+
             } elseif ($tin_no === 'EI00000000020') {
                 $item_clasification_code = '022';
     
@@ -430,6 +446,16 @@ class SelfBillController extends Controller
             ], 400);
         }
 
+        $validator = validateMyInvoisSdkFormat($payload);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Payload does not comply with LHDN MyInvois SDK standards',
+                'errors'  => $validator->errors()
+            ], 422);
+        }
+        
         
         /* =====================================================
            1. AUTHENTICATION

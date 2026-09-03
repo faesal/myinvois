@@ -41,6 +41,24 @@
         z-index: 1000;
     }
     
+    /* 🚀 Gmail-Style Select All Banner */
+    #selectAllBanner {
+        display: none;
+        background-color: #ebf5ff;
+        border: 1px solid #b6dbff;
+        color: #0369a1;
+        border-radius: 6px;
+        padding: 10px 15px;
+        margin-bottom: 15px;
+        text-align: center;
+        font-size: 0.95rem;
+    }
+    #selectAllBanner .alert-link {
+        font-weight: 600;
+        text-decoration: underline;
+        cursor: pointer;
+    }
+
     @keyframes slideDown {
         from { opacity: 0; transform: translateY(-10px); }
         to { opacity: 1; transform: translateY(0); }
@@ -62,7 +80,7 @@
     // 🚀 BLADE-LEVEL FILTERING & COUNTING
     // Fixes 1: Prevents cards dropping to 0 by using backend $statusCounts
     // Fixes 2: Catches Unrecognized/NULL statuses and maps them to 'Pending'
-    // Fixes 3: Enforces strict table filtering
+    // Fixes 3: Enforces strict table filtering (Now operating on the current pagination chunk)
     // ========================================================================
     $reqStatus = strtoupper(request('status', 'ALL'));
     
@@ -87,6 +105,7 @@
     }
 
     // 2. Strict Filter for the Table Rows
+    // OPTIMIZATION: If $invoices is paginated, this securely filters only the 50 items on the current page, avoiding memory crashes.
     $filteredInvoices = [];
     if(isset($invoices) && $invoices->isNotEmpty()) {
         foreach($invoices as $inv) {
@@ -135,7 +154,8 @@
     {{-- Filter Form --}}
     <div class="card mb-4">
         <div class="card-body">
-            <form method="POST" action="{{ route('developer.invoices.index') }}" id="searchForm">
+            {{-- OPTIMIZATION: Changed method to GET. This is mandatory so Pagination knows your active search filters --}}
+            <form method="GET" action="{{ route('developer.invoices.index') }}" id="searchForm">
                 @csrf
                 <div class="row g-3">
                     <div class="col-md-2 col-6 filter-col">
@@ -218,6 +238,14 @@
     {{-- Table Card --}}
     <div class="card">
         <div class="card-body">
+            
+            {{-- 🚀 Gmail-style Global Select Banner --}}
+            <div id="selectAllBanner">
+                <span id="selectAllText">All <strong id="pageCount">50</strong> invoices on this page are selected.</span>
+                <span id="selectAllTrigger" class="alert-link ms-2">Select all <strong id="totalCount">{{ isset($invoices) && $invoices instanceof \Illuminate\Pagination\LengthAwarePaginator ? $invoices->total() : 0 }}</strong> invoices matching this search.</span>
+                <span id="clearSelectionTrigger" class="alert-link ms-2 text-danger" style="display: none;">Clear selection</span>
+            </div>
+
             <div class="table-responsive">
                 <table id="invoiceTable" class="table table-bordered table-striped align-middle">
                     <thead>
@@ -281,6 +309,18 @@
                     </tbody>
                 </table>
             </div>
+
+            {{-- 🚀 OPTIMIZATION: Laravel Native Pagination Links --}}
+            @if(isset($invoices) && $invoices instanceof \Illuminate\Pagination\LengthAwarePaginator)
+                <div class="d-flex justify-content-between align-items-center mt-4">
+                    <div class="text-muted small">
+                        Showing {{ $invoices->firstItem() ?? 0 }} to {{ $invoices->lastItem() ?? 0 }} of {{ $invoices->total() ?? 0 }} entries
+                    </div>
+                    <div>
+                        {{ $invoices->appends(request()->query())->links('pagination::bootstrap-5') }}
+                    </div>
+                </div>
+            @endif
         </div>
     </div>
 </div>
@@ -303,6 +343,14 @@
 $(document).ready(function() {
     let invoiceTypes = @json($invoiceTypes ?? []);
     let exportRoute = "{{ route('developer.invoices.export') }}";
+    
+    // 🚀 NEW: Fetch All Route configuration
+    // IMPORTANT: Make sure this route matches the name you gave to `fetchAllMatchingIds` in web.php
+    let fetchAllIdsRoute = "{{ route('developer.invoices.fetchAllIds') }}";
+    
+    let isAllMatchingSelected = false;
+    let totalMatchingRecords = {{ isset($invoices) && $invoices instanceof \Illuminate\Pagination\LengthAwarePaginator ? $invoices->total() : 0 }};
+
     let isPinging = false; 
     let cardAjaxInterval = null;
     let forceStop = false; 
@@ -338,12 +386,26 @@ $(document).ready(function() {
             text: '<i class="fa-solid fa-square-check me-2 text-primary"></i> Export Selected',
             className: 'dropdown-item py-2 fw-semibold',
             action: function (e, dt, node, config) {
+                // If the user triggered the massive "Select All X records" banner
+                if (isAllMatchingSelected) {
+                    let url = new URL(exportRoute);
+                    url.searchParams.append('start_date', $('input[name="start_date"]').val());
+                    url.searchParams.append('end_date', $('input[name="end_date"]').val());
+                    url.searchParams.append('status', $('select[name="status"]').val());
+                    url.searchParams.append('connection_integrate', $('select[name="connection_integrate"]').val());
+                    url.searchParams.append('invoice_type', $('select[name="invoice_type"]').val());
+                    window.location.href = url.toString();
+                    return;
+                }
+                
+                // Normal page selection
                 let selected = [];
-                dt.rows({ search: 'applied' }).every(function() {
-                    let checkbox = $(this.node()).find('input.select-item');
-                    if (checkbox.prop('checked')) selected.push(checkbox.val());
+                $(".select-item:checked").each(function() {
+                    selected.push($(this).val());
                 });
+                
                 if (selected.length === 0) return Swal.fire("Oops", "Please select items to export.", "warning");
+                
                 let url = new URL(exportRoute);
                 url.searchParams.append('ids', selected.join(','));
                 window.location.href = url.toString();
@@ -358,24 +420,91 @@ $(document).ready(function() {
                 url.searchParams.append('end_date', $('input[name="end_date"]').val());
                 url.searchParams.append('status', $('select[name="status"]').val());
                 url.searchParams.append('connection_integrate', $('select[name="connection_integrate"]').val());
+                url.searchParams.append('invoice_type', $('select[name="invoice_type"]').val());
                 window.location.href = url.toString();
             }
         }
     ];
 
-    // --- 4. DATATABLE INIT ---
-    var table = null;
-    @if(request()->filled('connection_integrate') && !empty($filteredInvoices))
-        table = $('#invoiceTable').DataTable({
-            pageLength: 30,
-            lengthMenu: [[10, 30, 50, 100, -1], [10, 30, 50, 100, "All"]],
-            dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3"<"dt-buttons-container"B><"d-flex gap-2"l<"dt-search-container"f>>>rt<"d-flex flex-wrap justify-content-between mt-3"ip>',
-            buttons: [{ extend: 'collection', text: '<button class="btn btn-secondary dropdown-toggle">Export Data</button>', buttons: dropdownButtons }],
-            columnDefs: [{ orderable: false, targets: [0, 8] }]
-        });
-    @endif
+// --- 4. DATATABLE INIT ---
+var table = null;
+@if(request()->filled('connection_integrate') && !empty($filteredInvoices))
+    table = $('#invoiceTable').DataTable({
+        // Change these to false so frontend JS doesn't conflict with your Laravel backend pagination links
+        paging: false, 
+        info: false,
+        searching: false,
+        ordering: false,
+        
+        // 1. ADDED: <"custom-length-menu"> next to the buttons container
+        dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3"<"custom-length-menu"><"dt-buttons-container"B>>rt',
+        
+        buttons: [{ extend: 'collection', text: '<button class="btn btn-secondary dropdown-toggle">Export Data</button>', buttons: dropdownButtons }],
+        columnDefs: [{ orderable: false, targets: [0, 8] }],
+        
+        // 2. ADDED: Inject the custom dropdown into the layout
+        initComplete: function() {
+            $("div.custom-length-menu").html(`
+                <label class="d-flex align-items-center m-0 text-muted small fw-bold">
+                    Show 
+                    <select name="per_page" form="searchForm" class="form-select form-select-sm mx-2" style="width: 80px;" onchange="document.getElementById('searchForm').submit();">
+                        <option value="10" ${ "{{ request('per_page') }}" == "10" ? "selected" : "" }>10</option>
+                        <option value="30" ${ "{{ request('per_page') }}" == "30" ? "selected" : "" }>30</option>
+                        <option value="50" ${ "{{ request('per_page', '50') }}" == "50" ? "selected" : "" }>50</option>
+                        <option value="100" ${ "{{ request('per_page') }}" == "100" ? "selected" : "" }>100</option>
+                    </select>
+                    entries
+                </label>
+            `);
+        }
+    });
+@endif
 
-    // --- 5. EMERGENCY STOP ---
+    // --- 5. MASSIVE SELECT ALL LOGIC (Gmail Style) ---
+    $("#select-all").on("click", function() {
+        let isChecked = this.checked;
+        $(".select-item").prop('checked', isChecked);
+        
+        if (isChecked && totalMatchingRecords > $(".select-item").length) {
+            $("#pageCount").text($(".select-item").length);
+            $("#totalCount").text(totalMatchingRecords);
+            $("#selectAllBanner").slideDown();
+            
+            isAllMatchingSelected = false;
+            $("#selectAllTrigger").show();
+            $("#clearSelectionTrigger").hide();
+            $("#selectAllText").html(`All <strong>${$(".select-item").length}</strong> invoices on this page are selected.`);
+        } else {
+            $("#selectAllBanner").slideUp();
+            isAllMatchingSelected = false;
+        }
+    });
+
+    $("#selectAllTrigger").on("click", function(e) {
+        e.preventDefault();
+        isAllMatchingSelected = true;
+        $("#selectAllTrigger").hide();
+        $("#clearSelectionTrigger").show();
+        $("#selectAllText").html(`All <strong>${totalMatchingRecords}</strong> invoices matching the filters are selected.`);
+    });
+
+    $("#clearSelectionTrigger").on("click", function(e) {
+        e.preventDefault();
+        $("#select-all").prop('checked', false);
+        $(".select-item").prop('checked', false);
+        $("#selectAllBanner").slideUp();
+        isAllMatchingSelected = false;
+    });
+
+    $(".select-item").on("change", function() {
+        if (!this.checked) {
+            $("#select-all").prop('checked', false);
+            $("#selectAllBanner").slideUp();
+            isAllMatchingSelected = false;
+        }
+    });
+
+    // --- 6. EMERGENCY STOP ---
     $("#stopSyncBtn").on("click", function() {
         let activeBatchId = localStorage.getItem('active_batch_id');
         Swal.fire({
@@ -399,7 +528,7 @@ $(document).ready(function() {
         });
     });
 
-    // --- 6. AUTO-RELAY & PINGER LOGIC ---
+    // --- 7. AUTO-RELAY & PINGER LOGIC ---
     function triggerRelay(actionType, selectedIds, isFirstRun = false) {
         let url = "{{ route('developer.invoices.submitSelected') }}";
 
@@ -443,19 +572,21 @@ $(document).ready(function() {
         });
     }
 
-    function startMultiPinger(batchId, totalCount, invoiceIds) {
+function startMultiPinger(batchId, totalCount, invoiceIds) {
         let isChecking = false;
 
         function checkProgress() {
             if (forceStop || isChecking) return;
             isChecking = true;
 
+            // We still get savedIds for the final success/fail prompt counting, 
+            // but we WILL NOT send them to the server anymore.
             let savedIds = JSON.parse(localStorage.getItem('active_invoice_ids') || '[]');
 
             $.post("{{ url('/api/check-batch') }}", { 
                 _token: "{{ csrf_token() }}", 
-                batch_id: batchId,
-                invoice_ids: savedIds
+                batch_id: batchId
+                // 🚀 FIX: Removed invoice_ids: savedIds from here to prevent 413 errors
             }).done(function(res) {
                 
                 // If a manual force stop occurred, break out
@@ -469,7 +600,6 @@ $(document).ready(function() {
                 $("#progress-bar-fill").css('width', p + "%");
                 $("#batches-left-text").text(res.remaining_batch || 0);
 
-                // 🚀 THE FIX IS RIGHT HERE: || res.is_cancelled guarantees the loop breaks!
                 if (res.status === 'complete' || res.is_cancelled || p >= 100) {
                     
                     $("#banner-title").removeClass('text-success').addClass('text-info').html(`<i class="fas fa-database fa-spin me-2"></i> Fetching Error Logs...`);
@@ -479,8 +609,8 @@ $(document).ready(function() {
                     setTimeout(() => {
                         $.post("{{ url('/api/check-batch') }}", { 
                             _token: "{{ csrf_token() }}", 
-                            batch_id: batchId,
-                            invoice_ids: savedIds 
+                            batch_id: batchId
+                            // 🚀 FIX: Removed invoice_ids: savedIds from here too
                         }).done(function(finalRes) {
                             if(!finalRes.error_message && res.error_message) finalRes.error_message = res.error_message;
                             handleComplete(finalRes);
@@ -520,7 +650,6 @@ $(document).ready(function() {
         }
     }
 
-    // 🚀 FULLY UPDATED COMPLETE HANDLER (WITH SMART COUNTING)
     function handleComplete(res) {
         let hasMore = localStorage.getItem('has_more') === '1';
         let actionType = localStorage.getItem('active_action_type');
@@ -564,11 +693,10 @@ $(document).ready(function() {
         localStorage.clear();
         stopLiveCardUpdates();
 
-        // 2. BUILD THE UI TEMPLATE
         let modalHtml = `
             <div style="text-align: left; font-size: 15px; margin-top: 10px;">
                 <p style="margin: 5px 0;"><strong>Total Processed:</strong> ${totalCount}</p>
-                <p style="margin: 5px 0;"><strong>Total Amount:</strong> RM ${totalRM.toLocaleString()}</p>
+                <p style="margin: 5px 0;"><strong>Total Amount:</strong> RM ${totalRM.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                 <p style="margin: 5px 0;"><strong>Total Time:</strong> ${timeTaken}</p>
                 <hr style="margin: 10px 0; border-color: #e5e7eb;">
                 <p style="margin: 5px 0; color: #10b981;"><strong><i class="fas fa-check-circle me-1"></i> Successful:</strong> ${successCount}</p>
@@ -576,7 +704,6 @@ $(document).ready(function() {
             </div>
         `;
 
-        // 3. ATTACH THE ERROR REMINDER BOX IF FAILURES OCCURRED
         if (res.has_failures || failedCount > 0 || res.is_cancelled) {
             let errorMsg = res.error_message ? res.error_message : "Invoices rejected by LHDN API. Check validation requirements.";
             
@@ -591,7 +718,6 @@ $(document).ready(function() {
             `;
         }
 
-        // 4. FIRE THE SWEETALERT
         Swal.fire({
             icon: res.has_failures || failedCount > 0 || res.is_cancelled ? 'warning' : 'success',
             title: res.has_failures || failedCount > 0 || res.is_cancelled ? 'Finished with Errors' : 'Sync Complete!',
@@ -606,37 +732,74 @@ $(document).ready(function() {
         });
     }
 
-    // --- 7. CORE SUBMISSION BOOTSTRAP ---
+    // --- 8. CORE SUBMISSION LOGIC (SUPPORTING SELECT ALL OVERRIDE) ---
     async function processInvoices(actionType) {
-        let selected = [];
-        let totalPrice = 0;
-        let $checkboxes = (table !== null) ? table.$(".select-item:checked") : $(".select-item:checked");
         
-        $checkboxes.each(function() {
-            selected.push($(this).val());
-            let amountText = $(this).closest("tr").find("td:nth-child(6)").text().replace(/[^\d.-]/g, '');
-            totalPrice += parseFloat(amountText) || 0;
-        });
+        // 🚀 Intercept if Massive "Select All" is active
+        if (isAllMatchingSelected) {
+            Swal.fire({
+                title: 'Fetching Data...',
+                html: 'Retrieving all matching invoice records from the server...',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
 
-        if (selected.length === 0) return Swal.fire("Warning", "No invoices selected", "warning");
+            $.ajax({
+                url: fetchAllIdsRoute,
+                type: "GET",
+                data: $("#searchForm").serialize(), 
+                success: function(res) {
+                    if (res.success && res.ids.length > 0) {
+                        executeSubmitExecution(res.ids, res.total_rm, actionType);
+                    } else {
+                        Swal.fire("Notice", "No records found matching the current filters.", "info");
+                    }
+                },
+                // 🚀 UPDATE THIS ERROR BLOCK:
+                error: function(xhr, status, error) {
+                    let errMsg = xhr.responseJSON && xhr.responseJSON.message 
+                        ? xhr.responseJSON.message 
+                        : "Server timed out or crashed. Error: " + error;
+                    
+                    Swal.fire("Error", "Could not fetch data: <br><br>" + errMsg, "error");
+                }
+            });
+        } else {
+            // Normal Current-Page selection extraction
+            let selected = [];
+            let totalPrice = 0;
+            let $checkboxes = $(".select-item:checked");
+            
+            $checkboxes.each(function() {
+                selected.push($(this).val());
+                let amountText = $(this).closest("tr").find("td:nth-child(6)").text().replace(/[^\d.-]/g, '');
+                totalPrice += parseFloat(amountText) || 0;
+            });
 
+            if (selected.length === 0) return Swal.fire("Warning", "No invoices selected", "warning");
+            
+            executeSubmitExecution(selected, totalPrice, actionType);
+        }
+    }
+
+    function executeSubmitExecution(selectedIds, totalPrice, actionType) {
         Swal.fire({
             title: "Start LHDN Sync?",
-            html: `Queueing ${selected.length} invoices (RM ${totalPrice.toLocaleString()})`,
+            html: `Queueing ${selectedIds.length} invoices (RM ${totalPrice.toLocaleString(undefined, {minimumFractionDigits: 2})})`,
             showCancelButton: true,
             confirmButtonText: "Start Sync"
         }).then((res) => {
             if (!res.isConfirmed) return;
 
             localStorage.setItem('batch_start_time', Date.now());
-            localStorage.setItem('batch_total_count', selected.length);
+            localStorage.setItem('batch_total_count', selectedIds.length);
             localStorage.setItem('batch_total_rm', totalPrice);
             
-            triggerRelay(actionType, selected, true);
+            triggerRelay(actionType, selectedIds, true);
         });
     }
 
-    // --- 8. UI HELPERS ---
+    // --- 9. UI HELPERS ---
     function startLiveCardUpdates() {
         if (cardAjaxInterval) clearInterval(cardAjaxInterval);
         cardAjaxInterval = setInterval(() => {
@@ -659,13 +822,7 @@ $(document).ready(function() {
         $('#searchForm').submit();
     });
 
-    $("#select-all").on("click", function() {
-        let isChecked = this.checked;
-        if (table !== null) table.rows().nodes().to$().find(".select-item").prop('checked', isChecked);
-        else $(".select-item").prop('checked', isChecked);
-    });
-
-    // --- 9. CANCEL & DELETE FUNCTIONALITY ---
+    // --- 10. CANCEL & DELETE FUNCTIONALITY ---
     window.cancelDocument = function(uniqueId) {
         Swal.fire({
             title: "Cancel Document?",
@@ -703,15 +860,43 @@ $(document).ready(function() {
     };
 
     function handleBulkAction(url, title, text, confirmColor, btnText, useUniqueId = false) {
-        let selected = [];
-        let $checkboxes = (table !== null) ? table.$(".select-item:checked") : $(".select-item:checked");
-        
-        $checkboxes.each(function() {
-            selected.push(useUniqueId ? $(this).data('unique-id') : $(this).val());
-        });
+        // Enforce visible page restrictions for Cancel due to unique_id dependency
+        if (isAllMatchingSelected && useUniqueId) {
+            return Swal.fire("Notice", "Bulk cancelling thousands of documents requires selecting them individually on the current page to retrieve precise identifiers.", "info");
+        }
 
-        if (selected.length === 0) return Swal.fire("Warning", "No invoices selected.", "warning");
+        if (isAllMatchingSelected && !useUniqueId) {
+            Swal.fire({
+                title: 'Fetching Data...',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
 
+            $.ajax({
+                url: fetchAllIdsRoute,
+                type: "GET",
+                data: $("#searchForm").serialize(), 
+                success: function(res) {
+                    if (res.success && res.ids.length > 0) {
+                        executeBulkActionExecution(res.ids, url, title, text, confirmColor, btnText);
+                    } else {
+                        Swal.fire("Notice", "No records found.", "info");
+                    }
+                }
+            });
+        } else {
+            let selected = [];
+            $(".select-item:checked").each(function() {
+                selected.push(useUniqueId ? $(this).data('unique-id') : $(this).val());
+            });
+
+            if (selected.length === 0) return Swal.fire("Warning", "No invoices selected.", "warning");
+            
+            executeBulkActionExecution(selected, url, title, text, confirmColor, btnText);
+        }
+    }
+
+    function executeBulkActionExecution(selected, url, title, text, confirmColor, btnText) {
         Swal.fire({
             title: title,
             text: text.replace(':count', selected.length),

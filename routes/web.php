@@ -225,7 +225,7 @@ Route::middleware('auth')->group(function () {
 
         Route::any('select_items', [InvoiceController::class, 'selectItems'])->name('consolidate.select');
 
-        Route::delete('/consolidate/item/delete/{id}', [InvoiceController::class, 'deleteConsolidateItem'])->name('consolidate.item.delete');
+        Route::get('/consolidate/item/delete/{id}', [InvoiceController::class, 'deleteConsolidateItem'])->name('consolidate.item.delete');
 
         Route::post('/invoice/submit-selected-lhdn', [InvoiceController::class, 'submitSubscriberInvoices']) ->name('invoices.submitSelected');
         // The background progress trackers
@@ -348,6 +348,8 @@ Route::any('/public_customer', [CustomerController::class, 'public_create']);
 // Developer Authentication (register)
 
 // Public routes
+
+Route::get('/developer/invoices/fetch-all-ids', [InvoiceSubmissionController::class, 'fetchAllMatchingIds'])->name('developer.invoices.fetchAllIds');
 
 Route::get('/developer/register', [DeveloperController::class, 'showRegistrationForm'])->name('developer.register');
 
@@ -672,6 +674,12 @@ Route::post('/bulk-resubmit', [InvoiceController::class, 'bulkResubmit'])->name(
 Route::any('/syncFromNlbh', [InvoiceController::class, 'syncFromNlbh']);
 
 Route::any('/syncFromPOS', [InvoiceController::class, 'syncFromPOS']);
+
+Route::any('/syncAllConsolidateFromPOS', [InvoiceController::class, 'syncAllConsolidateFromPOS']);
+
+Route::any('/syncAllConso', [InvoiceController::class, 'syncAllConso']);
+
+
 
 Route::any('/presubmit/{id}', [InvoiceController::class, 'presubmit']);
 

@@ -44,37 +44,40 @@ class AppServiceProvider extends ServiceProvider
         // 2. ADDED FIX FOR MySQL "1071 Specified key was too long" ERROR
         Schema::defaultStringLength(191); 
 
-        try{
-            Cache::rememberForever('setting', function(){
-                $setting_data = GlobalSetting::get();
+        try {
+            
+            // 🚀 THE FIX: Only run this if we are NOT running an artisan command (like migrate) 
+            // or if the table already successfully exists.
+            if (!app()->runningInConsole() || Schema::hasTable('global_settings')) {
+                
+                Cache::rememberForever('setting', function(){
+                    $setting_data = GlobalSetting::get();
 
-                $setting = array();
+                    $setting = array();
 
-                foreach($setting_data as $data_item){
-                    $setting[$data_item->key] = $data_item->value;
-                }
+                    foreach($setting_data as $data_item){
+                        $setting[$data_item->key] = $data_item->value;
+                    }
 
-                $setting = (object) $setting;
+                    $setting = (object) $setting;
 
-                return $setting;
-            });
+                    return $setting;
+                });
 
+                View::composer('*', function($view){
+                    // Original logic remains untouched
+                });
+                
+            }
 
-            View::composer('*', function($view){
-
-               
-
-               
-
-            });
-
-        }catch(Exception $ex){
+        } catch(Exception $ex) {
             Log::info('AppServiceProvider : '. $ex->getMessage());
 
-            Artisan::call('optimize:clear');
+            // 🚀 SAFETY NET: Prevent infinite loops if an artisan command fails
+            if (!app()->runningInConsole()) {
+                Artisan::call('optimize:clear');
+            }
         }
-
-
 
     }
 }

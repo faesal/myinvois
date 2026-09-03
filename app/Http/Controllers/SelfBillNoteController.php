@@ -83,10 +83,16 @@ class SelfBillNoteController extends Controller
         ]);
     }
 
-    public function create(Request $request)
+ public function create(Request $request)
     {
         $info = $this->getNoteTypeInfo();
-        $query = DB::table('invoice')->where('invoice_type_code', '11');
+        
+        // UPDATE: Replace hardcoded '11' with dynamic input from the request.
+        // This ensures if the dropdown changes and passes a parameter, it queries the correct type.
+        // It defaults to '11' if no type is explicitly passed.
+        $typeCode = $request->input('invoice_type', '11'); 
+        
+        $query = DB::table('invoice')->where('invoice_type_code', $typeCode);
 
         if (auth()->user()->role !== 'admin') {
             $query->where('connection_integrate', session('connection_integrate'));

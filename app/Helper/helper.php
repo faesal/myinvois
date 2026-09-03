@@ -6,6 +6,71 @@ use App\Models\OfferProduct;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 use Modules\SmsSetting\App\Models\SmsSetting;
+use Illuminate\Support\Facades\Validator;
+
+if (!function_exists('validateMyInvoisSdkFormat')) {
+    /**
+     * Validate payload fields against LHDN MyInvois SDK format rules (Enforced from 15 August 2026).
+     *
+     * @param array $payload
+     * @return \Illuminate\Contracts\Validation\Validator
+     */
+    function validateMyInvoisSdkFormat(array $payload)
+    {
+        $rules = [
+            // 1. Supplier's Business Activity Description (Max 300 chars)
+            'supplier.business_activity_description' => 'nullable|string|max:300',
+
+            // 2. e-Invoice Code / Number (Max 50 chars)
+            'invoice_no'                             => 'required|string|max:50',
+
+            // 3. e-Invoice Date (Format: YYYY-MM-DD)
+            'issue_date'                             => 'nullable|date_format:Y-m-d',
+
+            // 4. Frequency of Billing (Max 50 chars)
+            'billing_frequency'                      => 'nullable|string|max:50',
+
+            // 6. Supplier's Bank Account Number (Max 150 chars)
+            'supplier.bank_account_number'           => 'nullable|string|max:150',
+
+            // 7. Payment Terms (Max 300 chars)
+            'payment_terms'                          => 'nullable|string|max:300',
+
+            // 8. Prepayment Reference Number (Max 150 chars)
+            'prepayment_reference_number'            => 'nullable|string|max:150',
+
+            // 9. Incoterms (Max 3 chars)
+            'incoterms'                              => 'nullable|string|max:3',
+
+            // 10. Authorisation Number for Certified Exporter (Max 300 chars)
+            'certified_exporter_authorisation_number' => 'nullable|string|max:300',
+
+            // =========================================================
+            // LINE ITEMS VALIDATION
+            // =========================================================
+            'items'                                  => 'required|array|min:1',
+
+            // 5. Unit of Measurement / UoM (Valid UN/ECE code format)
+            'items.*.uom'                            => 'nullable|string|max:10',
+            'items.*.item_description'               => 'required|string|max:300',
+        ];
+
+        $messages = [
+            'supplier.business_activity_description.max'  => 'Supplier\'s Business Activity Description must not exceed 300 characters.',
+            'invoice_no.max'                              => 'e-Invoice Code / Number must not exceed 50 characters.',
+            'issue_date.date_format'                      => 'e-Invoice Date must follow the format YYYY-MM-DD (e.g., 2026-07-01).',
+            'billing_frequency.max'                       => 'Frequency of Billing must not exceed 50 characters.',
+            'supplier.bank_account_number.max'            => 'Supplier\'s Bank Account Number must not exceed 150 characters.',
+            'payment_terms.max'                           => 'Payment Terms must not exceed 300 characters.',
+            'prepayment_reference_number.max'             => 'Prepayment Reference Number must not exceed 150 characters.',
+            'incoterms.max'                               => 'Incoterms must not exceed 3 characters.',
+            'certified_exporter_authorisation_number.max' => 'Authorisation Number for Certified Exporter must not exceed 300 characters.',
+            'items.*.uom.max'                             => 'Unit of Measurement (UoM) code must follow valid standard format.',
+        ];
+
+        return Validator::make($payload, $rules, $messages);
+    }
+}
 
 function admin_lang(){
     return 'en';

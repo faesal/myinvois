@@ -34,18 +34,20 @@ Route::post('/invoice/send-email', [InvoiceController2::class, 'sendInvoiceEmail
 
 
 
-// --- TESTING INVOICES ---
 Route::get('/generate-test-invoices', function () {
     // =========================================================
     // 1. SERVER PROTECTION: Prevent Timeouts and Memory Crashes
     // =========================================================
     set_time_limit(0); // Tell PHP not to time out
-    ini_set('memory_limit', '1024M'); // Temporarily allow more RAM
-    DB::disableQueryLog(); // CRITICAL: Stops Laravel from saving 10k queries to RAM
+    ini_set('memory_limit', '2048M'); // Increased to 2GB for 100k scale
+    DB::disableQueryLog(); // CRITICAL: Stops Laravel from saving queries to RAM
 
-    $now = now();
-    $totalInvoices = 10;
-    $batchSize = 500; // Process 500 at a time to keep memory totally clean
+    // OPTIMIZATION: Use a plain string instead of a Carbon object. 
+    // This saves Laravel from formatting the date 400,000 times.
+    $nowString = now()->toDateTimeString(); 
+    
+    $totalInvoices = 50000;
+    $batchSize = 1000; // Process 1,000 invoices + 3,000 items at a time
 
     // Clear out old test data
     DB::table('invoice_item')->where('item_description', 'like', 'Test Token%')->delete();
@@ -56,16 +58,23 @@ Route::get('/generate-test-invoices', function () {
     // =========================================================
     $totalBatches = ceil($totalInvoices / $batchSize);
 
+    // OPTIMIZATION: Define this OUTSIDE the loop so PHP doesn't 
+    // re-allocate this array 100,000 times in memory.
+    $itemMath = [
+        ['price' => 600.00, 'discount' => 3.33, 'taxable' => 596.67, 'tax' => 59.67],
+        ['price' => 600.00, 'discount' => 3.33, 'taxable' => 596.67, 'tax' => 59.67],
+        ['price' => 618.18, 'discount' => 3.34, 'taxable' => 614.84, 'tax' => 62.48],
+    ];
+
     for ($batch = 0; $batch < $totalBatches; $batch++) {
-        $itemsToInsert = []; // Reset this array every 500 invoices to free up RAM
+        $itemsToInsert = []; 
         
-        // Wrap the batch in a transaction. This stops the DB from writing to the 
-        // physical hard drive until all 500 are ready, making it incredibly fast.
+        // Wrap the batch in a transaction. 
         DB::beginTransaction(); 
 
         try {
             for ($i = 1; $i <= $batchSize; $i++) {
-                $currentNumber = ($batch * $batchSize) + $i; // Keeps track from 1 to 10,000
+                $currentNumber = ($batch * $batchSize) + $i; 
                 
                 if ($currentNumber > $totalInvoices) break; // Safety catch
 
@@ -85,7 +94,7 @@ Route::get('/generate-test-invoices', function () {
                     'is_processing' => 0,
                     'invoice_no' => 'INV-TEST-V' . $currentNumber,
                     'invoice_type_code' => '01',
-                    'issue_date' => $now,
+                    'issue_date' => $nowString,
                     'price' => '1818.18',
                     'total_price_discount' => '10.00',
                     'taxable_amount' => '1808.18',
@@ -93,19 +102,13 @@ Route::get('/generate-test-invoices', function () {
                     'tax_category_id' => '01',
                     'tax_scheme_id' => 'OTH',
                     'include_signature' => 0,
-                    'created_at' => $now,
-                    'updated_at' => $now,
+                    'created_at' => $nowString,
+                    'updated_at' => $nowString,
                     'is_failed' => 0,
                     'is_deleted' => 0,
                 ]);
 
                 // Prepare 3 Items for this Invoice
-                $itemMath = [
-                    ['price' => 600.00, 'discount' => 3.33, 'taxable' => 596.67, 'tax' => 59.67],
-                    ['price' => 600.00, 'discount' => 3.33, 'taxable' => 596.67, 'tax' => 59.67],
-                    ['price' => 618.18, 'discount' => 3.34, 'taxable' => 614.84, 'tax' => 62.48],
-                ];
-
                 foreach ($itemMath as $index => $math) {
                     $itemsToInsert[] = [
                         'id_developer' => 9,
@@ -124,29 +127,33 @@ Route::get('/generate-test-invoices', function () {
                         'price_extension_amount' => $math['taxable'],
                         'tax' => $math['tax'],
                         'item_clasification_value' => '022',
-                        'created_at' => $now,
-                        'updated_at' => $now,
+                        'created_at' => $nowString,
+                        'updated_at' => $nowString,
                     ];
                 }
             }
 
-            // Bulk insert the 1,500 items for this batch
-            foreach (array_chunk($itemsToInsert, 20) as $chunk) {
+            // OPTIMIZATION: Bulk insert the 3,000 items in safe chunks of 1000 
+            // to avoid MySQL's 65,535 placeholder limits per query.
+            foreach (array_chunk($itemsToInsert, 1000) as $chunk) {
                 DB::table('invoice_item')->insert($chunk);
             }
 
-            DB::commit(); // Lock in the 500 invoices + 1500 items to the database
+            DB::commit(); // Lock in the 1,000 invoices + 3,000 items to the database
 
         } catch (\Exception $e) {
             DB::rollBack(); // If anything fails, undo this batch
             return response()->json(['success' => false, 'message' => 'Failed at invoice #'.$currentNumber.': ' . $e->getMessage()], 500);
         }
+
+        // OPTIMIZATION: Explicitly free RAM after every batch
+        unset($itemsToInsert); 
     }
 
     // Re-enable query logging just in case other parts of your app need it later in the lifecycle
     DB::enableQueryLog();
 
-    return response()->json(['success' => true, 'message' => '10,000 Test Invoices (and 30,000 items) successfully generated!']);
+    return response()->json(['success' => true, 'message' => '100,000 Test Invoices (and 300,000 items) successfully generated!']);
 });
 // --- TESTING REAL LHDN API REJECTIONS ---
 Route::get('/generate-lhdn-rejects', function () {

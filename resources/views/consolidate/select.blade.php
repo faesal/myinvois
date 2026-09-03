@@ -51,7 +51,21 @@ $(document).ready(function () {
         paging: true,
         searching: true,
         ordering: true,
-        pageLength: 30
+        pageLength: 30,
+        initComplete: function() {
+            $("div.custom-length-menu").html(`
+                <label class="d-flex align-items-center m-0 text-muted small fw-bold">
+                    Show 
+                    <select name="per_page" form="searchForm" class="form-select form-select-sm mx-2" style="width: 80px;" onchange="document.getElementById('searchForm').submit();">
+                        <option value="10" ${ "" == "10" ? "selected" : "" }>10</option>
+                        <option value="30" ${ "" == "30" ? "selected" : "" }>30</option>
+                        <option value="50" ${ "50" == "50" ? "selected" : "" }>50</option>
+                        <option value="100" ${ "" == "100" ? "selected" : "" }>100</option>
+                    </select>
+                    entries
+                </label>
+            `);
+        }
     });
 
     // 2. Check All Logic
@@ -144,10 +158,10 @@ $(document).ready(function () {
             if (result.isConfirmed) {
                 $.ajax({
                     url: "{{ url('/consolidate/item/delete') }}/" + id,
-                    type: 'POST',
+                    type: 'GET',
                     data: {
                         _token: '{{ csrf_token() }}',
-                        _method: 'DELETE'
+                        _method: 'GET'
                     },
                     success: function (response) {
                         Swal.fire('Deleted!', 'Item removed.', 'success');
@@ -231,9 +245,9 @@ $(document).ready(function () {
                                     <td>{{ $item->invoiced_quantity }}</td>
                                     <td>{{ number_format($item->line_extension_amount, 2) }}</td>
                                     <td>{{ $item->connection_integrate }}</td>
-                                    <td>{{ \Carbon\Carbon::parse($item->issue_date)->format('d/m/Y') }}</td>
+                                    <td>{{ \Carbon\Carbon::parse($item->issue_date)->format('d/m/Y H:i:s') }}</td>
                                     <td>
-                                        <button type="button" class="btn btn-danger btn-sm delete-item" data-id="{{ $item->id_invoice_item }}" title="Delete">
+                                        <button type="button" class="btn btn-danger btn-sm delete-item" data-id="{{ $item->unique_id }}" title="Delete">
                                             🗑️
                                         </button>
                                     </td>

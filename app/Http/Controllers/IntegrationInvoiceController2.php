@@ -18,6 +18,17 @@ class IntegrationInvoiceController2 extends Controller
         $payload = json_decode($request->getContent(), true);
         $tin = data_get($payload, 'customer.tin_no');
 
+
+        $validator = validateMyInvoisSdkFormat($payload);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Payload does not comply with LHDN MyInvois SDK standards',
+                'errors'  => $validator->errors()
+            ], 422);
+        }
+
         $blockedTin = [
             'EI00000000010',
             'EI00000000020',
@@ -66,6 +77,16 @@ class IntegrationInvoiceController2 extends Controller
     public function invoice_general_note(Request $request)
     {
         $payload = json_decode($request->getContent(), true);
+        $validator = validateMyInvoisSdkFormat($payload);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Payload does not comply with LHDN MyInvois SDK standards',
+                'errors'  => $validator->errors()
+            ], 422);
+        }
+
         $model = new eInvoisModel();
         $result = $model->processNote($payload, "general");
     
@@ -75,6 +96,16 @@ class IntegrationInvoiceController2 extends Controller
     public function invoice_general_selfbill(Request $request)
     {
         $payload = json_decode($request->getContent(), true);
+        $validator = validateMyInvoisSdkFormat($payload);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Payload does not comply with LHDN MyInvois SDK standards',
+                'errors'  => $validator->errors()
+            ], 422);
+        }
+
         $model = new eInvoisModel();
         $result = $model->processNote($payload, "selfbill");
     
@@ -85,6 +116,16 @@ class IntegrationInvoiceController2 extends Controller
     public function note(Request $request)
     {
         $payload = json_decode($request->getContent(), true);
+        $validator = validateMyInvoisSdkFormat($payload);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Payload does not comply with LHDN MyInvois SDK standards',
+                'errors'  => $validator->errors()
+            ], 422);
+        }
+
         $model = new eInvoisModel();
         return $model->processNote($payload, 'normal');
     }
@@ -92,6 +133,16 @@ class IntegrationInvoiceController2 extends Controller
     public function selfBillNote(Request $request)
     {
         $payload = json_decode($request->getContent(), true);
+        $validator = validateMyInvoisSdkFormat($payload);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Payload does not comply with LHDN MyInvois SDK standards',
+                'errors'  => $validator->errors()
+            ], 422);
+        }
+
         $model = new eInvoisModel();
         return $model->processNote($payload, 'selfbill');
     }
@@ -99,6 +150,15 @@ class IntegrationInvoiceController2 extends Controller
     public function generalselfBillNote(Request $request)
     {
         $payload = json_decode($request->getContent(), true);
+        $validator = validateMyInvoisSdkFormat($payload);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Payload does not comply with LHDN MyInvois SDK standards',
+                'errors'  => $validator->errors()
+            ], 422);
+        }
         $model = new eInvoisModel();
         return $model->processNote($payload, 'selfbill_general');
     }

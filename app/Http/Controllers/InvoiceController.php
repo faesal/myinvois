@@ -792,26 +792,31 @@ public function test4()
         }
     }
 
-    public function create()
+ public function create(Request $request)
     {
-        if (auth()->user()->role === 'admin') {
-            $customers = DB::table('customer')
-                ->whereNull('deleted')
-                ->where('customer_type', 'CUSTOMER')
-                ->orderBy('id_customer', 'desc')
-                ->get();
-        } else {
-            $customers = DB::table('customer')
-                ->whereNull('deleted')
-                ->where('customer_type', 'CUSTOMER')
-                ->where('connection_integrate', session('connection_integrate'))
-                ->orderBy('id_customer', 'desc')
-                ->get();
+        // 1. Cleaner query logic matching your Note controller style
+        $query = DB::table('customer')
+            ->whereNull('deleted')
+            ->where('customer_type', 'CUSTOMER')
+            ->orderBy('id_customer', 'desc');
+
+        if (auth()->user()->role !== 'admin') {
+            $query->where('connection_integrate', session('connection_integrate'));
         }
-        return view('invoices.create', compact('customers'));
+        
+        $customers = $query->get();
+
+        // 2. Dynamically determine the invoice_type to pass to the view
+        $invoiceType = $request->input('invoice_type');
+        if (!$invoiceType) {
+            $invoiceType = ($request->input('is_self_bill') == '1' || $request->query('type') === 'self_bill') ? '11' : '01';
+        }
+
+        // Pass the dynamically detected type to the view
+        return view('invoices.create', compact('customers', 'invoiceType'));
     }
 
-public function store_create(Request $request)
+    public function store_create(Request $request)
     {
         // 1. Retrieve connection and supplier info from Session (Dynamic)
         $connection_integrate = session('connection_integrate');
@@ -824,8 +829,17 @@ public function store_create(Request $request)
             ], 401);
         }
 
-        // 2. Detect Invoice Type
+        // 2. Detect Invoice Type (Prioritizing form input)
         $invoiceType = $request->input('invoice_type');
+        
+        // Safety net: If form failed to send 'invoice_type' but sent 'note_type' instead
+        if (!$invoiceType && $request->has('note_type')) {
+            $noteCodes = ['credit' => '12', 'debit' => '13', 'refund' => '14'];
+            $noteKey = str_replace('_note', '', $request->input('note_type'));
+            $invoiceType = $noteCodes[$noteKey] ?? null;
+        }
+
+        // Final fallback logic
         if (!$invoiceType) {
             $invoiceType = ($request->input('is_self_bill') == '1' || $request->query('type') === 'self_bill') ? '11' : '01';
         }
@@ -856,14 +870,13 @@ public function store_create(Request $request)
                     'updated_at'             => now(),
                 ]);
             } else {
+                // Now safely handles 11, 12, 13, and 14 dynamically
                 $customer_id = ($invoiceType === '11' || in_array($invoiceType, ['12', '13', '14'])) 
-                               ? $request->id_supplier 
-                               : $request->customer_id;
+                                ? $request->id_supplier 
+                                : $request->customer_id;
             }
 
             // --- Step 2: Create Invoice Header ---
-            
-            // Combine Input Date with Current Time to avoid 00:00:00
             if ($request->filled('issue_date')) {
                 $issueDate = \Carbon\Carbon::parse($request->issue_date . ' ' . now()->format('H:i:s'));
             } else {
@@ -875,7 +888,7 @@ public function store_create(Request $request)
                 'connection_integrate' => $connection_integrate,
                 'id_customer'          => $customer_id,
                 'id_supplier'          => $id_supplier,
-                'invoice_type_code'    => $invoiceType, 
+                'invoice_type_code'    => $invoiceType, // This will now correctly save as 12
                 'tax_category_id'      => '01', 
                 'tax_scheme_id'        => 'OTH',
                 'issue_date'           => $issueDate,
@@ -885,7 +898,6 @@ public function store_create(Request $request)
                 'unique_id'            => $uniqueId,
                 'invoice_status'       => 'Manual', 
                 'submission_status'    => 'Pending',
-                // Init totals to 0
                 'price'                => 0,
                 'tax_amount'           => 0,
                 'taxable_amount'       => 0,
@@ -893,23 +905,18 @@ public function store_create(Request $request)
             ]);
 
             // --- Step 3: Process Items ---
-            $totalLineExtension = 0; // Gross accumulator
-            $totalNet           = 0; // Net accumulator
-            $totalTaxAmount     = 0; // Tax accumulator
-            $totalPriceDiscount = 0; // Discount accumulator
+            $totalLineExtension = 0; 
+            $totalNet           = 0; 
+            $totalTaxAmount     = 0; 
+            $totalPriceDiscount = 0; 
 
             foreach ($request->items as $item) {
                 $qty = floatval($item['qty']);
                 $unitPrice = floatval($item['unit_price']);
                 $discount = floatval($item['discount'] ?? 0); 
-                
-            
                 $taxAmount = floatval($item['tax_amount'] ?? 0);
                 
-                // 1. Gross Amount (Qty * Unit Price)
                 $lineExtension = round($qty * $unitPrice, 2);
-
-                // 2. Net Amount (Gross - Discount)
                 $netAmount = $lineExtension - $discount;
 
                 DB::table('invoice_item')->insert([
@@ -921,15 +928,9 @@ public function store_create(Request $request)
                     'invoiced_quantity'        => $qty,
                     'price_amount'             => number_format($unitPrice, 2, '.', ''),
                     'price_discount'           => number_format($discount, 2, '.', ''), 
-                    
-                    // Save the exact RM amount to the tax column
                     'tax'                      => number_format($taxAmount, 2, '.', ''),
-                    
-                    // --- MAPPINGS ---
-                    'line_extension_amount'    => number_format($lineExtension, 2, '.', ''), // Gross
-                    'price_extension_amount'   => number_format($netAmount, 2, '.', ''),     // Net
-                    // ----------------
-
+                    'line_extension_amount'    => number_format($lineExtension, 2, '.', ''), 
+                    'price_extension_amount'   => number_format($netAmount, 2, '.', ''),    
                     'created_at'               => now(),
                     'updated_at'               => now(),
                     'item_clasification_value' => '022'
@@ -942,13 +943,12 @@ public function store_create(Request $request)
             }
 
             // --- Step 4: Final Totals Update ---
-            // Payable = Total Net + Total Tax
             $payableAmount = $totalNet + $totalTaxAmount;
 
             DB::table('invoice')->where('id_invoice', $invoiceId)->update([
-                'price'                => number_format($payableAmount, 2, '.', ''), // Final Payable
+                'price'                => number_format($payableAmount, 2, '.', ''), 
                 'tax_amount'           => number_format($totalTaxAmount, 2, '.', ''),
-                'taxable_amount'       => number_format($totalNet, 2, '.', ''),      // Total Net
+                'taxable_amount'       => number_format($totalNet, 2, '.', ''),      
                 'total_price_discount' => number_format($totalPriceDiscount, 2, '.', ''), 
                 'updated_at'           => now()
             ]);
@@ -1847,6 +1847,364 @@ public function show_invoice($unique_id)
         
         return view('invoices.submission', compact('invoices'));
     }
+
+    public function syncAllConsolidateFromPOS()
+    {
+        // 1. Ambil senarai semua POS dari .env dan tukar jadi array
+        $connectionsString = env('INTEGRATE_POS_CONNECTIONS');
+        
+        if (!$connectionsString) {
+            return response()->json(['error' => 'No POS connections defined in .env'], 400);
+        }
+
+        $connections = explode(',', $connectionsString); 
+        
+        // Define range masa untuk hari ini (00:00:00 hingga 23:59:59)
+        $startOfDay = now()->startOfDay()->toDateTimeString();
+        $endOfDay = now()->endOfDay()->toDateTimeString();
+        
+        $summary = []; 
+
+        // 2. Mula looping untuk setiap satu POS connection
+        foreach ($connections as $pos) {
+            $pos = trim($pos); 
+            
+            if (empty($pos)) {
+                continue;
+            }
+
+            // *** JALAN PENYELESAIAN UTAMA ***
+            // Putuskan dan padam cache connection 'dynamic_pos' lama sebelum set kedai baru
+            DB::disconnect('dynamic_pos');
+            Config::set("database.connections.dynamic_pos", null);
+
+            // Setup dynamic connection baru ke DB POS terbabit secara runtime
+            $connectionKey = strtoupper($pos);
+            $config = [
+                'driver' => 'mysql',
+                'host' => env("DB_{$connectionKey}_HOST"),
+                'database' => env("DB_{$connectionKey}_DATABASE"),
+                'username' => env("DB_{$connectionKey}_USERNAME"),
+                'password' => env("DB_{$connectionKey}_PASSWORD"),
+                'charset' => 'utf8mb4',
+                'collation' => 'utf8mb4_unicode_ci',
+                'prefix' => '',
+                'strict' => false,
+            ];
+            
+            Config::set("database.connections.dynamic_pos", $config);
+
+            // Dapatkan supplier ID dari table customer tempatan bagi POS ini
+            $id_supplier = DB::table('customer')
+                ->where('connection_integrate', $pos)
+                ->value('id_customer');
+
+            if (!$id_supplier) {
+                $summary[$pos] = 'Failed (Supplier not found in local customer table)';
+                continue; 
+            }
+
+            try {
+                // 3. Tarik semua jualan dari DB POS semasa untuk hari ini
+                $sales = DB::connection('dynamic_pos')
+                    ->table('phppos_sales')
+                    ->where('deleted',0)
+                    ->whereBetween('sale_time', [$startOfDay, $endOfDay])
+                    ->get();
+
+                if ($sales->isEmpty()) {
+                    $summary[$pos] = 'Success (0 sales found for today)';
+                    continue; 
+                }
+
+                // Ambil semua kumpulan sale_id untuk ditarik itemnya sekali gus
+                $saleIds = $sales->pluck('sale_id')->toArray();
+
+                // 4. Tarik semua items untuk sales hari ini dan group mengikut sale_id
+                $allSubItems = DB::connection('dynamic_pos')
+                    ->table('phppos_sales_items as si')
+                    ->join('phppos_items as i', 'si.item_id', '=', 'i.item_id')
+                    ->whereIn('si.sale_id', $saleIds)
+                    ->select('si.*', 'i.name as item_name')
+                    ->get()
+                    ->groupBy('sale_id');
+
+                // Mula transaksi database local
+                DB::beginTransaction();
+                $syncedCount = 0;
+
+               
+                foreach ($sales as $sale) {
+                    
+                    if($pos=='sass'){
+                        $pos=$pos."-". $sale->location_id;
+                    }
+
+                    // 5. SEMAK DUPLICATE: Guna kombinasi 'sale_id_integrate' DAN 'connection_integrate'
+                    $exists = DB::table('consolidate_invoice')
+                        ->where('sale_id_integrate', $sale->sale_id)
+                        ->where('connection_integrate', $pos)
+                        ->exists();
+
+                    if ($exists) {
+                        continue; 
+                    }
+
+
+                   
+
+                    $unique_id = strtoupper(bin2hex(random_bytes(8)));
+
+                    // 6. Insert ke table consolidate_invoice
+                    $consolidate_invoice_id = DB::table('consolidate_invoice')->insertGetId([
+                        'invoice_no' => $sale->sale_id,
+                        'unique_id' => $unique_id,
+                        'consolidate_date' => date('Y-m-d H:i:s'),
+                        'id_developer'=>'77',
+                        'sale_id_integrate' => $sale->sale_id,
+                        'connection_integrate' => $pos,
+                        'id_supplier' => $id_supplier,
+                        'invoice_status' => 'Valid',
+                        'invoice_type_code' => '01',
+                        'tax_category_id' => '01',
+                        'tax_exemption_reason' => '',
+                        'tax_scheme_id' => 'OTH',
+                        'payment_note_term' => 'CASH',
+                        'payment_financial_account' => '-',
+                        'issue_date' => $sale->sale_time,
+                        'price' => $sale->total,
+                        'taxable_amount' => $sale->subtotal,
+                        'tax_amount' => $sale->tax,
+                        'tax_percent' => 0,
+                        'payment_method' => $sale->payment_type ?? 'Cash',
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                    // Dapatkan barangan bagi sale_id ini dari koleksi yang di-group awal tadi
+                    $items = $allSubItems->get($sale->sale_id) ?? [];
+
+                    // 7. Insert ke table consolidate_invoice_item
+                    foreach ($items as $item) {
+                        DB::table('consolidate_invoice_item')->insert([
+                            'id_developer'=>'77',
+                            'issue_date'=>$sale->sale_time,
+                            'id_consolidate_invoice' => $consolidate_invoice_id,
+                            'sale_id_integrate' => $sale->sale_id,
+                            'connection_integrate' => $pos,
+                            'unique_id' => $unique_id,
+                            'tax'=>$item->tax,
+                            'line_id' => $item->line,
+                            'invoiced_quantity' => $item->quantity_purchased,
+                            'line_extension_amount' => $item->total,
+                            'item_description' => $item->item_name ?? 'Unnamed Item',
+                            'price_amount' => $item->subtotal,
+                            'price_discount' => $item->discount_percent,
+                            'price_extension_amount' => $item->subtotal,
+                            'item_clasification_value' => '004',
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+
+                    $syncedCount++;
+                }
+
+                DB::commit();
+                $summary[$pos] = "Success (Synced {$syncedCount} invoices)";
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                $summary[$pos] = 'Error: ' . $e->getMessage();
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Consolidate sync process completed for all active connections.',
+            'results' => $summary
+        ], 200);
+    }
+
+
+    public function syncAllConso()
+    {
+        // 1. Ambil senarai semua POS dari .env dan tukar jadi array
+        $connectionsString = env('INTEGRATE_POS_CONNECTIONS');
+        
+        if (!$connectionsString) {
+            return response()->json(['error' => 'No POS connections defined in .env'], 400);
+        }
+
+        $connections = explode(',', $connectionsString); 
+        
+        // Define range masa untuk hari ini (00:00:00 hingga 23:59:59)
+        $startOfDay = now()->startOfDay()->toDateTimeString();
+        $endOfDay = now()->endOfDay()->toDateTimeString();
+        
+        $summary = []; 
+
+        // 2. Mula looping untuk setiap satu POS connection
+        foreach ($connections as $pos) {
+            $pos = trim($pos); 
+            
+            if (empty($pos)) {
+                continue;
+            }
+
+            // *** JALAN PENYELESAIAN UTAMA ***
+            // Putuskan dan padam cache connection 'dynamic_pos' lama sebelum set kedai baru
+            DB::disconnect('dynamic_pos');
+            Config::set("database.connections.dynamic_pos", null);
+
+            // Setup dynamic connection baru ke DB POS terbabit secara runtime
+            $connectionKey = strtoupper($pos);
+            $config = [
+                'driver' => 'mysql',
+                'host' => env("DB_{$connectionKey}_HOST"),
+                'database' => env("DB_{$connectionKey}_DATABASE"),
+                'username' => env("DB_{$connectionKey}_USERNAME"),
+                'password' => env("DB_{$connectionKey}_PASSWORD"),
+                'charset' => 'utf8mb4',
+                'collation' => 'utf8mb4_unicode_ci',
+                'prefix' => '',
+                'strict' => false,
+            ];
+            
+            Config::set("database.connections.dynamic_pos", $config);
+
+            // Dapatkan supplier ID dari table customer tempatan bagi POS ini
+            $id_supplier = DB::table('customer')
+                ->where('connection_integrate', $pos)
+                ->value('id_customer');
+
+            if (!$id_supplier) {
+                $summary[$pos] = 'Failed (Supplier not found in local customer table)';
+                continue; 
+            }
+
+            try {
+                // 3. Tarik semua jualan dari DB POS semasa untuk hari ini
+                $sales = DB::connection('dynamic_pos')
+                    ->table('phppos_sales')
+                    ->where('deleted',0)
+                    ->get();
+
+                if ($sales->isEmpty()) {
+                    $summary[$pos] = 'Success (0 sales found for today)';
+                    continue; 
+                }
+
+                // Ambil semua kumpulan sale_id untuk ditarik itemnya sekali gus
+                $saleIds = $sales->pluck('sale_id')->toArray();
+
+                // 4. Tarik semua items untuk sales hari ini dan group mengikut sale_id
+                $allSubItems = DB::connection('dynamic_pos')
+                    ->table('phppos_sales_items as si')
+                    ->join('phppos_items as i', 'si.item_id', '=', 'i.item_id')
+                    ->whereIn('si.sale_id', $saleIds)
+                    ->select('si.*', 'i.name as item_name')
+                    ->get()
+                    ->groupBy('sale_id');
+
+                // Mula transaksi database local
+                DB::beginTransaction();
+                $syncedCount = 0;
+
+               
+                foreach ($sales as $sale) {
+                    
+                    if($pos=='sass'){
+                        $pos=$pos."-". $sale->location_id;
+                    }
+
+                    // 5. SEMAK DUPLICATE: Guna kombinasi 'sale_id_integrate' DAN 'connection_integrate'
+                    $exists = DB::table('consolidate_invoice')
+                        ->where('sale_id_integrate', $sale->sale_id)
+                        ->where('connection_integrate', $pos)
+                        ->exists();
+
+                    if ($exists) {
+                        continue; 
+                    }
+
+
+                   
+
+                    $unique_id = strtoupper(bin2hex(random_bytes(8)));
+
+                    // 6. Insert ke table consolidate_invoice
+                    $consolidate_invoice_id = DB::table('consolidate_invoice')->insertGetId([
+                        'invoice_no' => $sale->sale_id,
+                        'unique_id' => $unique_id,
+                        'consolidate_date' => date('Y-m-d H:i:s'),
+                        'id_developer'=>'77',
+                        'sale_id_integrate' => $sale->sale_id,
+                        'connection_integrate' => $pos,
+                        'id_supplier' => $id_supplier,
+                        'invoice_status' => 'Valid',
+                        'invoice_type_code' => '01',
+                        'tax_category_id' => '01',
+                        'tax_exemption_reason' => '',
+                        'tax_scheme_id' => 'OTH',
+                        'payment_note_term' => 'CASH',
+                        'payment_financial_account' => '-',
+                        'issue_date' => $sale->sale_time,
+                        'price' => $sale->total,
+                        'taxable_amount' => $sale->subtotal,
+                        'tax_amount' => $sale->tax,
+                        'tax_percent' => 0,
+                        'payment_method' => $sale->payment_type ?? 'Cash',
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                    // Dapatkan barangan bagi sale_id ini dari koleksi yang di-group awal tadi
+                    $items = $allSubItems->get($sale->sale_id) ?? [];
+
+                    // 7. Insert ke table consolidate_invoice_item
+                    foreach ($items as $item) {
+                        DB::table('consolidate_invoice_item')->insert([
+                            'id_developer'=>'77',
+                            'issue_date'=>$sale->sale_time,
+                            'id_consolidate_invoice' => $consolidate_invoice_id,
+                            'sale_id_integrate' => $sale->sale_id,
+                            'connection_integrate' => $pos,
+                            'unique_id' => $unique_id,
+                            'tax'=>$item->tax,
+                            'line_id' => $item->line,
+                            'invoiced_quantity' => $item->quantity_purchased,
+                            'line_extension_amount' => $item->total,
+                            'item_description' => $item->item_name ?? 'Unnamed Item',
+                            'price_amount' => $item->subtotal,
+                            'price_discount' => $item->discount_percent,
+                            'price_extension_amount' => $item->subtotal,
+                            'item_clasification_value' => '004',
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+
+                    $syncedCount++;
+                }
+
+                DB::commit();
+                $summary[$pos] = "Success (Synced {$syncedCount} invoices)";
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                $summary[$pos] = 'Error: ' . $e->getMessage();
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Consolidate sync process completed for all active connections.',
+            'results' => $summary
+        ], 200);
+    }
+
+
     public function syncFromPOS(Request $request)
     {
         $pos = $request->query('pos');
@@ -1934,6 +2292,7 @@ public function show_invoice($unique_id)
                     'id_invoice' => $invoice_id,
                     'sale_id_integrate' => $sale_id,
                     'connection_integrate' => $pos,
+                    'tax'=>$item->tax,
                     'unique_id' => $unique_id,
                     'line_id' => $item->line,
                     'invoiced_quantity' => $item->quantity_purchased,
@@ -2264,6 +2623,47 @@ public function submitSelectedLHDN(Request $request)
         'connection_integrate' => session('connection_integrate')
     ], 200);
 }
+
+
+public function deleteConsolidateItem($saleId)
+{
+    
+    DB::beginTransaction();
+
+    try {
+
+        $itemDeleted = DB::table('consolidate_invoice_item')
+            ->where('unique_id', $saleId)
+            ->delete();
+
+        $invoiceDeleted = DB::table('consolidate_invoice')
+            ->where('unique_id', $saleId)
+            ->delete();
+
+        DB::commit();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Record deleted successfully.',
+            'data' => [
+                'sale_id_integrate' => $saleId,
+                'invoice_deleted'   => $invoiceDeleted,
+                'item_deleted'      => $itemDeleted
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+
+        DB::rollBack();
+
+        return response()->json([
+            'status' => false,
+            'message' => $e->getMessage()
+        ], 500);
+
+    }
+}
+
 public function deleteInvoice($id)
 {
     $invoice = DB::table('invoice')

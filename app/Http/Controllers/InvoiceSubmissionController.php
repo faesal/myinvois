@@ -12,29 +12,75 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use App\Jobs\SubmitInvoicesBatch;
 use Illuminate\Support\Facades\Artisan;
-use Carbon\Carbon; // 🚀 ADDED: Required for your date parsing at the bottom of the file
+use Carbon\Carbon; 
 
 class InvoiceSubmissionController extends Controller
 {
+    /**
+     * 🚀 HELPER: Reusable query builder to ensure exact filter matching
+     * Used for both main views and the background "Select All" fetcher
+     */
+    private function buildInvoiceQuery(Request $request, $developerId)
+    {
+        $query = DB::table('invoice AS i')
+            ->leftJoin('customer AS c', 'i.id_supplier', '=', 'c.id_customer')
+            ->leftJoin('connection_integrate AS ci', 'i.connection_integrate', '=', 'ci.code')
+            ->leftJoin('invoice_type AS itype', 'i.invoice_type_code', '=', 'itype.code')
+            ->leftJoin('invoice_item AS it', function ($join) use ($developerId) {
+                $join->on('it.id_invoice', '=', 'i.id_invoice')
+                     ->where('it.id_developer', '=', $developerId);
+            })
+            ->where('ci.id_developer', $developerId)
+            ->where('c.id_developer', $developerId)
+            ->where('c.customer_type', 'SUPPLIER')
+            ->where('i.is_deleted', 0) 
+            ->groupBy('i.id_invoice');
+
+        if ($request->start_date) {
+            $query->whereDate('i.issue_date', '>=', $request->start_date);
+        }
+
+        if ($request->end_date) {
+            $query->whereDate('i.issue_date', '<=', $request->end_date);
+        }
+
+        if ($request->status && $request->status !== 'ALL') {
+            if (strtoupper($request->status) === 'FAILED') {
+                $query->where(function($q) use ($request) {
+                    $q->where('i.submission_status', $request->status)
+                      ->orWhere('i.is_failed', 1);
+                });
+            } else {
+                $query->where('i.submission_status', $request->status);
+            }
+        }
+
+        if ($request->connection_integrate && $request->connection_integrate !== 'ALL') {
+            $query->where('i.connection_integrate', $request->connection_integrate);
+            Session::put('connection_integrate', $request->connection_integrate);
+        }
+
+        if ($request->invoice_type && $request->invoice_type !== 'ALL') {
+            $query->where('i.invoice_type_code', $request->invoice_type);
+        }
+
+        return $query;
+    }
+
     /**
      * View Invoice Submissions (Alternative View)
      */
     public function index2(Request $request)
     {
         $developerId = auth()->user()->id;
+        $perPage = $request->input('per_page', 50);
 
-        // -------------------------
-        // Filter Options (Suppliers/LHDN Accounts)
-        // -------------------------
         $customers = DB::table('customer')
             ->where('id_developer', $developerId)
             ->where('customer_type', 'SUPPLIER')
             ->orderBy('registration_name')
             ->get();
 
-        // -------------------------
-        // Invoice Query
-        // -------------------------
         $query = DB::table('invoice AS i')
             ->leftJoin('customer AS c', 'i.id_supplier', '=', 'c.id_customer')
             ->leftJoin('connection_integrate AS ci', 'i.connection_integrate', '=', 'ci.code')
@@ -60,7 +106,6 @@ class InvoiceSubmissionController extends Controller
             ->where('c.customer_type', 'SUPPLIER')
             ->groupBy('i.id_invoice');
 
-        // ----- Apply Filters -----
         if ($request->start_date) {
             $query->whereDate('i.issue_date', '>=', $request->start_date);
         }
@@ -69,7 +114,6 @@ class InvoiceSubmissionController extends Controller
             $query->whereDate('i.issue_date', '<=', $request->end_date);
         }
 
-        // 🚀 THE FIX: CATCH ALL FAILED/REJECTED INVOICES
         if ($request->status && $request->status !== 'ALL') {
             if (strtoupper($request->status) === 'FAILED') {
                 $query->where(function($q) use ($request) {
@@ -86,7 +130,8 @@ class InvoiceSubmissionController extends Controller
             Session::put('connection_integrate', $request->connection_integrate);
         }
 
-        $invoices = $query->orderBy('i.issue_date', 'desc')->get();
+        // 🚀 OPTIMIZED: Pagination applied
+        $invoices = $query->orderBy('i.issue_date', 'desc')->paginate($perPage)->withQueryString();
 
         return view('developer.invoice_submissions', compact(
             'customers',
@@ -100,122 +145,58 @@ class InvoiceSubmissionController extends Controller
     public function index(Request $request)
     {
         $developerId = auth()->user()->id;
+        $perPage = $request->input('per_page', 50);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Customers (SUPPLIER) for LHDN Account dropdown
-        |--------------------------------------------------------------------------
-        */
         $customers = DB::table('customer')
             ->where('id_developer', $developerId)
             ->where('customer_type', 'SUPPLIER')
             ->orderBy('registration_name')
             ->get();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Invoice Types (for filter)
-        |--------------------------------------------------------------------------
-        */
         $invoiceTypes = DB::table('invoice_type')
             ->orderBy('code')
             ->get();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Invoice Query
-        |--------------------------------------------------------------------------
-        */
-        $query = DB::table('invoice AS i')
-            ->leftJoin('customer AS c', 'i.id_supplier', '=', 'c.id_customer')
-            ->leftJoin('connection_integrate AS ci', 'i.connection_integrate', '=', 'ci.code')
-            ->leftJoin('invoice_type AS itype', 'i.invoice_type_code', '=', 'itype.code')
-            ->leftJoin('invoice_item AS it', function ($join) use ($developerId) {
-                $join->on('it.id_invoice', '=', 'i.id_invoice')
-                     ->where('it.id_developer', '=', $developerId);
-            })
-            ->select(
-                'i.unique_id',
-                'i.id_invoice',
-                'i.invoice_no',
-                'i.issue_date',
-                'i.submission_status',
-                'i.price',
-                'i.taxable_amount',
-                'i.tax_amount',
-                'i.invoice_type_code',
-                'itype.description AS invoice_type_name',
-                'c.registration_name',
-                'i.id_customer',
-                'i.id_supplier',
-                'i.connection_integrate',
-                'ci.name AS connection_name',
-                DB::raw('MIN(it.sale_id_integrate) AS sale_id')
-            )
-            ->where('ci.id_developer', $developerId)
-            ->where('c.id_developer', $developerId)
-            ->where('c.customer_type', 'SUPPLIER')
-            ->where('i.is_deleted', 0) 
-            ->groupBy('i.id_invoice');
+        // 🚀 OPTIMIZED: Call the helper query builder to match exact filters
+        $query = $this->buildInvoiceQuery($request, $developerId);
+        
+        $query->select(
+            'i.unique_id',
+            'i.id_invoice',
+            'i.invoice_no',
+            'i.issue_date',
+            'i.submission_status',
+            'i.price',
+            'i.taxable_amount',
+            'i.tax_amount',
+            'i.invoice_type_code',
+            'itype.description AS invoice_type_name',
+            'c.registration_name',
+            'i.id_customer',
+            'i.id_supplier',
+            'i.connection_integrate',
+            'ci.name AS connection_name',
+            DB::raw('MIN(it.sale_id_integrate) AS sale_id')
+        );
 
-        /*
-        |--------------------------------------------------------------------------
-        | Filters
-        |--------------------------------------------------------------------------
-        */
-        if ($request->start_date) {
-            $query->whereDate('i.issue_date', '>=', $request->start_date);
-        }
-
-        if ($request->end_date) {
-            $query->whereDate('i.issue_date', '<=', $request->end_date);
-        }
-
-        // 🚀 THE FIX: CATCH ALL FAILED/REJECTED INVOICES
-        if ($request->status && $request->status !== 'ALL') {
-            if (strtoupper($request->status) === 'FAILED') {
-                $query->where(function($q) use ($request) {
-                    $q->where('i.submission_status', $request->status)
-                      ->orWhere('i.is_failed', 1);
-                });
-            } else {
-                $query->where('i.submission_status', $request->status);
-            }
-        }
-
-        if ($request->connection_integrate && $request->connection_integrate !== 'ALL') {
-            $query->where('i.connection_integrate', $request->connection_integrate);
-        }
-
-        if ($request->invoice_type && $request->invoice_type !== 'ALL') {
-            $query->where('i.invoice_type_code', $request->invoice_type);
-        }
-
+        // 🚀 OPTIMIZED: Pagination applied safely
         $invoices = $query
             ->orderBy('i.issue_date', 'desc')
-            ->get();
+            ->paginate($perPage)
+            ->withQueryString();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Status Counts (for dashboard cards) - SIMPLIFIED APPROACH
-        |--------------------------------------------------------------------------
-        */
         $statusCounts = [
             'Submitted' => 0,
             'Pending' => 0,
             'Failed' => 0,
         ];
 
-        // Only calculate counts if a connection is selected
         if ($request->filled('connection_integrate') && $request->connection_integrate !== 'ALL') {
-            
-            // Get all invoices for this connection with filters applied
             $countQuery = DB::table('invoice AS i')
                 ->where('i.id_developer', $developerId)
                 ->where('i.connection_integrate', $request->connection_integrate)
                 ->where('i.is_deleted', 0); 
 
-            // Apply date filters
             if ($request->start_date) {
                 $countQuery->whereDate('i.issue_date', '>=', $request->start_date);
             }
@@ -226,7 +207,6 @@ class InvoiceSubmissionController extends Controller
                 $countQuery->where('i.invoice_type_code', $request->invoice_type);
             }
 
-            // Get raw counts grouped by status
             $rawCounts = $countQuery
                 ->select(
                     DB::raw('TRIM(UPPER(submission_status)) as status'),
@@ -236,12 +216,10 @@ class InvoiceSubmissionController extends Controller
                 ->pluck('total', 'status')
                 ->toArray();
 
-            // Map to our status keys
             $statusCounts['Submitted'] = $rawCounts['SUBMITTED'] ?? 0;
             $statusCounts['Pending'] = $rawCounts['PENDING'] ?? 0;
             $statusCounts['Failed'] = $rawCounts['FAILED'] ?? 0;
 
-            // Add any invoices marked as failed via is_failed flag
             $additionalFailed = DB::table('invoice')
                 ->where('id_developer', $developerId)
                 ->where('connection_integrate', $request->connection_integrate)
@@ -261,7 +239,6 @@ class InvoiceSubmissionController extends Controller
 
             $statusCounts['Failed'] += $additionalFailed->count();
 
-            // Debug log
             \Log::info('Status Counts Debug', [
                 'connection' => $request->connection_integrate,
                 'raw_counts' => $rawCounts,
@@ -275,6 +252,73 @@ class InvoiceSubmissionController extends Controller
             'invoices',
             'statusCounts'
         ));
+    }
+
+/**
+     * 🚀 NEW ENDPOINT: Fetch ALL matching IDs across all pages
+     * Optimized for 100k+ records to prevent memory/timeout crashes
+     */
+    public function fetchAllMatchingIds(Request $request)
+    {
+        set_time_limit(0);
+        ini_set('memory_limit', '-1');
+
+        $developerId = auth()->user()->id;
+
+        try {
+            $query = DB::table('invoice AS i')
+                ->join('customer AS c', 'i.id_supplier', '=', 'c.id_customer')
+                ->where('i.id_developer', $developerId) // 🚀 CRITICAL FIX: Filters the massive invoice table instantly using indexes
+                ->where('c.id_developer', $developerId)
+                ->where('c.customer_type', 'SUPPLIER')
+                ->where('i.is_deleted', 0);
+
+            // Apply Filters manually
+            if ($request->start_date) {
+                $query->whereDate('i.issue_date', '>=', $request->start_date);
+            }
+            if ($request->end_date) {
+                $query->whereDate('i.issue_date', '<=', $request->end_date);
+            }
+            if ($request->status && $request->status !== 'ALL') {
+                if (strtoupper($request->status) === 'FAILED') {
+                    $query->where(function($q) use ($request) {
+                        $q->where('i.submission_status', $request->status)
+                          ->orWhere('i.is_failed', 1);
+                    });
+                } else {
+                    $query->where('i.submission_status', $request->status);
+                }
+            }
+            if ($request->connection_integrate && $request->connection_integrate !== 'ALL') {
+                $query->where('i.connection_integrate', $request->connection_integrate);
+            }
+            if ($request->invoice_type && $request->invoice_type !== 'ALL') {
+                $query->where('i.invoice_type_code', $request->invoice_type);
+            }
+
+            // 1. Pluck only the IDs
+            $ids = $query->pluck('i.id_invoice')->toArray();
+
+            // 2. 🚀 CRITICAL FIX: Sum columns individually to bypass heavy DB::raw calculations
+            $taxableSum = (float) $query->sum('i.taxable_amount');
+            $taxSum = (float) $query->sum('i.tax_amount');
+            $totalAmount = $taxableSum + $taxSum;
+
+            return response()->json([
+                'success' => true,
+                'count' => count($ids),
+                'ids' => $ids,
+                'total_rm' => $totalAmount
+            ]);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Massive Fetch Error: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Server Error: ' . $e->getMessage() // This will now send the EXACT error to your JS
+            ], 500); 
+        }
     }
 
     public function consolidate(Request $request)
@@ -948,9 +992,6 @@ class InvoiceSubmissionController extends Controller
     }
 
     /**
-     * Bulk Soft Delete Invoices
-     */
- /**
      * Bulk Soft Delete Invoices
      */
     public function bulkDeleteInvoices(Request $request)
